@@ -35,3 +35,22 @@ test('unauthorized call cannot inspect or change data',async()=>{const f=fixture
 test('image must belong to current manager, and history reports actual Email fallback state',async()=>{const f=fixture();f.store.set('teacherAnnouncementImages/asset_12345678900',{actor:'other',url:'https://example.test/a.jpg'});await assert.rejects(async()=>f.handle(await f.payload({assetId:'asset_12345678900'}),'admin'),/重新上傳/);await f.handle(await f.payload(),'admin');const key=[...f.store.keys()].find(k=>k.startsWith('notificationQueue/'));const q=f.store.get(key);f.store.set(key,{...q,status:'已轉寄Email',fallbackQueueId:'fallback'});f.store.set('notificationQueue/fallback',{status:'已發送'});const h=await f.handle({action:'inspect',startDate:day},'admin');assert.equal(h.history[0].deliveries[0].channel,'email');assert.equal(h.history[0].deliveries[0].status,'已發送');});
 test('send-time suppression handles queued reminders and removes only closed lesson sections on normal days',async()=>{const row={eventCode:'teacher_daily_courses',noticeDate:tomorrow,reminderSections:[{date:day,body:'closed yesterday'},{date:tomorrow,body:'open today'}],reminderFooter:'portal',body:'old'};assert.equal(filterReminder(row,new Set([tomorrow])).cancelled,true);const filtered=filterReminder(row,new Set([day]));assert.equal(filtered.row.body,'open today\n\nportal');const f=fixture();f.store.set('courseClassClosures/'+tomorrow,{active:true});assert.equal((await prepareReminder(f.db,row)).cancelled,true);});
 test('unrelated notifications do not read closure storage; old queued reminders cancelled conservatively',async()=>{const row={eventCode:'teacher_payroll_transfer_completed'};assert.equal((await prepareReminder({collection(){throw Error('unexpected read')}},row)).row,row);assert.equal(filterReminder({eventCode:'teacher_evening_attendance',noticeDate:day},new Set([day])).cancelled,true);});
+
+test('explicit nonconsecutive dates ignore legacy range, normalize duplicates and reject malformed days',()=>{
+ const {range}=require('../functions/teacherAnnouncements');
+ assert.deepEqual(range({dates:['2026-12-03','2026-12-01','2026-12-03'],startDate:'2026-12-01',endDate:'2026-12-03'}),['2026-12-01','2026-12-03']);
+ for(const dates of [[],['2026-02-29'],['bad'],null])assert.throws(()=>range({dates}));
+});
+test('multiple owned images retain order in queue and history, and retries do not duplicate',async()=>{
+ const f=fixture(),assetIds=Array.from({length:12},(_,i)=>'image_asset_123456_'+i);
+ for(const id of assetIds)f.store.set('teacherAnnouncementImages/'+id,{actor:'admin',url:'https://example.test/'+id+'.jpg'});
+ const p=await f.payload({assetIds});await f.handle(p,'admin');assert.equal((await f.handle(p,'admin')).duplicate,true);
+ const q=[...f.store].find(([k])=>k.startsWith('notificationQueue/'))[1];assert.deepEqual(q.lineImageUrls,assetIds.map(id=>'https://example.test/'+id+'.jpg'));
+ const h=await f.handle({action:'inspect',dates:[day]},'admin');assert.deepEqual(h.history[0].imageUrls,q.lineImageUrls);
+ await assert.rejects(()=>f.handle({...p,assetIds:assetIds.slice().reverse()},'admin'),/內容已變更/);
+});
+test('image upload accepts 10 MiB boundary and rejects larger payload before storing',async()=>{
+ const f=fixture();const encoded=Buffer.alloc(10*1024*1024).toString('base64');
+ const r=await f.handle({action:'upload',base64:encoded},'admin');assert(r.assetId);
+ await assert.rejects(()=>f.handle({action:'upload',base64:Buffer.alloc(10*1024*1024+1).toString('base64')},'admin'),/10 MB/);
+});

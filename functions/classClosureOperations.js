@@ -10,6 +10,15 @@ const startMillis = row => Date.parse(`${row.date}T${row.startTime}:00+08:00`);
 const activeBooking = (row, now) => row.active !== false && !['cancelled','completed'].includes(row.status) && startMillis(row) > +now;
 const contact = row => ({lineUserId:/^U[0-9a-f]{32}$/i.test(clean(row.lineUserId)) ? clean(row.lineUserId) : '',email:/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(clean(row.email || row.emailNormalized)) ? clean(row.email || row.emailNormalized).toLowerCase() : ''});
 const bindingCollection = role => role === 'teacher' ? 'coursePortalTeacherBindings' : role === 'student' ? 'coursePortalStudentBindings' : 'coursePortalRenterBindings';
+function dateRanges(dates){
+  const ranges=[];
+  for(const date of [...new Set(dates)].sort()){
+    const previous=ranges.at(-1);
+    if(previous&&Date.parse(date)-Date.parse(previous[1])===86400000)previous[1]=date;
+    else ranges.push([date,date]);
+  }
+  return ranges;
+}
 
 function bookingRecipient(booking, bindings) {
   const role = clean(booking.role), targetField = role === 'teacher' ? 'teacherId' : 'renterId';
@@ -39,7 +48,7 @@ function renterDirectory(bookings, bindings) {
 }
 function personalize(body, row, dates, audience) {
   const name = audience === 'teacher' ? Array.from(clean(row.name).replace(/老師$/u,'')).slice(-2).join('') : clean(row.name);
-  const date = dates.length===1 ? dates[0] : `${dates[0]} 至 ${dates.at(-1)}`;
+  const date = dates.join('、');
   const bookings = (row.bookings||[]).map(b=>`${b.roomName}／${b.date} ${b.startTime}～${b.endTime}`).join('\n');
   const values={'姓名最後兩字':name,'客人完整姓名':name,'日期':date,'教室名稱／預約日期與時段':bookings};
   return body.replace(/\{(姓名最後兩字|客人完整姓名|日期|教室名稱／預約日期與時段)\}/g,(_,key)=>values[key]);
@@ -62,9 +71,15 @@ function createClassClosureOperations({db,loadSchedule,makeLeaveChange,assertSch
   async function inspect(dates) {
     const version = await versionRef.get();
     assertScheduleWritable(version);
-    const [schedule,bookingSnapshot] = await Promise.all([loadSchedule(dates[0],dates.at(-1)),db.collection('coursePortalRoomBookings').where('date','>=',dates[0]).where('date','<=',dates.at(-1)).get()]);
-    const lessons = schedule.events.filter(e=>e.status==='scheduled' && e.studentIds?.length && !e.protectedAttendance && !/rental|room_booking/.test(e.type+' '+e.portalAction));
-    const bookings = bookingSnapshot.docs.map(d=>({...d.data(),id:d.id})).filter(b=>activeBooking(b,now())).sort((a,b)=>a.id.localeCompare(b.id));
+    const schedules=[],bookingDocs=[];
+    for(const [start,end] of dateRanges(dates)){
+      const [part,booked]=await Promise.all([loadSchedule(start,end),db.collection('coursePortalRoomBookings').where('date','>=',start).where('date','<=',end).get()]);
+      schedules.push({...part,events:part.events.filter(e=>e.date>=start&&e.date<=end)});bookingDocs.push(...booked.docs);
+    }
+    const schedule={events:schedules.flatMap(s=>s.events),priorChanges:[...new Map(schedules.flatMap(s=>s.priorChanges||[]).map(c=>[c.id,c])).values()]};
+    const bookingSnapshot={docs:bookingDocs};
+    const lessons = schedule.events.filter(e=>dates.includes(e.date) && e.status==='scheduled' && e.studentIds?.length && !e.protectedAttendance && !/rental|room_booking/.test(e.type+' '+e.portalAction));
+    const bookings = bookingSnapshot.docs.map(d=>({...d.data(),id:d.id})).filter(b=>dates.includes(b.date)&&activeBooking(b,now())).sort((a,b)=>a.id.localeCompare(b.id));
     const bindings = await bindingsFor(bookings,ref=>ref.get());
     const renters = renterDirectory(bookings,bindings);
     const locks = (await Promise.all(bookings.map(b=>db.collection('coursePortalRoomLocks').where('bookingId','==',b.id).get()))).flatMap(s=>s.docs.map(d=>({id:d.id,...d.data()})));
@@ -112,4 +127,4 @@ function createClassClosureOperations({db,loadSchedule,makeLeaveChange,assertSch
   }
   return {inspect,prepare};
 }
-module.exports={createClassClosureOperations,bookingRecipient,renterDirectory,personalize,activeBooking,hasProtectedAttendance};
+module.exports={createClassClosureOperations,bookingRecipient,renterDirectory,personalize,activeBooking,hasProtectedAttendance,dateRanges};

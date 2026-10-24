@@ -77,3 +77,15 @@ test('old client and partial legacy date range cannot silently cancel reservatio
  const legacy='legacy_closure_123456';f.store.set('teacherAnnouncements/'+legacy,{kind:'closure',dates:[day,'2099-01-01'],released:false,createdAtText:now().toISOString(),deliveries:[]});f.store.set('courseClassClosures/'+day,{active:true,announcementId:legacy});
  const p2=await f.payload({upgradeIds:[legacy]});const snapshot=JSON.stringify([...f.store]);await assert.rejects(f.handle(p2,'admin'),/完整日期/);assert.equal(JSON.stringify([...f.store]),snapshot);
 });
+
+test('only individually selected days change: skipped lessons, bookings and locks remain untouched',async()=>{
+ const f=fixture(),skip=new Date(Date.parse(day)+86400000).toISOString().slice(0,10),last=new Date(Date.parse(day)+2*86400000).toISOString().slice(0,10);
+ f.events.push({...f.events[1],id:'skip',sourceId:'skip',fixedCourseId:'skip',date:skip},{...f.events[1],id:'last',sourceId:'last',fixedCourseId:'last',date:last});
+ for(const [id,date] of [['skip',skip],['last',last]]){f.store.set('coursePortalRoomBookings/'+id,{...f.store.get('coursePortalRoomBookings/b1'),id,date,lockIds:[id+'-lock']});f.store.set('coursePortalRoomLocks/'+id+'-lock',{bookingId:id});}
+ const dates=[day,last],preview=await f.handle({action:'inspect',dates},'admin');
+ assert.equal(preview.rows[0].lessonCount,4);assert.equal(preview.impact.lessonCount,3);assert.equal(preview.impact.bookingCount,3);
+ const p=await f.payload({dates,directoryVersion:preview.directoryVersion,renterIds:preview.renters.map(r=>r.renterId),body:'{日期}'});await f.handle(p,'admin');
+ assert(!f.store.has('courseClassClosures/'+skip));assert(!f.store.has('coursePortalScheduleChanges/status-skip'));assert.equal(f.store.get('coursePortalRoomBookings/skip').active,true);assert(f.store.has('coursePortalRoomLocks/skip-lock'));
+ assert.equal(f.store.get('courseClassClosures/'+last).active,true);assert.equal(f.store.get('coursePortalRoomBookings/last').active,false);
+ const teacher=[...f.store.values()].find(r=>r.source==='teacher-announcement'&&r.teacherId==='t1');assert.equal(teacher.body,dates.join('、'));
+});

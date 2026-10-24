@@ -3,3 +3,5 @@
 .ta-person>.ta-badge{flex:0 0 auto}
 
 .ta-status:empty{display:none}.ta-card h3:not(:first-child),#taRenterContent h3{margin-top:26px}.ta-dialog details{border-top:1px solid #dce4df;padding:14px 0}.ta-dialog summary{cursor:pointer;font-weight:600}.ta-person>span{min-width:0;overflow-wrap:anywhere}.ta-person input{flex:0 0 20px}
+
+.ta-date-row{display:flex;gap:10px;align-items:flex-end;margin-bottom:10px}.ta-date-row label{flex:1;min-width:0}.ta-date-row input{min-width:0;max-width:100%;-webkit-appearance:none}.ta-date-row .ta-button{flex-shrink:0}.ta-images{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:12px}.ta-image-item{padding:10px;border:1px solid #dce4df;border-radius:10px;min-width:0;overflow-wrap:anywhere}.ta-image-item b,.ta-image-item small{display:block;margin-top:8px}.ta-image-item img{width:100%;height:140px;object-fit:contain;margin:0}.ta-image-item .ta-actions{margin-top:8px}

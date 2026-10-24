@@ -1198,6 +1198,10 @@ async function sendLinePush(row) {
   const body = queueBody(row);
   const directLineText = clean(row.lineText || row.lineMessage || row.lineBody);
   const text = directLineText || (title && body && title !== body ? `${title}\n${body}` : (body || title || '柚子樂器通知'));
+  if(row.source==='teacher-announcement' && Array.isArray(row.lineImageUrls)){
+    const progress=(await db.collection('notificationQueue').doc(row.queueId).get()).data()||{};
+    return require('./announcementImages').send({row:{...row,announcementImageBatchesSent:progress.announcementImageBatchesSent},to,token,text:text.slice(0,4900),checkpoint:count=>markQueue(db.collection('notificationQueue').doc(row.queueId),{announcementImageBatchesSent:count})});
+  }
   const messages = [{ type: 'text', text: (shouldAddTrialNotice(row) ? trialNotificationText(text) : text).slice(0, 4900) }];
   const imageUrl = lineImageUrlFromQueue(row);
   if (imageUrl) {
@@ -1253,14 +1257,15 @@ async function sendEmailViaGmail(row, options = {}) {
   const body = options.trialNotice ? trialNotificationText(originalBody) : originalBody;
   const safeBody = body.replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
   const receipt = lineImageUrlFromQueue(row);
+  const announcementPhotos=row.source==='teacher-announcement'&&Array.isArray(row.lineImageUrls)?require('./announcementImages'):null;
   const customHtml = clean(row.html || row.htmlBody || '');
-  const html = (customHtml ? (options.trialNotice ? trialNotificationHtml(customHtml) : customHtml) : '') || safeBody.replace(/\n/g, '<br>') + (receipt ? `<p><img src="${receipt.replace(/"/g, '%22')}" alt="收據" style="max-width:100%"></p>` : '');
+  const html = (customHtml ? (options.trialNotice ? trialNotificationHtml(customHtml) : customHtml) : '') || safeBody.replace(/\n/g, '<br>') + (announcementPhotos ? announcementPhotos.emailImages(row) : receipt ? `<p><img src="${receipt.replace(/"/g, '%22')}" alt="收據" style="max-width:100%"></p>` : '');
 
   const info = await transporter.sendMail({
     from,
     to,
     subject,
-    text: body || subject,
+    text: announcementPhotos ? [body||subject,announcementPhotos.emailText(row)].filter(Boolean).join('\n\n') : body || subject,
     html,
   });
 

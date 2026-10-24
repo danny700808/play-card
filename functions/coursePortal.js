@@ -13751,13 +13751,11 @@ function registerCoursePortal(exportsObject, helpers = {}) {
     },
     uploadImage:async(bytes,id)=>{
       try {
-        const metadata=await sharp(bytes,{limitInputPixels:16000000}).metadata();
-        if(!['jpeg','png','webp'].includes(metadata.format))throw new Error('Unsupported image');
-        const output=await sharp(bytes,{limitInputPixels:16000000}).rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).jpeg({quality:85}).toBuffer();
+        const output=await require('./announcementImageProcessing').prepare(bytes);
         const bucket=storageRouting.writeBucket(),path=`teacher-announcement-images/${id}.jpg`,token=crypto.randomUUID();
         await bucket.file(path).save(output,{resumable:false,metadata:{contentType:'image/jpeg',metadata:{firebaseStorageDownloadTokens:token}}});
         return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
-      }catch(error){throw new HttpsError('invalid-argument','圖片處理或儲存失敗，請選擇 4 MB 以下的 JPG、PNG 或 WebP 圖片重試。');}
+      }catch(error){throw new HttpsError('invalid-argument','圖片處理或儲存失敗，請選擇 10 MB 以下的 JPG、PNG 或 WebP 圖片重試。');}
     }
   });
   exportsObject.coursePortalTeacherAnnouncements = callable(withPortalReads(async(data,request)=>{
