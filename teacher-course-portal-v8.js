@@ -1132,6 +1132,7 @@
     try {
       await fetchData(Boolean(force));
       if (account !== token) return false;
+      if (activeTab === 'payroll') showDataFreshness('');
       refreshTeacherUtilityStatus(false);
       return true;
     } catch (error) {

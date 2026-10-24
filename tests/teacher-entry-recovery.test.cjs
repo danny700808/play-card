@@ -69,6 +69,10 @@ test('initial data failure preserves login and provides recovery; verified auth 
 test('a failed old-account load cannot invalidate the newly selected account',async()=>{
  const f=loadFixture(failure('functions/unauthenticated'));f.c.fetchData=async()=>{f.c.token='new-account';throw failure('functions/unauthenticated');};await f.c.load(false);assert.deepEqual(f.effects,[]);
 });
+test('successful payroll recovery clears the failed-read notice and retry button',async()=>{
+ const f=loadFixture(null,true);f.c.activeTab='payroll';f.c.fetchData=async()=>{};
+ const notices=[];f.c.showDataFreshness=text=>notices.push(text);assert.equal(await f.c.load(true),true);assert.deepEqual(notices,['']);
+});
 test('recent successful week reads are reusable only for the same account and unchanged schedule',async()=>{
  let revision=0,now=1000;const c={token:'a',Date:{now:()=>now},Map,viewCache:{revision:()=>revision,load:(_,fn)=>fn()},invoke:async()=>({events:[]})};
  vm.createContext(c);vm.runInContext(section('  const verifiedWeeks =','  function prefetchNeighborWeeks('),c);
