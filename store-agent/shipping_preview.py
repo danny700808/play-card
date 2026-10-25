@@ -27,7 +27,7 @@ def _trim_preview_margin(image):
 
 
 def print_pdf(content, data_dir, row):
-    """Unlock a print copy using the owner's password; never rasterize/reflow it."""
+    """Unlock a copy; validated CVS labels keep 1:1 content on 100 x 150 mm."""
     if row["platform"] != "MOMO":
         return None
     settings_file = data_dir / "document-settings.json"
@@ -41,7 +41,8 @@ def print_pdf(content, data_dir, row):
         import pypdfium2.raw as raw
     except ImportError:
         return None
-    digest = hashlib.sha256(content + ("print-v1:" + password).encode()).hexdigest()
+    method = row.get("shippingMethod", "")
+    digest = hashlib.sha256(content + ("print-v2-cvs:" + method + ":" + password).encode()).hexdigest()
     target = data_dir / f"print-{digest}.pdf"
     with _render_lock:
         if target.is_file():
@@ -54,6 +55,16 @@ def print_pdf(content, data_dir, row):
             # Fail closed if the saved copy still requires a password.
             with pdfium.PdfDocument(result) as check:
                 if not len(check):
+                    return None
+            if method in ("seven", "family"):
+                try:
+                    from shipping_cvs_layout import normalize_cvs_pdf, LayoutError
+                    from pypdf.errors import PdfReadError
+                except ImportError:
+                    return None
+                try:
+                    result, _ = normalize_cvs_pdf(result, method)
+                except (LayoutError, PdfReadError):
                     return None
         except pdfium.PdfiumError:
             return None
@@ -68,14 +79,19 @@ def preview_pdf(content, data_dir, row):
         import pypdfium2 as pdfium
     except ImportError:
         return None
+    normalized = row["platform"] == "MOMO" and row.get("shippingMethod") in ("seven", "family")
+    if normalized:
+        content = print_pdf(content, data_dir, row)
+        if not content:
+            return None
     settings_file = data_dir / "document-settings.json"
     settings = json.loads(settings_file.read_text(encoding="utf-8")) if settings_file.exists() else {}
-    password = str(settings.get("momoPdfPassword", "")) if row["platform"] == "MOMO" else ""
+    password = str(settings.get("momoPdfPassword", "")) if row["platform"] == "MOMO" and not normalized else ""
     # Verified Coupang HCT PDFs contain sideways text on a portrait page.
     # Only the on-screen preview is turned upright; printing uses the original PDF.
     rotation = 270 if row["platform"] == "Coupang" and row.get("carrierCode") == "TWL_HCT" else 0
-    trim = row["platform"] == "MOMO" and row.get("shippingMethod") in ("seven", "family")
-    digest = hashlib.sha256(content + f"preview-v2:{rotation}:{trim}:{password}".encode()).hexdigest()
+    trim = False  # CVS preview now renders the exact prepared print PDF.
+    digest = hashlib.sha256(content + f"preview-v3-cvs:{rotation}:{trim}:{password}".encode()).hexdigest()
     target = data_dir / f"preview-{digest}.png"
     with _render_lock:
         if target.is_file():

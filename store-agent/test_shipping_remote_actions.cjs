@@ -55,6 +55,14 @@ test('MOMO and Coupang retain their document acquisition buttons',()=>{
   }
 });
 
+test('a cancelled MOMO order cannot be manually marked printed or shipped',()=>{
+  const html=render({platform:'MOMO',channel:'MOMO',stage:'cancelled',canCreate:false,canDownload:false,
+    blockReason:'此訂單已由 MOMO 取消，不需出貨或列印。'});
+  assert.doesNotMatch(html,/id="markPrinted"|id="markShipped"/);
+  assert.match(html,/<button id="packing" disabled>/);
+  assert.match(html,/此訂單已由 MOMO 取消/);
+});
+
 test('all platforms use identical action names for the same handling state',()=>{
   for(const [state,label] of [[{},'取得貨運單'],[{documentReady:true,handlingAction:'acquired'},'列印貨運單'],[{handlingAction:'printed'},'重印貨運單'],[{stage:'shipped'},'重印貨運單']]){
     for(const platform of ['EasyStore','MOMO','Coupang']){

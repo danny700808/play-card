@@ -51,7 +51,19 @@
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'primary';
-    const momoStore = row.channel === 'MOMO' && /7-11|全家/.test(row.carrier || '');
+    const carrierMethod = /7-11/.test(row.carrier || '') ? 'seven' : /全家/.test(row.carrier || '') ? 'family' : '';
+    const shippingMethod = row.shippingMethod || carrierMethod;
+    const momoStore = row.channel === 'MOMO' && ['seven', 'family'].includes(shippingMethod);
+    const printProfile = momoStore ? 'momo-cvs-v1' : '';
+    const prepareBody = () => ({channel: row.channel, pdfBase64, ...(momoStore ? {
+      printProfile, shippingMethod, orderKey: row.key, orderNo: row.orderNo, tracking: row.tracking || '',
+    } : {})});
+    function checkPrepared(job) {
+      if (momoStore && (job.printProfile !== printProfile || job.pages !== 1 ||
+          !Array.isArray(job.paperMm) || job.paperMm.length !== 2 || job.paperMm[0] !== 100 || job.paperMm[1] !== 150))
+        throw Error('副機未回傳正確的超商單張版型，尚未送印。請更新副機列印助手。');
+      return job;
+    }
     let reprint = window.ShippingModel?.documentActionLabel(row) === '重印貨運單';
     let pdfBase64, preparedJob, ready = false;
     const label = () => reprint ? '重印貨運單' : '列印貨運單';
@@ -71,14 +83,20 @@
       const result = await local('/health');
       if (!active()) return;
       if (result.service !== 'youzi-shipping-print') throw Error('本機連線服務不符。');
+      if (row.channel === 'MOMO' && carrierMethod && carrierMethod !== shippingMethod)
+        throw Error('物流方式與列印版型不一致，請先重新讀取最新訂單。');
       $('printerHint').textContent = row.channel === 'MOMO'
-        ? momoStore ? 'MOMO 超商單：使用單張原單版型，由副機助手核對後列印。'
+        ? momoStore ? 'MOMO 超商單：單張原單，100 × 150 mm，保留原單內容尺寸。'
           : 'MOMO：自動將已支援的左右雙聯原單拆成兩張 100 × 150 mm 貼紙。'
         : '使用 XP-420B 的 100 × 150 mm 標籤紙。';
+      if (momoStore && (!Array.isArray(result.printProfiles) || !result.printProfiles.includes(printProfile)))
+        throw Error('副機列印助手需要更新 MOMO 超商單版型，尚未送印。');
+      if (momoStore && !links.print)
+        throw Error('主機尚未完成這張超商原單的版型與條碼核對，尚未送印。請重新讀取訂單。');
       status.textContent = '正在準備標籤與確認列印紀錄…';
       pdfBase64 = await documentBase64(links.print || links.label);
       if (!active()) return;
-      preparedJob = await local('/prepare', {channel: row.channel, pdfBase64});
+      preparedJob = checkPrepared(await local('/prepare', prepareBody()));
       if (!active()) return;
       if (!['prepared', 'submitted'].includes(preparedJob.status))
         throw Error('這份單據正在處理或送印結果不明，請先查看印表機。');
@@ -105,10 +123,10 @@
         // This explicit button click authorizes one copy, including a reprint.
         // Preparation and network retries never call /print automatically.
         status.textContent = reprint ? '正在準備重印…' : '正在準備列印…';
-        let job = await local('/prepare', {channel: row.channel, pdfBase64, reprint});
+        let job = checkPrepared(await local('/prepare', {...prepareBody(), reprint}));
         if (!active()) return;
         if (job.status === 'submitted' && !reprint) {
-          job = await local('/prepare', {channel: row.channel, pdfBase64, reprint: true});
+          job = checkPrepared(await local('/prepare', {...prepareBody(), reprint: true}));
           if (!active()) return;
         }
         if (job.status !== 'prepared') throw Error('這份單據正在處理或送印結果不明，請先查看印表機。');

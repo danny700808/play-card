@@ -240,7 +240,7 @@ def normalize_momo(o):
                 "quantity": int(line.get("quantity") or 0), "image": "", "imageSource": ""}
                 for line in physical],
             "canCreate": can_create, "canDownload": can_download,
-            "blockReason": "有更換地址資料，請先於 MOMO 核對地址狀態。" if changed else (
+            "blockReason": "此訂單已由 MOMO 取消，不需出貨或列印。" if cancelled else "有更換地址資料，請先於 MOMO 核對地址狀態。" if changed else (
                 "" if can_create or can_download else "此配送方式或訂單狀態暫不支援產生貨運單。")})
     return result
 
@@ -816,6 +816,8 @@ class Workbench:
             fn = preview_pdf if kind == "preview" else print_pdf
             content = fn((self.data_dir / job["document"]).read_bytes(), self.data_dir, self.rows[key])
             if not content:
+                if self.rows[key].get("shippingMethod") in ("seven", "family"):
+                    raise ShippingError("超商原單尚未通過解密、版型或條碼核對，未提供列印檔。")
                 raise ShippingError("此 PDF 需輸入密碼或由原單檢視器開啟。")
             return content, "image/png" if kind == "preview" else "application/pdf"
         if kind != "label":

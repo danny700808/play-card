@@ -29,6 +29,11 @@ class RemoteBoundaryTests(unittest.TestCase):
         self.assertNotIn("config",result["orders"][0])
         self.assertNotIn("payment",result["orders"][0])
 
+    def test_snapshot_preserves_official_momo_shipping_method(self):
+        self.row.update(platform="MOMO", shippingMethod="family", carrier="全家店到店")
+        row = packing_snapshot(self.w)["orders"][0]
+        self.assertEqual(row["shippingMethod"], "family")
+
     def test_snapshot_carries_only_normalized_payment_fields(self):
         self.row.update(paidAmount="1234.50", paidCurrency="TWD",
                         paidAmountStatus="confirmed", paidAmountNote="付款明細",

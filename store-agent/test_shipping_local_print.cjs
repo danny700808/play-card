@@ -3,7 +3,8 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 
-function harness({carrier='7-11店到店',prepareStatus='prepared',prepareError='',printError='',documentOk=true}={}){
+function harness({carrier='7-11店到店',shippingMethod,prepareStatus='prepared',prepareError='',printError='',documentOk=true,
+  profiles=['momo-cvs-v1'],replyProfile='momo-cvs-v1',replyPages=1,printLink=true}={}){
   const elements=new Map(),calls=[];
   function el(){return {style:{},children:[],open:true,disabled:false,textContent:'',setAttribute(){},
     append(...nodes){this.children.push(...nodes);},prepend(node){this.children.unshift(node);elements.set(node.id,node);},
@@ -17,14 +18,14 @@ function harness({carrier='7-11店到店',prepareStatus='prepared',prepareError=
       const body=options.body?JSON.parse(options.body):undefined;
       calls.push({url,body});
       if(url==='https://example.test/label.pdf')return {ok:documentOk,blob:async()=>new Blob(['%PDF-1.7\nlabel'])};
-      if(url.endsWith('/health'))return {ok:true,json:async()=>({service:'youzi-shipping-print'})};
-      if(url.endsWith('/prepare'))return {ok:!prepareError,json:async()=>prepareError?{error:prepareError}:{jobId:'job-1',status:body.reprint?'prepared':prepareStatus,pages:1}};
+      if(url.endsWith('/health'))return {ok:true,json:async()=>({service:'youzi-shipping-print',printProfiles:profiles})};
+      if(url.endsWith('/prepare'))return {ok:!prepareError,json:async()=>prepareError?{error:prepareError}:{jobId:'job-1',status:body.reprint?'prepared':prepareStatus,pages:replyPages,printProfile:replyProfile,paperMm:[100,150]}};
       if(url.endsWith('/print'))return {ok:!printError,json:async()=>printError?{error:printError}:{status:'submitted'}};
       throw Error('Unexpected endpoint');
     }});
   vm.runInContext(fs.readFileSync(__dirname+'/../shipping-local-print.js','utf8'),context);
-  window.YouziLocalPrint.attach({channel:'MOMO',orderNo:'TEST-ORDER',carrier},
-    {print:'https://example.test/label.pdf'},async()=>{printed++;});
+  window.YouziLocalPrint.attach({channel:'MOMO',orderNo:'TEST-ORDER',key:'MOMO:TEST',tracking:'TRACK-TEST',carrier,shippingMethod},
+    printLink?{print:'https://example.test/label.pdf'}:{label:'https://example.test/label.pdf'},async()=>{printed++;});
   const box=elements.get('localPrintControls');
   return {button:box.children[0],status:box.children[1],elements,calls,printed:()=>printed};
 }
@@ -75,4 +76,27 @@ test('an expired document URL never reaches the packing-PC print service',async(
   assert.match(h.status.textContent,/副機準備標籤：原單連結已失效/);
   assert.equal(h.calls.filter(c=>c.body).length,0);
   assert.equal(h.printed(),0);
+});
+
+for(const [carrier,shippingMethod] of [['全家店到店','family'],['7-11店到店','seven']])
+test(carrier+' transmits the exact single-label profile on every preparation',async()=>{
+  const h=harness({carrier,shippingMethod,prepareStatus:'submitted'});
+  await new Promise(setImmediate);
+  assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,0);
+  await h.button.onclick();
+  const requests=h.calls.filter(c=>c.url.endsWith('/prepare'));
+  assert(requests.length>=2);
+  for(const {body} of requests){
+    assert.equal(body.printProfile,'momo-cvs-v1');assert.equal(body.shippingMethod,shippingMethod);
+    assert.equal(body.orderKey,'MOMO:TEST');assert.equal(body.tracking,'TRACK-TEST');
+  }
+  assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,1);
+});
+
+for(const options of [{profiles:[]},{replyProfile:'old'},{replyPages:2},{printLink:false},
+  {carrier:'全家店到店',shippingMethod:'seven'}])
+test('unsafe or outdated CVS preparation cannot reach /print: '+JSON.stringify(options),async()=>{
+  const h=harness(options);await h.button.onclick();
+  assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,0);
+  assert.equal(h.printed(),0);assert.match(h.status.textContent,/尚未送印|不一致/);
 });
