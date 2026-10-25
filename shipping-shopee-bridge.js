@@ -40,9 +40,19 @@
       const values={};for(const field of m.fields)values[field.id]=form.elements.namedItem(field.id).value;
       button.disabled=true;send({type:'shipment-choice',requestId:m.requestId,phase:m.phase,values});
       renew();
-      form.remove();item.formElement=null;item.onProgress?.('正在確認出貨並取回貨運單…');
+      form.remove();item.formElement=null;
+      const status=m.phase==='confirm'?'正在重新核對訂單，確認後申請出貨並取回貨運單…':'正在讀取出貨確認資料，尚未送出…';
+      item.onProgress?.(status);
+      const placeholder=document.getElementById('documentPlaceholder');
+      if(placeholder)placeholder.textContent=status;
     });
     item.formElement=form;(document.getElementById('documentSummary')||dialog).append(form);
+    item.onProgress?.(m.phase==='confirm'?'等待你確認出貨；目前尚未送出。':'等待你選擇出貨方式；目前尚未送出。');
+    const placeholder=document.getElementById('documentPlaceholder');
+    if(placeholder){
+      placeholder.hidden=false;
+      placeholder.textContent=m.phase==='confirm'?'確認左側出貨資料後，才會申請出貨並顯示正式貨運單。':'請先在左側選擇出貨方式，尚未取得貨運單。';
+    }
   }
   function request(type,row,onProgress){
     return new Promise((resolve,reject)=>{
@@ -72,7 +82,7 @@
     }
     if(m.key!==item.row.key||m.orderNo!==item.row.orderNo)return;
     if(m.type==='shipment-form'){showShipmentForm(item,m);return;}
-    if(m.type==='progress'){if(progress[m.stage])item.onProgress?.(progress[m.stage]);return;}
+    if(m.type==='progress'){if(!item.formElement&&progress[m.stage])item.onProgress?.(progress[m.stage]);return;}
     if(m.type==='error'){finish(m.requestId,Error(errors[m.code]||'副機取單未完成，請確認助手狀態後再試。'));return;}
     if(m.type!=='document')return;
     try{
