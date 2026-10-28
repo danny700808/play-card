@@ -1,0 +1,26 @@
+{
+  "version": "youzi-batch-header-overrides-v1",
+  "batches": {
+    "arrivals-20261028": {
+      "sloganColor": "#FFFFFF",
+      "requestedBy": "manager",
+      "source": "本對話2026-10-28：主圖綠底白字；限定當日進貨批次",
+      "productIds": [
+        "C42vpnidkIQQSf5QRXxT",
+        "sku_1ukrfo",
+        "sku_zfi4v8",
+        "sku_i447kg",
+        "zELJJc6S2whllH1C39mq",
+        "sku_gu0mxu",
+        "5PcaKpdomCZM9KzR1RF3",
+        "UbVmTIwKECoJtj1aLklU",
+        "1WxGs9eVjmJd8pd1hkqw",
+        "bdOLWrUHfDA999gzDxOF",
+        "sku_m9y8z1",
+        "sku_16ats9y",
+        "sku_mj0jz9",
+        "fW0mO8WNBYzD9WVzuqvu"
+      ]
+    }
+  }
+}

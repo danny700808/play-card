@@ -1,8 +1,18 @@
 'use strict';
 
+const HEADER_OVERRIDES = require('./listingHeaderOverrides.json');
+function approvedWhiteHeader(proof, seed) {
+  const override = proof.authorizedHeaderOverride;
+  if (!override || proof.exactOriginalSloganGlyphsWhiteAndReadable !== true) return false;
+  const batch = HEADER_OVERRIDES.batches[override.batchId];
+  if (!batch || batch.sloganColor !== '#FFFFFF' || !batch.productIds.includes(override.productId)) return false;
+  // Product validation supplies its actual ID; role-only helper calls use a template hash.
+  return !seed || String(seed).includes('|') || seed === override.productId;
+}
+
 const STYLE_CATALOG_VERSION = 'youzi-full-commercial-poster-style-catalog-v2';
 const COMMERCIAL_POSTER_STANDARD_VERSION = 'youzi-full-commercial-poster-v2';
-const RENDER_PROOF_VERSION = 'youzi-brand-creative-render-v3';
+const RENDER_PROOF_VERSION = 'youzi-brand-creative-render-v4';
 
 const STYLE_CATALOG = Object.freeze([
   ['bold-coral-impact', '珊瑚撞色', '海報撞色', '#FFF8F1', '#F05A47|#19A974', '大標題＋斜角重點帶'],
@@ -165,6 +175,11 @@ function renderProof(existing, seed, verification) {
     headerHeightExactly20Percent: checked.headerHeightExactly20Percent === true,
     logoSafeMarginIntact: checked.logoSafeMarginIntact === true,
     thinOuterFrameIntact: checked.thinOuterFrameIntact === true,
+    exactOriginalRedSloganVisibleAndReadable: checked.exactOriginalRedSloganVisibleAndReadable === true,
+    exactOriginalSloganGlyphsWhiteAndReadable: checked.exactOriginalSloganGlyphsWhiteAndReadable === true,
+    authorizedHeaderOverride: checked.authorizedHeaderOverride ? { batchId: checked.authorizedHeaderOverride.batchId, productId: checked.authorizedHeaderOverride.productId } : null,
+    originalCircularLogoVisibleAndUnmodified: checked.originalCircularLogoVisibleAndUnmodified === true,
+    headerAssetPairVerifiedFromFinalPixels: checked.headerAssetPairVerifiedFromFinalPixels === true,
     verificationSource: String(checked.verificationSource || '').trim(),
     styleApplied: checked.styleControlsWholeComposition === true,
     sameStyleAcrossAspectRatios: true,
@@ -178,12 +193,7 @@ function renderProof(existing, seed, verification) {
 function renderProofMatches(value, expected, seed) {
   const proof = value && typeof value === 'object' ? value : {};
   const style = assignment(expected, seed);
-  const supportedVersion = proof.version === RENDER_PROOF_VERSION
-    || (proof.version === 'youzi-brand-creative-render-v4'
-      && proof.exactOriginalRedSloganVisibleAndReadable === true
-      && proof.originalCircularLogoVisibleAndUnmodified === true
-      && proof.headerAssetPairVerifiedFromFinalPixels === true);
-  return supportedVersion
+  return proof.version === RENDER_PROOF_VERSION
     && proof.styleCatalogVersion === STYLE_CATALOG_VERSION
     && proof.styleId === style.styleId
     && proof.styleName === style.styleName
@@ -208,12 +218,15 @@ function renderProofMatches(value, expected, seed) {
     && proof.headerHeightExactly20Percent === true
     && proof.logoSafeMarginIntact === true
     && proof.thinOuterFrameIntact === true
+    && (proof.exactOriginalRedSloganVisibleAndReadable === true || approvedWhiteHeader(proof, seed))
+    && proof.originalCircularLogoVisibleAndUnmodified === true
+    && proof.headerAssetPairVerifiedFromFinalPixels === true
     && Boolean(String(proof.verificationSource || '').trim())
     && proof.styleApplied === true
     && proof.sameStyleAcrossAspectRatios === true
     && proof.sameStyleAcrossVariants === true
     && proof.logoLayer === 'topmost'
-    && ['below-logo', 'below-brand-header'].includes(proof.borderLayer)
+    && proof.borderLayer === 'below-logo'
     && proof.borderIntersectsLogo === false;
 }
 
