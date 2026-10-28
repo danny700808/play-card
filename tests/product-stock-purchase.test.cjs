@@ -25,20 +25,58 @@ function fixture(options={}){
   context.chooseProductStockSave=async details=>{choices++;if(options.waitChoice)await options.waitChoice;if(options.cancel)return null;return {mode:options.mode||'purchase',supplierId:'',supplier:'',receivedAt:'',paymentStatus:'unknown',...options.choice};};
   return {context,state,rows,form,submit,raw,save:()=>context.saveProduct(form,{keepOpen:true}),list:collection=>[...rows].filter(([key])=>key.startsWith(collection+'/')).map(([,value])=>value),get commits(){return commits;},get choices(){return choices;}};
 }
-test('0 to 4 creates one receipt and one movement at the average; all metadata can be blank',async()=>{
+test('0 to 4 uses the entered purchase price and replaces the empty-stock average; metadata can be blank',async()=>{
   const f=fixture();await f.save();const p=f.list('purchases')[0],m=f.list('inventory')[0];
-  assert.equal(f.list('products')[0].currentStock,4);assert.equal(f.list('products')[0].averageCost,470);
-  assert.equal(p.items[0].qty,4);assert.equal(p.items[0].unitCost,470);assert.equal(p.totalCost,1880);
+  assert.equal(f.list('products')[0].currentStock,4);assert.equal(f.list('products')[0].averageCost,450);
+  assert.equal(p.items[0].qty,4);assert.equal(p.items[0].unitCost,450);assert.equal(p.totalCost,1800);
   assert.equal(p.supplier,'');assert.equal(p.receivedAt,null);assert.equal(p.paymentStatus,'unknown');assert.equal(p.paymentDate,'');
   assert.equal(m.type,'purchase');assert.equal(m.qtyChange,4);assert.equal(m.referenceId,p.purchaseNo);assert.equal(m.beforeStock,0);assert.equal(m.afterStock,4);
   assert.equal(f.list('inventory').length,1);assert.equal(f.list('queue')[0].targetStock,4);assert.equal(f.commits,1);assert.equal(f.submit.disabled,false);
   const visible=f.state.purchases[0];assert.equal(visible.receivedAtProvided,false);assert.equal(visible.receivedAt.getTime(),visible.createdAt.getTime());assert.equal(f.context.normalizePurchase(p).receivedAt.getTime(),p.createdAt.getTime());assert.equal(visible.paymentStatus,'unknown');
 });
-test('3 to 7 receipts only the four added units, including a simultaneous average correction',async()=>{
-  const f=fixture({before:3,after:7,average:500});await f.save();assert.equal(f.list('purchases')[0].totalCost,2000);assert.equal(f.list('purchases')[0].items[0].qty,4);assert.equal(f.list('products')[0].currentStock,7);assert.equal(f.list('products')[0].inventoryValue,3500);assert.equal(f.list('inventory').length,1);assert.equal(f.list('inventory')[0].beforeAverageCost,470);assert.equal(f.list('inventory')[0].afterAverageCost,500);
+test('3 to 7 weights only the four added units against the saved average, ignoring simultaneous manual average edits',async()=>{
+  const f=fixture({before:3,after:7,average:500,fields:{latestPurchaseCost:490}});await f.save();assert.equal(f.list('purchases')[0].totalCost,1960);assert.equal(f.list('purchases')[0].items[0].qty,4);assert.equal(f.list('products')[0].currentStock,7);assert.equal(f.list('products')[0].inventoryValue,3367);assert.equal(f.list('inventory').length,1);assert.equal(f.list('inventory')[0].beforeAverageCost,470);assert.equal(f.list('inventory')[0].afterAverageCost,481);
 });
 test('plain correction creates no receipt and does not replace purchase cost',async()=>{
   const f=fixture({mode:'adjustment'});await f.save();assert.equal(f.list('purchases').length,0);assert.equal(f.list('inventory')[0].type,'adjustment');assert.equal(f.list('products')[0].latestPurchaseCost,450);
+});
+
+test('4 at 475 plus 5 at 490 saves 483, preserves receipt price and uses 483 for the next sale',async()=>{
+  const f=fixture({before:4,after:9,raw:{averageCost:475},average:475,fields:{latestPurchaseCost:490}});
+  f.rows.set('sales/history',{costTotal:475});await f.save();
+  const p=f.list('products')[0],receipt=f.list('purchases')[0];
+  assert.equal(p.averageCost,483);assert.equal(p.latestPurchaseCost,490);assert.equal(p.inventoryValue,4347);
+  assert.equal(receipt.totalCost,2450);assert.equal(receipt.items[0].unitCost,490);assert.equal(receipt.items[0].beforeAverageCost,475);
+  assert.equal(f.form.fields.averageCost.value,483);assert.equal(model.consume(p,2).costTotal,966);assert.equal(f.rows.get('sales/history').costTotal,475);
+});
+
+test('initial receipts need no old average; plain stock edits retain their existing average',async()=>{
+  const f=fixture({newProduct:true,fields:{averageCost:'',latestPurchaseCost:490.5}});await f.save();assert.equal(f.list('products')[0].averageCost,491);assert.equal(f.list('purchases')[0].items[0].unitCost,490.5);
+  const g=fixture({before:4,after:9,mode:'adjustment',raw:{averageCost:475},average:475,fields:{latestPurchaseCost:490}});await g.save();assert.equal(g.list('products')[0].averageCost,475);assert.equal(g.list('purchases').length,0);
+});
+
+function receiptForm(f,{id='',qty=5,unitCost=490,extraCost=0}={}){
+  const form={dataset:{id},fields:Object.fromEntries(Object.entries({receivedAt:'',supplier:'',supplierId:'',paymentStatus:'unknown',extraCost}).map(([name,value])=>[name,{value}]))};
+  const row={fields:Object.fromEntries(Object.entries({productId:'p1',qty,unitCost}).map(([name,value])=>[name,{value}]))};
+  f.context.queryAll=selector=>selector==='.purchase-row'?[row]:[];return form;
+}
+
+test('normal inventory receipts use the same weighted integer cost and retain actual price and optional metadata',async()=>{
+  for(const extraCost of [0,50]){
+    const f=fixture({before:4,raw:{averageCost:475}});await f.context.savePurchase(receiptForm(f,{extraCost}));
+    const p=f.list('products')[0],receipt=f.list('purchases')[0];
+    assert.equal(p.currentStock,9);assert.equal(p.averageCost,extraCost?489:483);assert.equal(p.latestPurchaseCost,490);
+    assert.equal(receipt.items[0].unitCost,490);assert.equal(receipt.items[0].effectiveUnitCost,extraCost?500:490);assert.equal(receipt.totalCost,2450+extraCost);
+    assert.equal(receipt.receivedAt,null);assert.equal(receipt.paymentStatus,'unknown');assert.equal(receipt.supplier,'');
+  }
+});
+
+test('editing receipt metadata preserves average; quantity or price corrections recompute from the original baseline without rounding drift',async()=>{
+  const f=fixture({before:4,after:9,raw:{averageCost:475},average:475,fields:{latestPurchaseCost:490}});await f.save();const id=f.state.purchases[0].id;
+  await f.context.savePurchase(receiptForm(f,{id}));assert.equal(f.list('products')[0].averageCost,483);assert.equal(f.list('inventory').length,1);
+  await f.context.savePurchase(receiptForm(f,{id,qty:4}));assert.equal(f.list('products')[0].averageCost,483);assert.equal(f.list('products')[0].currentStock,8);
+  await f.context.savePurchase(receiptForm(f,{id,qty:5,unitCost:500}));assert.equal(f.list('products')[0].averageCost,489);assert.equal(f.list('products')[0].currentStock,9);
+  await f.context.savePurchase(receiptForm(f,{id,qty:5,unitCost:490}));assert.equal(f.list('products')[0].averageCost,483);assert.equal(f.list('purchases').length,1);
 });
 test('new products can record initial stock as a receipt instead of a second opening movement',async()=>{
   const f=fixture({newProduct:true});await f.save();assert.equal(f.list('products')[0].openingStock,0);assert.equal(f.list('products')[0].currentStock,4);assert.equal(f.list('purchases').length,1);assert.equal(f.list('inventory').length,1);assert.equal(f.list('inventory')[0].type,'purchase');
@@ -62,9 +100,9 @@ test('parallel clicks cannot open a second receipt save',async()=>{
 test('optional supplier, arrival and payment values are preserved without inventing a payment date',async()=>{
   const f=fixture({choice:{supplierId:'s1',receivedAt:'2026-10-25T10:00',paymentStatus:'paid'}});await f.save();const p=f.list('purchases')[0];assert.equal(p.supplier,'供應商甲');assert.equal(p.paymentStatus,'paid');assert.equal(p.paymentDate,'');assert.equal(p.receivedAt.getTime(),new Date('2026-10-25T10:00').getTime());assert.equal(f.list('inventory')[0].occurredAt.getTime(),p.receivedAt.getTime());
 });
-test('zero average is valid; missing or negative averages cannot turn into a receipt',async()=>{
-  const f=fixture({average:0});await f.save();assert.equal(f.list('purchases')[0].totalCost,0);
-  for(const average of [null,-1,NaN]){const g=fixture();assert.throws(()=>g.context.productStockPurchase({mode:'purchase'},{before:0,after:4,average}),/平均成本/);}
+test('zero purchase price is valid; missing or negative prices cannot turn into a receipt',async()=>{
+  const f=fixture({fields:{latestPurchaseCost:0}});await f.save();assert.equal(f.list('purchases')[0].totalCost,0);assert.equal(f.list('products')[0].averageCost,0);
+  for(const unitCost of [null,-1,NaN]){const g=fixture();assert.throws(()=>g.context.productStockPurchase({mode:'purchase'},{before:0,after:4,unitCost}),/最近一次進貨成本/);}
 });
 test('receipt edits can keep metadata empty and change quantity by the delta',async()=>{
   const f=fixture();await f.save();const purchase=f.state.purchases[0];

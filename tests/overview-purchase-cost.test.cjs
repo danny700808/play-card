@@ -105,6 +105,7 @@ test('confirmed receipt creation and correction refresh the same records used by
   const ref=(collection,id)=>({collection,id:id||'new-'+(++count)});
   const ctx=f.context;
   Object.assign(ctx,{
+    global:{YouziInventoryAverageCost:require('../functions/inventoryAverageCost')},
     FormData:class{constructor(form){this.data=form.data}get(key){return this.data[key]??''}},
     queryAll:(_s,form)=>form.items,
     query:(selector,item)=>({value:item[selector.match(/name="([^"]+)"/)[1]]}),
