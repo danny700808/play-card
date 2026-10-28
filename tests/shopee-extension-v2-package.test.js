@@ -91,8 +91,8 @@ test('extension version, download links, cache keys and CI package contract stay
   const hub = fs.readFileSync(path.join(root, 'operations-hub.html'), 'utf8');
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'verify-operations-live-search.yml'), 'utf8');
   const handoffCache = '20260830-shopee-native-description-v2';
-  const operationsCssCache = '20260917-platform-sync-v1';
-  const operationsJsCache = '20260919-taiwan-v2';
+  const operationsCssCache = '20261028-quick-purchase-v1';
+  const operationsJsCache = '20261028-quick-purchase-v1';
 
   assert.equal(manifest.version, version);
   assert.equal(packageJson.version, version);
