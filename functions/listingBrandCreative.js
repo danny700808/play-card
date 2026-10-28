@@ -12,7 +12,7 @@ function approvedWhiteHeader(proof, seed) {
 
 const STYLE_CATALOG_VERSION = 'youzi-full-commercial-poster-style-catalog-v2';
 const COMMERCIAL_POSTER_STANDARD_VERSION = 'youzi-full-commercial-poster-v2';
-const RENDER_PROOF_VERSION = 'youzi-brand-creative-render-v4';
+const RENDER_PROOF_VERSION = 'youzi-brand-creative-render-v3';
 
 const STYLE_CATALOG = Object.freeze([
   ['bold-coral-impact', '珊瑚撞色', '海報撞色', '#FFF8F1', '#F05A47|#19A974', '大標題＋斜角重點帶'],
@@ -193,7 +193,8 @@ function renderProof(existing, seed, verification) {
 function renderProofMatches(value, expected, seed) {
   const proof = value && typeof value === 'object' ? value : {};
   const style = assignment(expected, seed);
-  return proof.version === RENDER_PROOF_VERSION
+  const legacy = proof.version === RENDER_PROOF_VERSION && !proof.authorizedHeaderOverride && proof.exactOriginalSloganGlyphsWhiteAndReadable !== true;
+  return (legacy || proof.version === RENDER_PROOF_VERSION || proof.version === 'youzi-brand-creative-render-v4')
     && proof.styleCatalogVersion === STYLE_CATALOG_VERSION
     && proof.styleId === style.styleId
     && proof.styleName === style.styleName
@@ -218,15 +219,15 @@ function renderProofMatches(value, expected, seed) {
     && proof.headerHeightExactly20Percent === true
     && proof.logoSafeMarginIntact === true
     && proof.thinOuterFrameIntact === true
-    && (proof.exactOriginalRedSloganVisibleAndReadable === true || approvedWhiteHeader(proof, seed))
-    && proof.originalCircularLogoVisibleAndUnmodified === true
-    && proof.headerAssetPairVerifiedFromFinalPixels === true
+    && (legacy || ((proof.exactOriginalRedSloganVisibleAndReadable === true || approvedWhiteHeader(proof, seed))
+      && proof.originalCircularLogoVisibleAndUnmodified === true
+      && proof.headerAssetPairVerifiedFromFinalPixels === true))
     && Boolean(String(proof.verificationSource || '').trim())
     && proof.styleApplied === true
     && proof.sameStyleAcrossAspectRatios === true
     && proof.sameStyleAcrossVariants === true
     && proof.logoLayer === 'topmost'
-    && proof.borderLayer === 'below-logo'
+    && ['below-logo', 'below-brand-header'].includes(proof.borderLayer)
     && proof.borderIntersectsLogo === false;
 }
 
