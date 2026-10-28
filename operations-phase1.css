@@ -2726,3 +2726,15 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-overview-cost-box{padding:11px 8px}
   .ops-overview-cost-foot>strong{font-size:16px}
 }
+
+/* Product editor quick receipt */
+.ops-product-stock-save{z-index:15000;padding:16px;}
+.ops-product-stock-save .ops-modal{width:min(640px,100%);max-height:calc(100dvh - 32px);overflow:auto;}
+.ops-product-stock-save fieldset{margin:18px 0 0;padding:14px;border:1px solid #dce3e7;border-radius:12px;}
+.ops-product-stock-save legend{font-weight:600;padding:0 5px;}
+.ops-product-stock-save header{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--ops-line);}
+.ops-product-stock-save header h2{margin:0;font-size:18px;}
+.ops-product-stock-save header button{border:0;background:transparent;font-size:22px;cursor:pointer;}
+.ops-product-stock-save footer{display:flex;justify-content:flex-end;padding:13px 18px;border-top:1px solid var(--ops-line);gap:8px;flex-wrap:wrap;}
+.ops-product-stock-save .ops-modal-body p{line-height:1.6;}
+@media(max-width:560px){.ops-product-stock-save footer .ops-button{flex:1 1 auto;}.ops-product-stock-save .ops-form-grid{grid-template-columns:1fr;}}

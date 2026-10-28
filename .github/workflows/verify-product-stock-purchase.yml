@@ -1,0 +1,25 @@
+name: Verify product stock receipts
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'operations-phase1.js'
+      - 'operations-phase1.css'
+      - 'portal.html'
+      - 'operations-hub.html'
+      - 'functions/inventoryAverageCost.js'
+      - 'tests/product-stock-purchase.test.cjs'
+      - '.github/workflows/verify-product-stock-purchase.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node --check operations-phase1.js
+      - run: node --test tests/product-stock-purchase.test.cjs tests/inventory-average-cost.test.cjs tests/overview-purchase-cost.test.cjs

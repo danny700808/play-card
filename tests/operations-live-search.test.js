@@ -65,8 +65,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260917-platform-sync-v1/);
-    assert.match(html, /operations-phase1\.js\?v=20260919-taiwan-v2/);
+    assert.match(html, /operations-phase1\.css\?v=20261028-quick-purchase-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20261028-quick-purchase-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260830-shopee-native-description-v2/);
   }
 });
@@ -212,7 +212,7 @@ test('desktop and mobile keypads share the same caret-aware core action', () => 
 
 test('manual average cost correction becomes the new inventory cost baseline after one confirmation', () => {
   const productForm = functionBody(engine, 'productFormHtml');
-  const saveProduct = functionBody(engine, 'saveProduct');
+  const saveProduct = functionBody(engine, 'saveProductChanges');
   const rebaseBody = functionBody(engine, 'rebaseCostLayersToAverage');
 
   assert.match(productForm, /name="averageCost"/);
@@ -222,7 +222,7 @@ test('manual average cost correction becomes the new inventory cost baseline aft
   assert.match(saveProduct, /確定變動/);
   assert.match(saveProduct, /averageChangeApplied/);
   assert.match(saveProduct, /rebaseCostLayersToAverage/);
-  assert.match(saveProduct, /type:finalStock!==oldStock\?\(p\?'adjustment':'opening'\):'costAdjustment'/);
+  assert.match(saveProduct, /type:quickPurchase\?'purchase':finalStock!==oldStock\?\(p\?'adjustment':'opening'\):'costAdjustment'/);
   assert.match(saveProduct, /beforeAverageCost:oldAverage/);
   assert.match(saveProduct, /afterAverageCost:layerResult\.averageCost/);
 
@@ -427,7 +427,7 @@ test('product search renders 24 at a time while the other working searches retai
 
 test('listing preparation is a simple per-product workspace and no longer part of the product editor', () => {
   const productForm = functionBody(engine, 'productFormHtml');
-  const saveProduct = functionBody(engine, 'saveProduct');
+  const saveProduct = functionBody(engine, 'saveProductChanges');
   const openCase = functionBody(engine, 'openProductListingCase');
   const caseForm = functionBody(engine, 'productListingCaseFormHtml');
   const saveCase = functionBody(engine, 'saveProductListingCase');
@@ -520,7 +520,7 @@ test('listing preparation is a simple per-product workspace and no longer part o
 
 test('listing page does not expose its legacy OpenAI runner and never starts it on open', () => {
   const runner = functionBody(engine, 'runProductAiResearch');
-  const saveProduct = functionBody(engine, 'saveProduct');
+  const saveProduct = functionBody(engine, 'saveProductChanges');
   const openCase = functionBody(engine, 'openProductListingCase');
   const caseForm = functionBody(engine, 'productListingCaseFormHtml');
 
