@@ -51,11 +51,11 @@ ctx.collect=()=>({contractId:'RC-test',rentalType:'digitalPiano',startDate:'2026
   assert.equal(calls.length,0,'Internal save cannot silently create a whole contract');
   fields.rentalType='digitalPiano';
   ctx.syncRentalDatesFromDelivery('startDate');
-  assert.equal(fields.deliveryDate,'2026-10-19');
+  assert.equal(fields.deliveryDate,'2026-10-18');
   assert.equal(fields.endDate,'2027-01-16','Preserve a manually chosen end date');
   const html=R.renderContractHtml({rentalType:'digitalPiano',startDate:fields.startDate,endDate:fields.endDate});
   assert(html.includes('<td>2026-10-19</td><td>2027-01-16</td><td>90 天</td>'));
   fields.deliveryDate='2026-10-20';ctx.syncRentalDatesFromDelivery('deliveryDate');
-  assert.equal(fields.startDate,'2026-10-20');
-  console.log('Separate contract/count saves, save failure and formal date synchronization passed');
+  assert.equal(fields.startDate,'2026-10-19');
+  console.log('Separate contract/count saves, save failure and independent installation dates passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

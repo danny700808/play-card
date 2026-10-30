@@ -44,9 +44,9 @@ const initialDateLink = rental.syncLinkedRentalDates({
 });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(initialDateLink)), {
   deliveryDate: '2026-08-03',
-  startDate: '2026-08-03',
-  endDate: '2026-10-31',
-}, '第一次選擇安裝日仍應自動帶入起租日及一期 90 天到期日');
+  startDate: '',
+  endDate: '',
+}, '選擇安裝日不得自動填入起租日或到期日');
 
 const manualDateLink = rental.syncLinkedRentalDates({
   changedId: 'deliveryDate',
@@ -76,9 +76,9 @@ const manualEndOnly = rental.syncLinkedRentalDates({
 });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(manualEndOnly)), {
   deliveryDate: '2026-08-05',
-  startDate: '2026-08-05',
+  startDate: '2026-08-03',
   endDate: '2026-09-10',
-}, '只手動修改到期日時，安裝日可更新起租日但不得把到期日改回 90 天');
+}, '安裝日不得改變起租日或手動到期日');
 
 const customPeriodHtml = rental.renderContractHtml({
   rentalType: 'digitalPiano',

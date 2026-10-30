@@ -136,14 +136,9 @@
     let deliveryDate=clean(input.deliveryDate);
     let startDate=clean(input.startDate);
     let endDate=clean(input.endDate);
-    const keepManualStart=!!input.startDateManuallyEdited && !!startDate;
     const keepManualEnd=!!input.endDateManuallyEdited && !!endDate;
-    if(changedId==='deliveryDate' && deliveryDate && !keepManualStart) startDate=deliveryDate;
-    if((changedId==='startDate'||changedId==='deliveryDate') && (startDate||deliveryDate)){
-      startDate=startDate||deliveryDate;
-      deliveryDate=deliveryDate||startDate;
-    }
-    if(type!=='other' && ['startDate','deliveryDate','periods'].includes(changedId) && startDate && !keepManualEnd){
+    // Installation is independent; only rental start/period edits recalculate the term.
+    if(type!=='other' && ['startDate','periods'].includes(changedId) && startDate && !keepManualEnd){
       endDate=calcEndDate(startDate,periods,type,periods*periodDays);
     }
     return {deliveryDate,startDate,endDate};
