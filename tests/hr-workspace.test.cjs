@@ -24,3 +24,15 @@ test('all changed page scripts parse',()=>{
   for(const m of read(name).matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))if(m[1].trim())new vm.Script(m[1],{filename:name});
  }
 });
+
+test('policy storage errors propagate rather than return defaults',async()=>{
+ const source=read('firebase-client.js');
+ const start=source.indexOf('  async function getLeavePolicySettingsFirebase(payload){');
+ const end=source.indexOf('  async function saveLeavePolicySettingsFirebase(payload){',start);
+ let writes=0;
+ const c={docGet:async()=>{throw Error('offline');},docSet:async()=>writes++,defaultLeavePolicyBundleV2:()=>({}),normalizeLeavePolicyBundleV2:x=>x};
+ vm.createContext(c);vm.runInContext(source.slice(start,end),c);
+ await assert.rejects(c.getLeavePolicySettingsFirebase({}),/offline/);
+ await assert.rejects(c.initLeavePolicySettingsFirebase({}),/offline/);
+ assert.equal(writes,0);
+});

@@ -163,7 +163,7 @@
     function qsa(sel){ return Array.from(document.querySelectorAll(sel)); }
     function setPageMsg(text,isError){ setMsg(qs('#pageMsg'), text, !!isError); }
     function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g, ch=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[ch])); }
-    function getBundleKeys(bundle){ return TAB_ORDER.filter(k=>bundle&&bundle[k]).concat(Object.keys(bundle||{}).filter(k=>TAB_ORDER.indexOf(k)<0)); }
+    function getBundleKeys(bundle){ const isTable=k=>bundle[k] && Array.isArray(bundle[k].headers) && Array.isArray(bundle[k].rows); return TAB_ORDER.filter(k=>bundle&&isTable(k)).concat(Object.keys(bundle||{}).filter(k=>TAB_ORDER.indexOf(k)<0 && isTable(k))); }
     function getTabTitle(key, part){ return (TAB_META[key] && TAB_META[key].title) || (part && part.name) || key; }
     function getTabDesc(key){ return (TAB_META[key] && TAB_META[key].desc) || ''; }
 
@@ -243,12 +243,14 @@
       return currentBundle[key];
     }
     function addRow(key){
+      collectBundleFromDom();
       const part=ensurePart(key);
       part.rows.push(part.headers.map(()=>''));
       renderPanels(currentBundle);
       activateTab(key);
     }
     function deleteRow(key,rowIndex){
+      collectBundleFromDom();
       const part=ensurePart(key);
       if(!part.rows.length) return;
       part.rows.splice(rowIndex,1);
