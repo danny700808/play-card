@@ -65,7 +65,7 @@
   <link rel="stylesheet" href="hr-workspace.css?v=20261031-1">
   <script src="operations-manager-auth.js?v=20261024-session-stability-v1"></script>
   <script src="hr-session.js?v=20261031-1"></script>
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact4">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact5">
 </head>
 <body onload="init()" class="admin-wide-page admin-policy-page">
   <nav class="hr-workspace-nav" data-yz-global-nav aria-label="人事工作區">
@@ -316,7 +316,7 @@
       const r=await api(action,{userId:currentUser.id});
       if(!r.ok) throw new Error(r.message||'讀取制度設定失敗');
       currentBundle=r.bundle||{};
-      if(r.source==='firebase-leave-policy-default') setPageMsg('目前沒有已儲存的制度，以下是預設草稿；確認內容後儲存才會套用。');
+      if(r.source==='firebase-leave-policy-default') setPageMsg('預設草稿（尚未儲存）');
       renderTabs(currentBundle);
       renderPanels(currentBundle);
     }
@@ -359,7 +359,7 @@
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
   <script src="hr-workspace.js?v=20261031-1"></script>
-  <script src="internal-workspace-routes.js?v=20261031-compact4"></script>
-  <script src="internal-workspace.js?v=20261031-compact4"></script>
+  <script src="internal-workspace-routes.js?v=20261031-compact5"></script>
+  <script src="internal-workspace.js?v=20261031-compact5"></script>
 </body>
 </html>

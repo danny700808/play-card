@@ -198,6 +198,8 @@ body.internal-workspace .management-tree-title{margin:0;font-size:22px!important
 @media screen{
 body.internal-workspace :is(.btn,.btn-link,.section-tab,.approval-tab,.leave-type-btn,.leave-admin-tab,.tab-btn,.settings-tab,.ghost,.save){-webkit-text-fill-color:currentColor!important;}
 body.internal-workspace :is(.section-tab,.leave-type-btn,.leave-admin-tab) strong{color:inherit!important;-webkit-text-fill-color:currentColor!important;}
+body.internal-workspace :is(.btn,.btn-link,.settings-save){width:auto!important;}
+body.internal-workspace .local-message{border-radius:7px!important;padding:8px 10px!important;font-size:14px!important;}
 body.internal-workspace .schedule-day-details{font-size:14px;color:#30576c;}
 body.internal-workspace .schedule-day-details summary{cursor:pointer;white-space:nowrap;}
 body.internal-workspace .schedule-preview{margin-top:6px;font-size:14px;}
