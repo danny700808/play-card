@@ -66,7 +66,7 @@
    const insurance=[['勞保',info.laborStatus],['勞保自付',info.laborSelfPayText],['健保',info.healthStatus],['健保自付',info.healthSelfPayText],['公司勞退',info.retirementEmployerText],['勞退自提',info.selfRetirementText]].filter(([,v])=>v);
    $('salaryInfo').innerHTML=(items.map(([k,v])=>row(k,v)).join('')||'<div class="personal-muted">薪資尚未設定</div>')+'<details><summary>勞健保與勞退</summary>'+(insurance.map(([k,v])=>row(k,v)).join('')||'尚未設定')+'</details>';
   }catch(e){if(version===generation)$('salaryInfo').textContent='薪資讀取失敗，請重新整理。';}
-  if(state.user.identityType==='parttime')try{const r=await personalRead('getParttimeHistory',{userId:state.user.id,monthText:today().slice(0,7)});if(version!==generation)return;if(r?.ok===false)throw Error();const rows=Array.isArray(r)?r:r?.rows||[];$('salaryHours').innerHTML=rows.map(r=>row((r.date||r.workDate||r['日期']||'')+'　'+(r.hours??r.totalHours??r['時數']??'—')+' 小時',money(r.grossPay??r['當日工資']??0))).join('')||'本月尚無工時計薪紀錄';}catch(e){if(version===generation)$('salaryHours').textContent='工時計薪讀取失敗。';}
+  if(state.user.identityType==='parttime')try{const r=await personalRead('getParttimeHistory',{userId:state.user.id,monthText:today().slice(0,7)});if(version!==generation)return;if(r?.ok===false)throw Error();const rows=Array.isArray(r)?r:r?.rows||[];const lines=rows.map(r=>row((r.date||r.workDate||r['日期']||'')+'　'+(r.hours??r.totalHours??r['時數']??'—')+' 小時',money(r.grossPay??r['當日工資']??0)));$('salaryHours').innerHTML=lines.length?lines.slice(0,3).join('')+(lines.length>3?'<details><summary>展開本月其餘 '+(lines.length-3)+' 筆</summary>'+lines.slice(3).join('')+'</details>':''):'本月尚無工時計薪紀錄';}catch(e){if(version===generation)$('salaryHours').textContent='工時計薪讀取失敗。';}
  }
  function more(){body(card('',menu([['我的資料'+(state.profilePending?' · 待主管確認':state.missingFields.length?' · 待補齊':''),'profile'],['公告','announcement'],['待辦','task'],['定期事項','routine'],['教育訓練','training'],['表單與證明','forms'],['通知設定','notification']]))+(!preview?button('登出','logout','full'):''));}
  function profile(){
@@ -130,8 +130,8 @@
  async function loadPreviewRoster(){
   try{const r=await managerRead('preview-roster');for(const person of r.rows||[]){const option=document.createElement('option');option.value=person.id;option.textContent=person.name+'（'+person.identityLabel+'）';$('previewPerson').append(option);}
    $('previewPerson').addEventListener('change',changePerson);
-   if(params.get('preview')==='employee'){const people=(r.rows||[]).filter(p=>p.identityType==='parttime');if(people.length===1){$('previewPerson').value=people[0].id;await changePerson();}else status('請選擇要查看的員工。');}
-  }catch(e){if(params.get('preview')==='employee')status(e.message||'員工名單讀取失敗。',true);}
+   if((params.get('preview')==='employee'||!params.has('preview'))){const people=(r.rows||[]).filter(p=>p.identityType==='parttime');if(people.length===1){$('previewPerson').value=people[0].id;await changePerson();}else status('請選擇要查看的員工。');}
+  }catch(e){if((params.get('preview')==='employee'||!params.has('preview')))status(e.message||'員工名單讀取失敗。',true);}
  }
  async function init(){
   try{
@@ -141,7 +141,7 @@
    if(preview){if(firebase.auth().authStateReady)await firebase.auth().authStateReady();let claims=firebase.auth().currentUser?(await firebase.auth().currentUser.getIdTokenResult()).claims:{};
     if(claims.employee!==true||claims.manager!==true){await ensureHrSession(user);claims=(await firebase.auth().currentUser.getIdTokenResult()).claims;}if(claims.employee!==true||claims.manager!==true)throw Error('手機預覽僅供管理者使用。');
     document.body.classList.add('is-preview');$('previewBar').hidden=false;$('previewLabel').hidden=false;$('previewRole').value=params.get('preview')==='staff'?'staff':'parttime';
-    ['previewRole','previewTeacher','previewRenter'].forEach(id=>$(id).addEventListener('change',refreshPreview));if(params.get('preview')==='employee'){status('讀取員工資料中…');$('previewLabel').innerHTML='<span>主管檢視</span><span>操作僅模擬</span>';}else refreshPreview();loadPreviewRoster();return;
+    ['previewRole','previewTeacher','previewRenter'].forEach(id=>$(id).addEventListener('change',refreshPreview));if((params.get('preview')==='employee'||!params.has('preview'))){status('讀取員工資料中…');$('previewLabel').innerHTML='<span>主管檢視</span><span>操作僅模擬</span>';}else refreshPreview();loadPreviewRoster();return;
    }
    if(user.portalSessionBridge){throw Error('請從老師手機版的「出勤」進入，或使用原員工帳號登入。');}
    status('正在載入您的工作台…');state=await call('overview');saveUser(state.user);status('');selectTab(state.capabilities.attendance?'attendance':state.capabilities.teacher?'schedule':'more');
