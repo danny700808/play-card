@@ -117,7 +117,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260919-taiwan-v2"></script>
+  <script src="firebase-client.js?v=20261031-hr-policy-read"></script>
 
   <script src="app.js?v=20260802-security-phase1"></script>
   <script>
@@ -313,6 +313,7 @@
       const r=await api(action,{userId:currentUser.id});
       if(!r.ok) throw new Error(r.message||'讀取制度設定失敗');
       currentBundle=r.bundle||{};
+      if(r.source==='firebase-leave-policy-default') setPageMsg('目前沒有已儲存的制度，以下是預設草稿；確認內容後儲存才會套用。');
       renderTabs(currentBundle);
       renderPanels(currentBundle);
     }

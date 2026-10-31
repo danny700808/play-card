@@ -5195,12 +5195,12 @@
     return out;
   }
   async function getLeavePolicySettingsFirebase(payload){
-    const raw = await docGet('leavePolicySettings', 'default').catch(()=>null);
+    const raw = await docGet('leavePolicySettings', 'default');
     const bundle = raw && raw.bundle ? normalizeLeavePolicyBundleV2(raw.bundle) : defaultLeavePolicyBundleV2();
     return {ok:true, bundle, source: raw ? 'firebase-leave-policy' : 'firebase-leave-policy-default'};
   }
   async function initLeavePolicySettingsFirebase(payload){
-    const raw = await docGet('leavePolicySettings', 'default').catch(()=>null);
+    const raw = await docGet('leavePolicySettings', 'default');
     if(raw && raw.bundle) return {ok:true, bundle:normalizeLeavePolicyBundleV2(raw.bundle), message:'已讀取 Firebase 假勤制度設定。', source:'firebase-leave-policy'};
     const bundle = defaultLeavePolicyBundleV2();
     await docSet('leavePolicySettings', 'default', {bundle, updatedAt:serverTs(), updatedBy:clean((payload||{}).userId || currentUser().id || currentUser().employeeId), source:'firebase-leave-policy-seed'});
