@@ -347,7 +347,7 @@
     leaf('staff-certificate','在職證明','employment-certificate-hub.html?identity=staff')
    ]),
    branch('parttime','工讀生',[
-    leaf('parttime-mobile','手機版預覽','dashboard.html?preview=parttime'),
+    leaf('parttime-mobile','手機版檢視','dashboard.html?preview=employee'),
     leaf('parttime-people','人員資料','employee-admin.html?type=parttime'),
     leaf('parttime-salary','薪資與投保','salary-admin.html?type=parttime'),
     leaf('parttime-settlement','薪資結算','data-center.html?module=parttime'),
