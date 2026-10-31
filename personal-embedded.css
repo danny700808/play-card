@@ -10,3 +10,5 @@ html:root{--brand:#21748a;--green:#257f73;--line:#d9e5e9;--muted:#607988;--bg:#f
 .personal-embedded #fieldNote textarea{min-height:72px!important;height:72px!important}
 .personal-embedded .teacher-bottom-tabs{position:static!important;transform:none!important;width:100%!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;margin-bottom:10px!important;padding:0!important}
 .personal-embedded .teacher-bottom-tabs .btn{font-size:14px!important;padding:7px 2px!important}
+
+#notificationV2FinalFab,#manualNotifyTabsBtn,#notificationV2Fab{display:none!important}

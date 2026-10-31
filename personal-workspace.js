@@ -75,7 +75,7 @@
   $('personalBody').innerHTML='<div class="personal-frame-head">'+button('← 返回','frame-back')+'<h2>'+esc(title)+'</h2></div><iframe class="personal-frame" id="personalFrame" title="'+esc(title)+'" allow="geolocation; camera"></iframe>';bindActions();
   const frame=$('personalFrame');frame.addEventListener('load',()=>{
    try{const doc=frame.contentDocument;if(!doc||frame.contentWindow.location.origin!==location.origin)return;
-    doc.body.classList.add('personal-embedded');if(!doc.getElementById('personalEmbeddedStyle')){const link=doc.createElement('link');link.id='personalEmbeddedStyle';link.rel='stylesheet';link.href='personal-embedded.css?v=20261031-mobile1';doc.head.append(link);}
+    doc.body.classList.add('personal-embedded');if(!doc.getElementById('personalEmbeddedStyle')){const link=doc.createElement('link');link.id='personalEmbeddedStyle';link.rel='stylesheet';link.href='personal-embedded.css?v=20261031-mobile3';doc.head.append(link);}
     const hours=doc.getElementById('hoursSelect');if(hours){hours.removeAttribute('aria-hidden');hours.removeAttribute('tabindex');}
     const workDate=doc.getElementById('workDate');if(workDate){workDate.setAttribute('aria-label','日期');if(!doc.querySelector('label[for="workDate"]')){const label=doc.createElement('label');label.htmlFor='workDate';label.textContent='日期';workDate.before(label);}}
     // Remove only static explanatory prose; keep labels, live statuses, errors and records.
