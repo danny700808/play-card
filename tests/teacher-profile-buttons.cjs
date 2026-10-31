@@ -21,3 +21,37 @@ f=await fixture({...initial(),profileComplete:false});await f.click('profileSubm
 f=await fixture({...initial(),profileComplete:true,profile:{...initial().profile,profileChangeStatus:'draft'}});await f.click('profileSubmitBtn');assert.equal(f.state.requests.length,1);
 f=await fixture({...initial(),profileComplete:true});f.input('profileMailingAddress','變更');f.state.error=Error('網路暫時無法連線');await f.click('profileSubmitBtn');assert.equal(f.doc.getElementById('profileActionMessage').textContent,'網路暫時無法連線');assert.equal(f.doc.getElementById('profileSubmitBtn').disabled,false);
 console.log('PASS: unchanged twice skips confirmation and API; non-bank change skips bank popup; pending blocks duplicate; bank cancel/confirm; incomplete profile still submits; saved draft submits; visible failure supports retry.');})();
+
+(async()=>{
+  let f=await fixture();
+  f.input('profileBankAccountNumber','００９８－７６５４ ３２');
+  assert.equal(f.doc.getElementById('profileBankAccountNumber').value,'0098765432');
+  await f.click('profileSubmitBtn');
+  assert.equal(f.state.requests[0].data.bankAccountNumber,'0098765432');
+  assert.equal(f.state.requests[0].data.bankConfirmed,true);
+  assert.match(f.state.confirmText,/0098765432/);
+  f=await fixture();
+  f.input('profileBankAccountNumber','00O123/45');
+  assert.equal(f.doc.getElementById('profileBankAccountNumber').value,'00O123/45');
+  await f.click('profileSaveBtn');
+  assert.equal(f.state.requests.length,0);
+  assert.match(f.doc.getElementById('profileMessage').textContent,/銀行帳號格式不正確/);
+  assert.equal(f.doc.activeElement.id,'profileBankAccountNumber');
+  f=await fixture();
+  const longAccount='0'.repeat(31);
+  f.input('profileBankAccountNumber',longAccount);
+  assert.equal(f.doc.getElementById('profileBankAccountNumber').value,longAccount);
+  assert.equal(f.doc.getElementById('profileBankAccountNumber').hasAttribute('maxlength'),false);
+  await f.click('profileSubmitBtn');
+  assert.equal(f.state.requests.length,0);
+  f=await fixture();
+  f.doc.getElementById('profileBankAccountNumber').value='００９８-７６５４ ３２';
+  f.state.confirm=false;
+  await f.click('profileSaveBtn');
+  assert.equal(f.state.requests.length,0);
+  assert.equal(f.doc.getElementById('profileBankAccountNumber').value,'0098765432');
+  f=await fixture({...initial(),profileChangePending:true});
+  assert.match(f.doc.getElementById('profileMessage').textContent,/正式匯款資料須核准後才會更新/);
+  assert.equal(f.doc.getElementById('profileBankAccountNumber').disabled,true);
+  console.log('PASS bank input: full-width digits and separators preserve leading zeroes; unknown characters and overlong accounts stay visible and block writes; confirmation cancel makes no request; pending review explains official account update.');
+})().catch(error=>{console.error(error);process.exitCode=1;});

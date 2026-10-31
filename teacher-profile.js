@@ -13,6 +13,12 @@
 
   function $(id) { return document.getElementById(id); }
   function clean(value) { return String(value == null ? '' : value).trim(); }
+  function bankAccountInput(value) {
+    // Preserve every digit (including leading zeroes); never erase unknown characters.
+    return String(value == null ? '' : value)
+      .replace(/[０-９]/g, function (digit) { return String.fromCharCode(digit.charCodeAt(0) - 0xFEE0); })
+      .replace(/[\s\-－‐‑]/g, '');
+  }
   function normalizedSubjectName(value) {
     return clean(value).normalize('NFKC').toLocaleLowerCase('zh-TW').replace(/\s+/gu, '');
   }
@@ -272,7 +278,7 @@
     show($('teacherProfileForm'), true);
     if (pendingReview) {
       $('profileSubmitBtn').textContent = '已送出，等待管理者確認';
-      message('已送出，等待管理者確認，不需重複提交。授課科目與程度已先同步套用。', false);
+      message('修改已收到，等待管理者確認；正式匯款資料須核准後才會更新，不需重複提交。授課科目與程度已先同步套用。', false);
     } else if (confirmedProfile(profile, result) && result.profileComplete === true && !profile.profileChangeStatus) {
       message('資料已確認；沒有修改時不需再次送出。', false);
     } else if (clean(result && result.profileRevisionReason || profile.profileRevisionReason)) {
@@ -368,7 +374,7 @@
   function formValues() {
     const value = {
       bankAccountName: clean($('profileBankAccountName').value),
-      bankAccountNumber: $('profileBankAccountNumber').value,
+      bankAccountNumber: bankAccountInput($('profileBankAccountNumber').value),
       name: clean($('profileName').value),
       mobilePhone: clean($('profileMobile').value),
       email: clean($('profileEmail').value),
@@ -412,7 +418,11 @@
         return;
       }
       const data = await payload();
-      if (data.bankAccountNumber && !/^[0-9]+$/.test(data.bankAccountNumber)) throw new Error('銀行帳號只能包含數字，請勿使用空格或符號。');
+      $('profileBankAccountNumber').value = data.bankAccountNumber;
+      if (data.bankAccountNumber && !/^[0-9]{1,30}$/.test(data.bankAccountNumber)) {
+        $('profileBankAccountNumber').focus();
+        throw new Error('銀行帳號格式不正確：請依存摺填寫完整數字，不要加上銀行代碼、文字或其他符號。');
+      }
       if (submitForReview && (!data.bankAccountName || !data.bankAccountNumber)) throw new Error('請填寫台新國際商業銀行戶名及帳號。');
       if ((data.bankAccountName || data.bankAccountNumber) && (!confirmedProfile(old, currentResult) && submitForReview || old.bankAccountName !== data.bankAccountName || old.bankAccountNumber !== data.bankAccountNumber)) {
         if (!global.confirm(`請再次核對匯款資料\n銀行：台新國際商業銀行\n戶名：${data.bankAccountName}\n帳號：${data.bankAccountNumber}\n\n請對照存摺，確認戶名及帳號完全一致。按確定表示核對無誤並送出；按取消返回修改。`)) { message('已取消，尚未儲存；可以繼續修改。', false); return; }
@@ -450,7 +460,7 @@
   $('profileBirthYear').addEventListener('change', function () { refreshBirthDays(); updateBirthDateValue(); });
   $('profileBirthMonth').addEventListener('change', function () { refreshBirthDays(); updateBirthDateValue(); });
   $('profileBirthDay').addEventListener('change', updateBirthDateValue);
-  $('profileBankAccountNumber').addEventListener('input', function () { this.value = this.value.replace(/[^0-9]/g, ''); });
+  $('profileBankAccountNumber').addEventListener('input', function () { this.value = bankAccountInput(this.value); });
   $('teacherProfileForm').addEventListener('submit', function (event) { event.preventDefault(); save(false); });
   $('profileSubmitBtn').addEventListener('click', function () { save(true); });
   fillBirthOptions();
