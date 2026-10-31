@@ -7,6 +7,7 @@ function fixture(extra={},options={}){const f=database({'employees/e1':user,...e
 test('personal overview verifies employee identity and returns only their confirmed payments',async()=>{
  const f=fixture({'employeeSalaryPayments/p1':{employeeId:'e1',status:'paid',paidDate:'2026-10-05',month:'2026-09',amount:500},'employeeSalaryPayments/p2':{employeeId:'e2',status:'paid',amount:90000,paidDate:'2026-10-05'},'employeeSalaryPayments/p3':{employeeId:'e1',status:'draft',paidDate:'2026-10-05',amount:800}});
  await assert.rejects(f.service.handle({},{}));await assert.rejects(f.service.handle({}, {auth:{token:{...request.auth.token,employeeId:'e2'}}}));
+ await assert.rejects(f.service.handle({action:'profile-submit',expectedEmployeeId:'e2',profile:{address:'must not write'}},request));assert.equal([...f.rows.keys()].filter(k=>k.startsWith('profileChangeRequests/')).length,0);
  const r=await f.service.handle({employeeId:'e2'},request);assert.equal(r.user.employeeId,'e1');assert.deepEqual(r.payments.map(p=>p.amount),[500]);assert.deepEqual(r.capabilities,{attendance:true,teacher:false,renter:false});assert.equal(r.profile.password,undefined);assert.equal(r.user.passwordHash,undefined);
  f.rows.get('employees/e1').accountStatus='disabled';await assert.rejects(f.service.handle({},request));
 });
@@ -35,4 +36,12 @@ test('manager approval of a mobile supplement refuses stale or cross-person chan
  assert.throws(()=>reviewedProfilePatch(row,{employeeId:'e2',address:'原地址'},'e2'));
  assert.throws(()=>reviewedProfilePatch(row,{employeeId:'e1',address:'主管已更新'},'e1'));
  assert.throws(()=>reviewedProfilePatch({employeeId:'e1',changes:[{key:'role',before:'staff',after:'admin'}]},user,'e1'));
+});
+test('manager employee preview is read-only, rejects employee impersonation and uses the selected canonical person',async()=>{
+ const f=fixture({'admins/m1':{employeeId:'m1',email:'manager@example.test',name:'Manager',role:'admin',accountStatus:'active'},'employees/e2':{...user,employeeId:'e2',email:'two@example.test',name:'Other',identityType:'staff'}});
+ const manager={auth:{token:{employee:true,manager:true,employeeId:'m1',email:'manager@example.test'}}};
+ await assert.rejects(f.service.handle({action:'preview',employeeDocId:'e2'},request));await assert.rejects(f.service.handle({action:'preview-roster'},request));
+ const original=JSON.stringify([...f.rows]);const roster=await f.service.handle({action:'preview-roster'},manager);assert.deepEqual(roster.rows.map(r=>r.id),['e1','e2']);assert.equal(roster.rows[0].email,undefined);
+ const view=await f.service.handle({action:'preview',employeeDocId:'e1',expectedEmployeeId:'m1'},manager);assert.equal(view.user.name,'Employee');assert.equal(view.user.id,'e1');assert.equal(view.readOnly,true);assert.equal(JSON.stringify([...f.rows]),original);assert.equal(f.minted(),0);
+ await assert.rejects(f.service.handle({action:'preview',employeeDocId:'missing'},manager));
 });

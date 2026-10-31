@@ -57,21 +57,33 @@ function createPersonalWorkspace({db,auth,FieldValue,findPortalAccount,issuePort
    // Reuses existing claims. Never creates an employee, changes a password, or grants roles.
    return {ok:true,user:found.user,token:await auth.createCustomToken(found.firebaseUser.uid)};
   }
-  const {account,user}=await employee(request);
+  let {account,user}=await employee(request);
+  if(clean(data.expectedEmployeeId)&&clean(data.expectedEmployeeId)!==user.employeeId)throw new HttpsError('permission-denied','帳號已切換，請重新開啟工作台。');
+  if(['preview-roster','preview'].includes(action)){
+   if(request.auth.token.manager!==true||!user.isManagerAccount)throw new HttpsError('permission-denied','僅管理者可檢視員工畫面。');
+   if(action==='preview-roster'){
+    const snapshot=await db.collection('employees').get();
+    return {ok:true,rows:snapshot.docs.flatMap(doc=>{const row=doc.data(),person=normalizeUser({collection:'employees',id:doc.id,data:row});return active(row)&&!person.isManagerAccount&&['staff','parttime'].includes(person.identityType)?[{id:doc.id,employeeId:person.employeeId,name:person.name,identityType:person.identityType,identityLabel:person.identityLabel}]:[];})};
+   }
+   const id=clean(data.employeeDocId);if(!id||id.includes('/'))throw new HttpsError('invalid-argument','請選擇員工。');
+   const doc=await db.collection('employees').doc(id).get();if(!doc.exists||!active(doc.data()))throw new HttpsError('not-found','找不到已啟用的人員資料。');
+   account={collection:'employees',id:doc.id,ref:doc.ref,data:doc.data()};user=normalizeUser(account);
+   if(user.isManagerAccount||!['staff','parttime'].includes(user.identityType))throw new HttpsError('permission-denied','請選擇工讀生或專職人員。');
+  }
   if(action==='open-role'){
    const role=clean(data.role);if(!['teacher','renter'].includes(role))throw new HttpsError('invalid-argument','不支援的功能。');
    const linked=await findPortalAccount(role,user.email);
    if(!linked)throw new HttpsError('permission-denied','尚未完成這個身分的核准與綁定。');
    return {ok:true,role,...await issuePortalSession({...linked,authMethod:'employee-verified-account'})};
   }
-  if(action==='overview'){
+  if(action==='overview'||action==='preview'){
    const [teacher,renter,changes,payments]=await Promise.all([
     findPortalAccount('teacher',user.email),findPortalAccount('renter',user.email),
     db.collection('profileChangeRequests').where('employeeId','==',user.employeeId).get(),
     db.collection('employeeSalaryPayments').where('employeeId','==',user.employeeId).get()
    ]);
    const profile=profileOf(account.data);
-   return {ok:true,user,profile,missingFields:Object.keys(PROFILE_FIELDS).filter(k=>!profile[k]),
+   return {ok:true,readOnly:action==='preview',user,profile,missingFields:Object.keys(PROFILE_FIELDS).filter(k=>!profile[k]),
     capabilities:{attendance:['staff','parttime'].includes(user.identityType),teacher:!!teacher,renter:!!renter},
     profilePending:changes.docs.some(d=>['pending','pending_review','待審核','未處理'].includes(clean(d.data().approvalStatus||d.data().status))),
     payments:payments.docs.map(d=>d.data()).filter(r=>r.status==='paid'&&/^\d{4}-\d{2}-\d{2}$/.test(clean(r.paidDate))&&Number.isFinite(Number(r.amount))).map(r=>({month:clean(r.month),paidDate:clean(r.paidDate),amount:Number(r.amount)})).sort((a,b)=>b.paidDate.localeCompare(a.paidDate))};
