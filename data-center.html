@@ -121,6 +121,27 @@
       .daily-kpis{grid-template-columns:1fr 1fr}
       .audit-details{padding:0 14px 14px}
     }
+
+    /* One date per row; expand only the day that needs review. */
+    .employee-layout{grid-template-columns:220px minmax(0,1fr);gap:12px;align-items:start}
+    .card{padding:16px!important;margin-bottom:12px!important;border-radius:12px!important}
+    .title{font-size:24px!important}.section-title{font-size:17px}.muted{font-size:13px;line-height:1.5}
+    .section-head{margin-bottom:8px}.summary-grid{gap:8px;margin-top:8px}
+    .summary-card{padding:10px 12px;border-radius:10px}.summary-card strong{margin-bottom:3px}.summary-card .value{font-size:20px}
+    .side-controls{gap:8px}.employee-item{padding:10px}.daily-filters{gap:6px;margin:8px 0 10px}.daily-filter{padding:6px 10px;font-size:13px}
+    .daily-list{gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+    .daily-list .daily-card:nth-child(n){background:#fff;border:0;border-bottom:1px solid var(--line);border-radius:0;box-shadow:none}
+    .daily-list .daily-card:last-child{border-bottom:0}.daily-card[open]{background:#f8fafb!important}
+    .daily-compact-row{display:grid;grid-template-columns:145px minmax(160px,1fr) 70px 90px 80px 90px 58px;gap:10px;align-items:center;padding:10px 12px;cursor:pointer;list-style:none}
+    .daily-compact-row::-webkit-details-marker{display:none}.daily-compact-row:hover{background:#f3f8f5}
+    .daily-date{font-size:14px;white-space:nowrap}.daily-statuses{margin:0;gap:4px}.pill{padding:3px 6px;font-size:11px}
+    .daily-event-text{font-size:12px;color:#475569;line-height:1.5;margin-top:3px;overflow-wrap:anywhere}
+    .daily-compact-number{text-align:right;font-variant-numeric:tabular-nums}.daily-compact-number span{display:block;color:var(--muted);font-size:11px}.daily-compact-number strong{font-size:14px;white-space:nowrap}
+    .daily-compact-number.deducted strong{color:var(--red)}.daily-expand{font-size:12px;color:var(--brand);text-align:right}
+    .daily-sections{gap:10px;padding:12px}.daily-section{padding:10px;border-radius:8px}.daily-section h3{font-size:14px;margin-bottom:6px}
+    .daily-info-row{font-size:13px;grid-template-columns:80px minmax(0,1fr);gap:6px}.daily-actions{margin-top:6px}.audit-details{padding:0 12px 12px}
+    @media(max-width:1200px){.employee-layout{grid-template-columns:1fr}.side-controls{grid-template-columns:1fr 2fr}.employee-list{max-height:140px}.daily-compact-row{grid-template-columns:140px minmax(140px,1fr) 65px 85px 75px 85px 50px}}
+    @media(max-width:760px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-card.final{grid-column:1/-1}.daily-compact-row{grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.daily-date{grid-column:1/4}.daily-expand{grid-column:4;grid-row:1}.daily-event{grid-column:1/-1;grid-row:2}.daily-compact-number{text-align:left}.daily-sections{grid-template-columns:1fr}.side-controls{grid-template-columns:1fr}.daily-date{font-size:14px}}
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
 </head>
@@ -134,7 +155,7 @@
 
     <div class="card">
       <div class="center-head">
-        <h1 class="title" style="margin:0">工讀薪資結算</h1>
+        <h1 class="title" style="margin:0">工讀薪資結算</h1><a class="btn small" href="salary-admin.html">薪資／投保設定</a>
       </div>
       <div id="pageMsg" class="message"></div>
     </div>
@@ -1180,24 +1201,30 @@
     }
     function dailyCardHtml(day){
       const issueHtml=day.issues.length?`<div class="issue-inline"><strong>資料需確認：</strong><br>${day.issues.map(x=>esc(x.text)).join('<br>')}</div>`:'';
-      return `<article class="daily-card" data-daily-date="${esc(day.date)}">
-        <div class="daily-card-head">
-          <div><div class="daily-date">${esc(weekdayLabel(day.date))}</div><div class="daily-statuses">${dayStatusPills(day)}</div></div>
-          <div class="daily-kpis">
-            <div class="daily-kpi"><span>當日工時</span><strong>${esc(hours(day.totalHours))}</strong></div>
-            <div class="daily-kpi"><span>工時金額（扣款前）</span><strong>${money(day.gross)}</strong></div>
-            <div class="daily-kpi"><span>遲到扣款</span><strong>${money(day.deduction)}</strong></div>
-            <div class="daily-kpi final"><span>當日計薪</span><strong>${money(day.net)}</strong></div>
-          </div>
-        </div>
+      const events=[...new Set([
+        ...day.workRows.map(r=>workSource(r)+(r.payMultiplier===2?'（雙倍）':'')),
+        ...day.leaves.map(l=>(l.type||'請假')+(l.hours?' '+hours(l.hours):'')+(l.note?'：'+l.note:'')),
+        ...day.supervisorActions.map(a=>a.text),
+        ...day.issues.map(x=>x.text)
+      ].filter(Boolean))].join('；')||'一般出勤';
+      return `<details class="daily-card" data-daily-date="${esc(day.date)}">
+        <summary class="daily-compact-row">
+          <div class="daily-date">${esc(weekdayLabel(day.date))}</div>
+          <div class="daily-event"><div class="daily-statuses">${dayStatusPills(day)}</div><div class="daily-event-text">${esc(events)}</div></div>
+          <div class="daily-compact-number"><span>工時</span><strong>${esc(hours(day.totalHours))}</strong></div>
+          <div class="daily-compact-number"><span>扣款前</span><strong>${money(day.gross)}</strong></div>
+          <div class="daily-compact-number ${day.deduction?'deducted':''}"><span>遲到扣款</span><strong>${money(day.deduction)}</strong></div>
+          <div class="daily-compact-number"><span>當日計薪</span><strong>${money(day.net)}</strong></div>
+          <span class="daily-expand">明細 ▾</span>
+        </summary>
         <div class="daily-sections">
           <section class="daily-section"><h3>打卡與出勤</h3>${clockSectionHtml(day)}</section>
           <section class="daily-section"><h3>工讀時數</h3>${workEntriesHtml(day)}<div class="daily-actions"><button class="btn small gray" type="button" onclick="openAddParttime('${escjs(day.date)}')">新增此日工時</button></div></section>
-          <section class="daily-section"><h3>請假紀錄</h3>${leavesHtml(day)}</section>
-          <section class="daily-section"><h3>主管處理</h3>${supervisorHtml(day)}${issueHtml}</section>
+          ${day.leaves.length?`<section class="daily-section"><h3>請假紀錄</h3>${leavesHtml(day)}</section>`:''}
+          ${day.supervisorActions.length||day.issues.length?`<section class="daily-section"><h3>主管處理</h3>${supervisorHtml(day)}${issueHtml}</section>`:''}
         </div>
         <details class="audit-details"><summary>查看異動與審核紀錄</summary><div class="audit-list">${auditHtml(day)}</div></details>
-      </article>`;
+      </details>`;
     }
     function updateDailyFilterLabels(days){
       const counts={all:days.length,late:days.filter(d=>d.lateInfo.minutes>0||d.lateInfo.correctedMinutes>0).length,leave:days.filter(d=>d.leaves.length).length,supervisor:days.filter(d=>d.supervisorActions.length).length,issue:days.filter(d=>d.issues.length).length};

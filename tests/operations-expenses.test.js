@@ -117,7 +117,7 @@ assert.match(operationsHubSource,/href="#expenses" data-view="expenses"/,'左側
 assert.match(operationsHubSource,/>營運支出</,'左側選單必須明確標示營運支出');
 assert.match(formalPortalSource,/href="#expenses" data-view="expenses"/,'正式入口的左側選單也必須有營運支出');
 assert.match(formalPortalSource,/operations-expenses\.js\?v=20260801-operating-expenses-v6/,'正式入口必須先載入支出期間分攤新版程式');
-assert.match(formalPortalSource,/operations-phase1\.js\?v=20261031-expenses-shared-v1/,'正式入口必須使用目前租賃續約收入流程主程式快取號');
+assert.match(formalPortalSource,/operations-phase1\.js\?v=20261031-payroll-groups-v2/,'正式入口必須使用目前租賃續約收入流程主程式快取號');
 assert.match(operationsSource,/expenses:renderOperatingExpensesPage/,'營運支出入口必須顯示獨立右側頁面');
 assert.match(operationsSource,/id="operatingExpenseMonth"/,'營運支出頁必須可以選擇查詢月份');
 assert.match(operationsSource,/data-action="expense-month-shift"/,'營運支出頁必須可以切換前後月份');
@@ -173,7 +173,7 @@ const payrollWindow={document:startupDocument,matchMedia:()=>({matches:false}),Y
 payrollWindow.window=payrollWindow;
 const instrumentedOperationsSource=operationsSource.replace(
   'global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};',
-  'global.__testNormalizeExpenses=normalizeOperatingExpenseSettings;global.__testExpenseLedger=operatingExpenseLedgerForBounds;global.__testAutomaticPayrollLedger=automaticPayrollLedger;global.__testPeriodExpenseSettings=periodExpenseSettings;global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};'
+  'global.__testMasterRows=operatingExpenseMasterRows;global.__testNormalizeExpenses=normalizeOperatingExpenseSettings;global.__testExpenseLedger=operatingExpenseLedgerForBounds;global.__testAutomaticPayrollLedger=automaticPayrollLedger;global.__testPeriodExpenseSettings=periodExpenseSettings;global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};'
 );
 vm.runInNewContext(instrumentedOperationsSource,{window:payrollWindow,document:startupDocument,console,Date,Map,Set,Promise,JSON,Math,Number,String,Array,Object,RegExp,Error,Intl,URL,Blob,FormData,setTimeout,clearTimeout});
 const payrollState=payrollWindow.OperationsCenterV1.state;
@@ -255,3 +255,24 @@ assert.equal(ledgerSum(conflictMoved),ledgerSum(conflict),'nonzero rules from bo
 assert.equal(JSON.stringify(normalizeThree(conflictMoved)),JSON.stringify(conflictMoved));
 assert.ok(operationsSource.includes('employees:state.employees,employeeSalaryConfigs:state.employeeSalaryConfigs,employeeSalaryConfigHistory:state.employeeSalaryConfigHistory,parttimeRecords:state.parttimeRecords'),'fast cache must preserve payroll inputs');
 console.log('Three expense groups, historical amounts, repeated migration and payroll cache checks passed');
+
+payrollState.employees=[{employeeId:'P',identityType:'parttime',name:'工讀'},{employeeId:'S',identityType:'staff',name:'專職'}];
+payrollState.employeeSalaryConfigs=[{employeeId:'P',effectiveDate:'2026-07-01',hourlyRate:200,laborEmployerPay:500,healthEmployerPay:600,laborRetirementEmployerAmount:700},{employeeId:'S',effectiveDate:'2026-07-01',baseSalary:30000,laborEmployerPay:2000,healthEmployerPay:1000,laborRetirementEmployerAmount:1800}];
+payrollState.employeeSalaryConfigHistory=[];
+payrollState.parttimeRecords=[{employeeId:'P',recordId:'p1',date:'2026-08-04',totalHours:4,hourlyRate:200,status:'正常'}];
+payrollState.operatingExpenseSettings=normalizeThree({departments:{store:{recurringRules:[{id:'rent',amount:0},{id:'yamaha-authorization',amount:0}]},academy:{recurringRules:[{id:'rent',amount:0},{id:'yamaha-authorization',amount:0}]}}});
+payrollState.expenses=[];
+const grouped=payrollWindow.__testExpenseLedger({start:new Date('2026-08-01T00:00:00'),end:new Date('2026-08-31T23:59:59'),includeFuture:true});
+const groupedAmount=category=>total(grouped.filter(row=>row.category===category));
+assert.equal(groupedAmount('工讀生薪資'),800);
+assert.equal(groupedAmount('專職薪資'),30000);
+assert.equal(groupedAmount('工讀生勞健保／勞退'),1800);
+assert.equal(groupedAmount('專職勞健保／勞退'),4800);
+assert.equal(total(grouped),37400,'grouping employer costs must not change total or add employee withholding');
+payrollState.operatingExpenseDepartment='store';
+const groupedMaster=payrollWindow.__testMasterRows('2026-08',grouped);
+assert.equal(groupedMaster.find(r=>r.category==='工讀生勞健保／勞退').amount,1800);
+payrollState.employees=payrollState.employees.filter(row=>row.employeeId==='P');
+const noStaff=payrollWindow.__testMasterRows('2026-08',[]).find(r=>r.category==='專職薪資');
+assert.equal(noStaff.amount,0);assert.equal(noStaff.systemManaged,true);assert.match(noStaff.note,/尚無專職薪資設定/);
+console.log('Part-time/staff salaries and combined employer benefits checked');
