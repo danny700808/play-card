@@ -89,16 +89,10 @@
   $('personalProfileForm').addEventListener('submit',async event=>{event.preventDefault();if(preview)return;const btn=event.submitter;btn.disabled=true;try{await call('profile-submit',{profile:Object.fromEntries(new FormData(event.target))});state.profilePending=true;status('已送交主管。');profile();}catch(e){status(e.message,true);btn.disabled=false;}});
  }
 
- function previewFeature(key){
-  if(realPreview&&key==='clock'){
-   body(card('打卡',row(today(),state.scheduleText||'請先查看出勤頁')+'<div class="personal-grid" style="margin-top:12px">'+'<button class="personal-btn primary" disabled>上班打卡</button><button class="personal-btn soft" disabled>下班打卡</button>'+'</div>')+card('打卡紀錄',state.clockHtml||'請先查看出勤頁')+card('',menu([['補登出勤','temporary'],['修正時間','correction']])));return;
-  }
-  if(realPreview&&key==='schedule-own'){body(card('我的班表',row(today(),state.scheduleText||'請先查看出勤頁')));return;}
-  if(['hours','leave','temporary','correction'].includes(key)){
-   const title=key==='correction'?'修正打卡':features[key][0];
-   body(card(title,'<form id="previewForm" class="personal-form"><label class="wide">日期<input type="date" value="'+today()+'" required></label>'+(key==='hours'?'<label class="wide">工時<select required>'+ (realPreview?'<option value="">請選擇時數</option>':'') +Array.from({length:24},(_,i)=>'<option value="'+((i+1)/2)+'" '+(!realPreview&&i===7?'selected':'')+'>'+((i+1)/2)+' 小時</option>').join('')+'</select></label><label class="wide">計薪方式<select><option>一般計薪</option><option>雙倍計薪</option></select></label><label class="wide">備註<textarea rows="2"></textarea></label>':'<label>開始<input type="time" value="'+(realPreview?'':'14:00')+'" required></label><label>結束<input type="time" value="'+(realPreview?'':'18:00')+'" required></label>')+(key==='leave'?'<label class="wide">假別<select><option>事假</option><option>病假</option><option>婚假</option><option>喪假</option><option>特休</option></select></label>':'')+(key!=='hours'?'<label class="wide">原因<textarea rows="2" required></textarea></label>':'')+'<button class="personal-btn primary wide" type="submit" disabled>'+(key==='hours'?'確認工時':'送交主管')+'</button></form>'));$('previewForm').onsubmit=e=>{e.preventDefault();status('預覽：已完成操作，沒有正式送出。');};return;
-  }
-  body(card(features[key]?.[0]||'功能預覽','唯讀檢視'));
+ async function previewFeature(key){
+  const feature=key==='schedule-own'?['我的班表','clock.html']:key==='correction'?['修正打卡','clock.html']:features[key];if(!feature)return;
+  const employeeDocId=$('previewPerson').value;body('');
+  try{await PersonalPreviewFrame.open({container:$('personalBody'),page:feature[1],user:state.user,role:'employee',read:(method,payload)=>managerRead('preview-employee-read',{employeeDocId,method,payload})});}catch(e){status(e.message,true);}
  }
  async function rolePanel(role){
   if(realPreview){const employeeDocId=$('previewPerson').value;body('');try{await PersonalPreviewFrame.open({container:$('personalBody'),page:role==='teacher'?'teacher-course-portal.html':'room-booking.html?from=renter',user:state.user,role,read:(method,payload)=>managerRead('preview-role-read',{employeeDocId,role,method,payload})});}catch(e){status(e.message,true);}return;}
@@ -122,7 +116,7 @@
  }
  async function open(key){
   if(!preview)try{await verifyIdentity(state.user.id);}catch(e){status(e.message,true);return;}
-  generation++;status('');if(key==='frame-back')return selectTab(tab);if(key==='profile')return profile();if(key==='insurance')return insurance();
+  generation++;window.PersonalPreviewFrame?.close();status('');if(key==='frame-back')return selectTab(tab);if(key==='profile')return profile();if(key==='insurance')return insurance();
   if(key==='retry-role')return selectTab(tab);
   if(key==='logout'){if(typeof logout==='function')logout();return;}
   if(preview)return previewFeature(key);

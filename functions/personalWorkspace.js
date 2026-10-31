@@ -60,7 +60,7 @@ function createPersonalWorkspace({db,auth,FieldValue,findPortalAccount,issuePort
   }
   let {account,user}=await employee(request);
   if(clean(data.expectedEmployeeId)&&clean(data.expectedEmployeeId)!==user.employeeId)throw new HttpsError('permission-denied','帳號已切換，請重新開啟工作台。');
-  if(['preview-roster','preview','preview-month','teacher-read','preview-role-read'].includes(action)){
+  if(['preview-roster','preview','preview-month','teacher-read','preview-role-read','preview-employee-read'].includes(action)){
    if(request.auth.token.manager!==true||!user.isManagerAccount)throw new HttpsError('permission-denied','僅管理者可檢視員工畫面。');
    if(action==='preview-roster'){
     const snapshot=await db.collection('employees').get();
@@ -73,6 +73,15 @@ function createPersonalWorkspace({db,auth,FieldValue,findPortalAccount,issuePort
    const doc=await db.collection('employees').doc(id).get();if(!doc.exists||!active(doc.data()))throw new HttpsError('not-found','找不到已啟用的人員資料。');
    account={collection:'employees',id:doc.id,ref:doc.ref,data:doc.data()};user=normalizeUser(account);
    if(user.isManagerAccount||!['staff','parttime'].includes(user.identityType))throw new HttpsError('permission-denied','請選擇工讀生或專職人員。');
+  }
+  if(action==='preview-employee-read'){
+   const payload=data.payload||{},method=clean(data.method);
+   if(['employeeDataRead','employeePrivateDataRead'].includes(method)){
+    const gateway=require('./employeeDataGateway').createEmployeeDataGateway({db,FieldValue,Filter:require('firebase-admin').firestore.Filter});
+    return gateway.read({collection:payload.collection,id:payload.id},{auth:{token:{employee:true,employeeId:user.employeeId,email:user.email}}});
+   }
+   if(method==='externalTeacherWork'&&['getCertificateTemplate','getCertificateApplications'].includes(payload.action))return require('./certificateSelfService').handleCertificateSelfService(payload,{...user,external:false},db);
+   throw new HttpsError('permission-denied','唯讀檢視不允許此操作。');
   }
   if(action==='preview-role-read'){
    const role=clean(data.role);if(!['teacher','renter'].includes(role))throw new HttpsError('permission-denied','不支援此身分。');

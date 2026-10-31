@@ -63,6 +63,13 @@ test('employee rental preview resolves its existing binding and ignores a suppli
  await f.service.handle(input,{auth:{token:{employee:true,manager:true,employeeId:'m1',email:'manager@example.test'}}});
  assert.deepEqual(calls[0].slice(0,2),['renter','r1']);assert.equal(f.minted(),0);
 });
+test('employee form preview uses selected-person scope and rejects write methods',async()=>{
+ const f=fixture({'admins/m1':{employeeId:'m1',email:'manager@example.test',role:'admin',accountStatus:'active'},'employees/e2':{...user,employeeId:'e2',email:'other@example.test'}}),manager={auth:{token:{employee:true,manager:true,employeeId:'m1',email:'manager@example.test'}}};
+ const input={action:'preview-employee-read',employeeDocId:'e1',method:'employeeDataRead',payload:{collection:'employees',id:'e2'}};
+ assert.deepEqual((await f.service.handle(input,manager)).rows,[]);
+ const own=await f.service.handle({...input,payload:{collection:'employees',id:'e1'}},manager);assert.equal(own.rows[0].data.employeeId,'e1');
+ await assert.rejects(f.service.handle({...input,method:'employeeSelfService'},manager));await assert.rejects(f.service.handle(input,request));
+});
 test('manager employee preview is read-only, rejects employee impersonation and uses the selected canonical person',async()=>{
  const f=fixture({'admins/m1':{employeeId:'m1',email:'manager@example.test',name:'Manager',role:'admin',accountStatus:'active'},'employees/e2':{...user,employeeId:'e2',email:'two@example.test',name:'Other',identityType:'staff'}});
  const manager={auth:{token:{employee:true,manager:true,employeeId:'m1',email:'manager@example.test'}}};

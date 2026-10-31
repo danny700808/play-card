@@ -18,9 +18,10 @@
   const blocked=()=>Promise.reject(Error('唯讀檢視，不會送出或修改資料。'));
   const invoke=(name,data)=>rpc(name.replace(/Taiwan$/,''),data).then(data=>({data}));
   const functions={httpsCallable:name=>data=>invoke(name,data)};
-  function query(id=''){return {id,doc:key=>query(key||'preview-only'),where(){return this;},limit(){return this;},orderBy(){return this;},get:blocked,set:blocked,update:blocked,delete:blocked,add:blocked};}
-  const db={collection:()=>query(),settings(){},enablePersistence:()=>Promise.resolve(),batch:()=>({set:blocked,commit:blocked}),runTransaction:blocked};
-  const auth={currentUser:null,authStateReady:async()=>{},onAuthStateChanged:fn=>{queueMicrotask(()=>fn(null));return ()=>{};},signOut:blocked};
+  function query(collection,id='',filters=[]){return {id,doc:key=>query(collection,key||'preview-only'),where:(field,op,value)=>query(collection,id,filters.concat({field,op,value})),limit(){return this;},orderBy(){return this;},async get(){const result=await rpc('employeeDataRead',{collection,id});const docs=(result.rows||[]).filter(r=>filters.every(f=>{const v=r.data[f.field];return f.op==='=='?v===f.value:f.op==='>='?v>=f.value:f.op==='<='?v<=f.value:f.op==='in'?f.value.includes(v):f.op==='array-contains'?Array.isArray(v)&&v.includes(f.value):false;})).map(r=>({id:r.id,exists:true,data:()=>r.data,ref:query(collection,r.id)}));return id?(docs[0]||{id,exists:false,data:()=>undefined,ref:query(collection,id)}):{docs,empty:!docs.length,size:docs.length,forEach:fn=>docs.forEach(fn)};},set:blocked,update:blocked,delete:blocked,add:blocked};}
+  const db={collection:name=>query(name),settings(){},enablePersistence:()=>Promise.resolve(),batch:()=>({set:blocked,commit:blocked}),runTransaction:blocked};
+  const viewer=config.role==='employee'?{uid:'readonly-preview',getIdToken:async()=> 'readonly-preview',getIdTokenResult:async()=>({claims:{employee:true,employeeId:config.user.employeeId,manager:false}})}:null;
+  const auth={currentUser:viewer,authStateReady:async()=>{},onAuthStateChanged:fn=>{queueMicrotask(()=>fn(viewer));return ()=>{};},signOut:blocked};
   const app={functions:()=>functions,firestore:()=>db,auth:()=>auth};
   function firestore(){return db;}firestore.FieldValue={serverTimestamp:()=>new Date(),delete:()=>null};firestore.FieldPath={documentId:()=> '__name__'};firestore.Timestamp=class {constructor(seconds,nanoseconds=0){this.seconds=seconds;this.nanoseconds=nanoseconds;}toDate(){return new Date(this.seconds*1000);}toMillis(){return this.seconds*1000;}static fromDate(d){return new this(d.getTime()/1000);}static now(){return this.fromDate(new Date());}};
   Object.defineProperty(window,'firebase',{value:{apps:[app],app:()=>app,initializeApp:()=>app,functions:()=>functions,auth:()=>auth,firestore},writable:false});
@@ -61,7 +62,8 @@
    const policy=doc.createElement('meta');policy.httpEquiv='Content-Security-Policy';policy.content="default-src 'none'; script-src 'unsafe-inline' https://danny700808.github.io https://cdn.jsdelivr.net; style-src 'unsafe-inline' https:; img-src https: data: blob:; font-src https: data:; media-src https: data: blob:; connect-src 'none'; form-action 'none'; frame-src 'none'";doc.head.prepend(policy);
    let fingerprint=2166136261;for(const char of 'readonly-preview')fingerprint=Math.imul(fingerprint^char.charCodeAt(0),16777619);
    const storage={employeeUser:JSON.stringify(user),employeeUserId:user.id,employeeSecureAuthVersion:'1',['youzi.coursePortal.'+role+'.session.v1']:'readonly-preview','youzi.coursePortal.lastRole.v2':role,'youzi.coursePortal.authStateMigration.20260805.v1':'done','youzi.teacherMore.authorization.v4':JSON.stringify({employeeId:user.employeeId||user.id,tokenFingerprint:(fingerprint>>>0).toString(16).padStart(8,'0'),validatedAt:Date.now()})};
-   const script=doc.createElement('script');script.textContent='('+childBootstrap.toString()+')('+JSON.stringify({channel,storage,page:url.href}).replace(/</g,'\\u003c')+');';doc.head.insertBefore(script,base.nextSibling);
+   if(role==='employee'){const style=doc.createElement('link');style.rel='stylesheet';style.href='personal-embedded.css?v=20261031-mobile3';doc.head.append(style);doc.body.classList.add('personal-embedded');}
+   const script=doc.createElement('script');script.textContent='('+childBootstrap.toString()+')('+JSON.stringify({channel,storage,page:url.href,role,user}).replace(/</g,'\\u003c')+');';doc.head.insertBefore(script,base.nextSibling);
    frame.srcdoc='<!doctype html>'+doc.documentElement.outerHTML;status.textContent='唯讀';
   }
   const listener=async event=>{
