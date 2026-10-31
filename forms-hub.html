@@ -58,6 +58,7 @@
         <div class="form-card-title">教學證明</div>
         <div class="form-card-desc">教師身分、任教科目、任教期間與授課類型。授課地點固定為補習班立案地址。</div>
       </a>
+      <a class="form-card" href="my-certificates.html"><div class="form-card-title">我的證明／申請紀錄</div></a>
     </section>
   </div>
 
@@ -67,6 +68,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=20260919-taiwan-v2"></script>
   <script src="app.js?v=20260802-security-phase1"></script>
+  <script src="certificate-self-service.js?v=20261031-1"></script>
   <script src="certificate-common.js?v=certificates-20260530-previewfit"></script>
   <script>
     async function initPage(){
@@ -74,17 +76,16 @@
       const user = requireLogin();
       if(!user) return;
       try{
-        if(window.YZCertificate && typeof YZCertificate.counts === 'function'){
-          const c = await YZCertificate.counts({own:true});
-          const line = document.getElementById('statusLine');
-          if(line) line.innerHTML = '<span class="status-pill">待審核 '+(c.pending||0)+'</span><span class="status-pill">已核准 '+(c.approved||0)+'</span><span class="status-pill">已退回 '+(c.rejected||0)+'</span>';
-        }
-      }catch(e){}
+        const result=await api('getCertificateApplications',{});if(!result||result.ok===false)throw new Error(result?.message||'讀取失敗');
+        const rows=(result.rows||[]).map(YZ_CERT.normalizeApplication);
+        document.getElementById('statusLine').textContent='待審核 '+rows.filter(r=>r.status==='待主管審核').length+' · 已核准 '+rows.filter(r=>r.status==='已核准').length;
+
+      }catch(e){document.getElementById('statusLine').textContent='申請紀錄讀取失敗，請至「我的證明」重試。';}
     }
   </script>
   <script src="global-nav.js?v=20260808-teacher-nav-v1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-1"></script>
+  <script src="internal-workspace-routes.js?v=20261031-2"></script>
   <script src="internal-workspace.js?v=20261031-3"></script>
 </body>
 </html>

@@ -8,7 +8,7 @@ assert(hub.includes('外聘老師管理中心'));
 assert(hub.includes('employee-admin.html?type=external'));
 assert(hub.includes('announcement-admin.html?audience=external'));
 assert(hub.includes('task.html?mode=admin&identity=external'));
-assert(hub.includes('external-teacher-forms-admin.html'));
+assert(hub.includes('quotation-contract-hub.html?identity=external&source=teacher-hub'));
 assert(hub.includes("getExternalTeacherWorkAssignees"));
 assert(!hub.includes('id="teacherList"'));
 assert(!hub.includes('未命名外聘老師'));

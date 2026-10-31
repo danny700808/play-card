@@ -5367,7 +5367,7 @@
       return {ok:true,batchId,count:targets.length*channels.length};
     }catch(e){ console.warn('[certificate notification skipped]', code, e); return {ok:true,skipped:true,message:e.message}; }
   }
-  async function getCertificateTemplate(payload){ const t=certType(payload && payload.certificateType); const row=await docGet('printTemplates', templateDocId(t)).catch(()=>null); return {ok:true,template:Object.assign({},defaultTemplate(t),row||{}),row:Object.assign({},defaultTemplate(t),row||{})}; }
+  async function getCertificateTemplate(payload){ const t=certType(payload && payload.certificateType); const row=await docGet('printTemplates', templateDocId(t)); return {ok:true,template:Object.assign({},defaultTemplate(t),row||{}),row:Object.assign({},defaultTemplate(t),row||{})}; }
   async function saveCertificateTemplate(payload){
     payload=payload||{}; const t=certType(payload.certificateType); const user=readUser(); const template=Object.assign({},defaultTemplate(t),payload.template||{}, {certificateType:t,updatedAt:serverTs(),updatedAtText:nowText(),updatedBy:clean(payload.userId || user.id || user.employeeId),source:'certificate-template'});
     await docSet('printTemplates', templateDocId(t), template);
@@ -5388,7 +5388,7 @@
     return {ok:true,message:'已送出申請，待主管審核。',requestId,row};
   }
   async function getCertificateApplications(payload){
-    payload=payload||{}; const rows=(await all('certificateApplications').catch(()=>[])).map(normalizeApplication);
+    payload=payload||{}; const rows=(await all('certificateApplications')).map(normalizeApplication);
     const admin=payload.admin===true || lower(payload.role)==='admin' || lower(payload.role)==='manager';
     const visible = admin ? rows : rows.filter(r=>belongs(r,payload) && r.hiddenBy.indexOf(clean(payload.userId || readUser().id || readUser().employeeId))<0);
     visible.sort((a,b)=>clean(b.submittedAtText||b.requestId).localeCompare(clean(a.submittedAtText||a.requestId)));

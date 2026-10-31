@@ -155,6 +155,14 @@ function lineIds(row) {
 }
 
 function identityKeys(spec, row, docId) {
+  // Notifications describe an event subject and a separate recipient. They are
+  // references, never evidence that the two accounts belong to the same person.
+  if (spec.kind === 'notification') {
+    const subject = first(row, ['employeeId', '員工ID', 'userId', 'targetEmployeeId']);
+    if (subject) return [`employee:${subject.replace(/^employees\//, '')}`];
+    const teacher = first(row, ['teacherId', 'coursePortalTeacherId']);
+    return teacher ? [`teacher:${teacher}`] : [];
+  }
   const keys = [];
   if (spec.collection === 'employees') keys.push(`employee:${clean(docId)}`);
   uniq((spec.employeeFields || []).concat([
@@ -281,14 +289,15 @@ function buildGroups(records) {
     rows.sort((a, b) => rowTime(b.row) - rowTime(a.row));
     const employeeRows = rows.filter((item) => item.spec.collection === 'employees');
     const effectiveEmployeeRows = employeeRows.filter((item) => !clean(item.row.mergedIntoEmployeeId));
-    const personMasterIds = uniq(rows.map((item) => clean(item.row.personMasterId || item.row.canonicalEmployeeId)));
+    const identityRows = rows.filter((item) => item.spec.kind !== 'notification');
+    const personMasterIds = uniq(identityRows.map((item) => clean(item.row.personMasterId || item.row.canonicalEmployeeId)));
     const employeeIds = uniq(rows.flatMap((item) => item.keys)
       .filter((key) => key.startsWith('employee:')).map((key) => key.slice(9)));
     const teacherIds = uniq(rows.flatMap((item) => item.keys)
       .filter((key) => key.startsWith('teacher:')).map((key) => key.slice(8)));
-    const names = uniq(rows.map((item) => rowName(item.row)));
-    const emails = uniq(rows.map((item) => rowEmail(item.row)));
-    const phones = uniq(rows.map((item) => rowPhone(item.row)));
+    const names = uniq(identityRows.map((item) => rowName(item.row)));
+    const emails = uniq(identityRows.map((item) => rowEmail(item.row)));
+    const phones = uniq(identityRows.map((item) => rowPhone(item.row)));
     const sourceCounts = {};
     rows.forEach((item) => { sourceCounts[item.spec.collection] = (sourceCounts[item.spec.collection] || 0) + 1; });
     const formalRows = rows.filter((item) => rowIsFormal(item.spec, item.row));

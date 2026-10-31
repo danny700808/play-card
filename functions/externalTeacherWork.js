@@ -475,7 +475,7 @@ async function callerIdentity(data, request, helpers) {
   if (managerAllowed(request)) return Object.assign({ manager: true, external: false }, actor(request));
   const token = request && request.auth && request.auth.token || {};
   if (request && request.auth && token.employee === true && clean(token.employeeId)) {
-    return { manager: false, employeeId: clean(token.employeeId), teacherId: '', email: lower(token.email), external: lower(token.identityType) === 'external', name: clean(token.name) };
+    return { manager: false, employeeId: clean(token.employeeId), teacherId: '', email: lower(token.email), identityType: lower(token.identityType), external: lower(token.identityType) === 'external', name: clean(token.name) };
   }
   if (clean(data && data.sessionToken) && typeof helpers.requireTeacherSession === 'function' && typeof helpers.resolveTeacherEmployee === 'function') {
     const session = await helpers.requireTeacherSession(data, ['teacher']);
@@ -844,6 +844,14 @@ async function dispatch(data, request, helpers) {
   if (action === 'markUnifiedWorkItemRedo' || action === 'markTaskRedo') return redoTask(data, request);
 
   const identity = await callerIdentity(data, request, helpers);
+  const certificate = await require('./certificateSelfService').handleCertificateSelfService(data, identity, db);
+  if (certificate) return certificate;
+  if (action === 'getGiftPointCardTemplate') {
+    const snap = await db.collection('printTemplates').doc('giftPointCard').get();
+    const row = snap.exists ? snap.data() || {} : {};
+    const fields = ['cardTitle', 'cardSubtitle', 'badgeText', 'fieldA', 'fieldB', 'fieldC', 'rules'];
+    return { ok: true, exists: snap.exists, template: Object.fromEntries(fields.filter(key => typeof row[key] === 'string').map(key => [key, row[key]])) };
+  }
   if (action === 'getAnnouncements') return { ok: true, rows: await teacherAnnouncementList(data, identity) };
   if (action === 'submitAnnouncementReply') return submitAnnouncementReply(data, identity);
   if (action === 'getTasks' || action === 'getUnifiedWorkItems') {

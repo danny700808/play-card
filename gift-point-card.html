@@ -13,11 +13,11 @@
     .simple-actions .btn{width:100%;min-height:48px}
     .gift-export-host{position:fixed;left:-10000px;top:0;width:210mm;background:#fff;z-index:-1;pointer-events:none}
     .gift-export-host .a4-sheet{width:210mm!important;min-height:297mm!important;transform:none!important;margin:0!important;margin-right:0!important;margin-bottom:0!important;box-shadow:none!important}
-    #msg:empty{display:none}
+    #msg:empty{display:none}.gift-use{margin:10px 0}.gift-use summary{cursor:pointer;font-weight:700}@media print{.gift-use,#giftRetry,#msg{display:none!important}}
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260808-teacher-nav-v1">
   <link rel="stylesheet" href="internal-workspace.css?v=20261031-3">
-</head>
+<link rel="stylesheet" href="forms-workspace.css?v=20261031-1"></head>
 <body onload="initPage()">
   <div class="yz-global-nav" data-yz-global-nav data-yz-teacher-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
@@ -25,9 +25,9 @@
   </div>
 
   <div class="wrap">
-    <div class="page-card">
-      <div class="preview-toolbar"><h1 class="title" style="margin:0">集點卡</h1><div class="simple-actions"><button class="btn" type="button" data-gift-print-action onclick="printGiftPointCard()">列印</button><button class="btn secondary" type="button" data-gift-print-action onclick="saveGiftPointCardImage()">儲存圖片</button></div></div>
-      <div id="printArea" class="sheet-scale-wrap"></div>
+    <div class="page-card" data-teacher-utility-root>
+      <div class="preview-toolbar"><h1 class="title" style="margin:0">集點卡</h1><div class="simple-actions"><button class="btn" type="button" data-gift-print-action disabled onclick="printGiftPointCard()">列印</button><button class="btn secondary" type="button" data-gift-print-action disabled onclick="saveGiftPointCardImage()">儲存圖片</button></div></div>
+      <details class="gift-use"><summary>使用方式</summary><ol><li>列印後填寫學生姓名、課程。</li><li>每次取得點數，在紙本格子上蓋章。</li><li>兌換禮物時劃記已使用的點數；完成後保留卡片供核對。</li></ol><p>本頁為紙本集點卡，沒有另外建立線上點數帳本。</p></details><button id="giftRetry" class="btn secondary" hidden onclick="initPage()">重新讀取</button><div id="printArea" class="sheet-scale-wrap"></div>
       <div id="msg" class="muted-tip" style="margin-top:10px" aria-live="polite"></div>
     </div>
   </div>
@@ -37,15 +37,18 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=20260919-taiwan-v2"></script>
   <script src="app.js?v=20260802-security-phase1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="teacher-more-auth-bridge.js?v=20261024-session-stability-v1"></script>
+  <script src="gift-card-service.js?v=20261031-1"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script>
     const DEFAULTS={cardTitle:'柚子樂器 集點卡',cardSubtitle:'學生兌換禮物專用',badgeText:'集滿可兌換禮物',fieldA:'姓名',fieldB:'課程',fieldC:'',rules:'1. 不可與其他優惠合併使用。\n2. 本卡遺失，點數一律作廢。\n3. 集點可選擇轉扭蛋，或兌換對應的集點禮物。'};
-    let giftPrintBusy=false;
+    let giftPrintBusy=false,giftLoaded=false;
     function esc(v){return String(v==null?'':v).trim().replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));}
     function render(data){data=Object.assign({},DEFAULTS,data||{}); const fields=[data.fieldA,data.fieldB,data.fieldC].filter(Boolean).map(x=>`<div class="gift-line-field">${esc(x)}：</div>`).join(''); const points=Array.from({length:100}).map((_,i)=>`<div class="gift-point">${(i%10)+1}</div>`).join(''); const rules=String(data.rules||'').split(/\n/).filter(Boolean).map(x=>`<div>${esc(x)}</div>`).join(''); document.getElementById('printArea').innerHTML=`<div class="a4-sheet"><div class="a4-main-card"><div class="gift-cut"></div><div class="gift-head"><div><h2 class="gift-title">${esc(data.cardTitle)}</h2><div class="gift-subtitle">${esc(data.cardSubtitle)}</div></div><div class="gift-badge">${esc(data.badgeText)}</div></div><div class="gift-info">${fields}</div><div class="gift-points-grid">${points}</div><div class="gift-rules"><div class="gift-rules-title">注意事項</div>${rules}</div></div></div>`;}
     function giftMessage(text){const node=document.getElementById('msg');if(node)node.textContent=text||'';}
-    function setGiftPrintBusy(active){giftPrintBusy=active;document.querySelectorAll('[data-gift-print-action]').forEach(button=>{button.disabled=active;});}
-    function printGiftPointCard(){giftMessage('');window.print();}
+    function setGiftPrintBusy(active){giftPrintBusy=active;document.querySelectorAll('[data-gift-print-action]').forEach(button=>{button.disabled=active||!giftLoaded;});}
+    function printGiftPointCard(){if(!giftLoaded)return;giftMessage('');window.print();}
     async function giftPointCardImageBlob(){
       const source=document.querySelector('#printArea .a4-sheet');
       if(!source)throw new Error('集點卡尚未載入，請稍後再試。');
@@ -59,7 +62,7 @@
     }
     function downloadGiftImage(blob){const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='柚子樂器-集點卡.png';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
     async function saveGiftPointCardImage(){
-      if(giftPrintBusy)return;setGiftPrintBusy(true);giftMessage('正在儲存圖片…');
+      if(giftPrintBusy||!giftLoaded)return;setGiftPrintBusy(true);giftMessage('正在儲存圖片…');
       try{
         const blob=await giftPointCardImageBlob();
         const file=new File([blob],'柚子樂器-集點卡.png',{type:'image/png'});
@@ -71,11 +74,19 @@
         giftMessage(error&&error.name==='AbortError'?'':((error&&error.message)||'圖片儲存失敗，請稍後再試。'));
       }finally{setGiftPrintBusy(false);}
     }
-    async function initPage(){const user=requireLogin(); if(!user) return; try{ const doc=firebase.firestore().collection('printTemplates').doc('giftPointCard'); const snap=await doc.get(); render(snap.exists?snap.data():DEFAULTS); }catch(e){ render(DEFAULTS); document.getElementById('msg').textContent='目前使用預設集點卡。'; }}
+    async function initPage(){
+      if(window.YZTeacherMoreAuth?.blockIfPortalOnly({title:'集點卡'}))return;
+      const user=requireLogin();if(!user)return;
+      giftLoaded=false;setGiftPrintBusy(false);giftMessage('讀取共用版面中…');document.getElementById('giftRetry').hidden=true;
+      try{const result=await GiftCardService.load(user,false);render(result.exists?result.data:DEFAULTS);giftLoaded=true;giftMessage(result.exists?'':'尚未設定共用版面，目前使用預設紙本卡。');}
+      catch(error){giftMessage('集點卡讀取失敗：'+error.message);document.getElementById('giftRetry').hidden=false;}
+      setGiftPrintBusy(false);
+    }
+
   </script>
   <script src="global-nav.js?v=20260808-teacher-nav-v1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-1"></script>
+  <script src="internal-workspace-routes.js?v=20261031-2"></script>
   <script src="internal-workspace.js?v=20261031-3"></script>
 </body>
 </html>

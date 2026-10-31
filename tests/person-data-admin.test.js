@@ -33,6 +33,24 @@ test('binding explicitly connects teacher identity to the same employee master',
   assert.deepEqual(groups[0].teacherIds, ['T1']);
 });
 
+test('notification subject and manager recipient cannot join personnel masters', () => {
+  for (const collection of ['notificationQueue', 'notificationLogs']) {
+    const groups = helpers.buildGroups([
+      record('employees', 'E1', { employeeId: 'E1', name: '員工' }),
+      record('employees', 'M1', { employeeId: 'M1', name: '主管' }),
+      record(collection, 'N1', { employeeId: 'E1', userId: 'M1', targetEmployeeId: 'M1', personMasterId: 'M1', name: '主管' })
+    ]);
+    assert.equal(groups.length, 2);
+    const employee = groups.find(group => group.employeeIds.includes('E1'));
+    assert.deepEqual(employee.employeeIds, ['E1']);
+    assert.deepEqual(employee.canonicalEmployeeIds, ['E1']);
+    assert.deepEqual(employee.names, ['員工']);
+    assert.equal(employee.sourceCount, 2);
+    assert.equal(employee.needsReview, false);
+    assert.equal(groups.find(group => group.employeeIds.includes('M1')).sourceCount, 1);
+  }
+});
+
 test('manager-linked legacy master remains history under one canonical person', () => {
   const groups = helpers.buildGroups([
     record('employees', 'E1', { employeeId: 'E1', accountStatus: 'active' }),

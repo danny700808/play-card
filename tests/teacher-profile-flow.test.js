@@ -215,7 +215,7 @@ test('all manager contract links use the current annual contract manager', () =>
   const publisher = read('contract-admin.html');
   const legacy = read('external-teacher-contract-admin.html');
   const login = read('login.html');
-  assert.match(hub, /href="contract-admin\.html"/);
+  assert.match(hub, /href="external-teacher-admin\.html\?source=teacher-hub"/);
   assert.match(review, /href="contract-admin\.html"/);
   assert.doesNotMatch(hub, /href="external-teacher-contract-admin\.html/);
   assert.doesNotMatch(review, /href="external-teacher-contract-admin\.html/);

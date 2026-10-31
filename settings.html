@@ -398,7 +398,7 @@
         <div class="welcome">歡迎 <span data-user-name></span></div>
       </div>
     </section>
-    <div class="internal-home-sections"><section class="internal-home-group"><header><h2>人事與薪資</h2><p>人員、招募與薪資設定</p></header><div class="internal-home-links"><a class="tile yz-feature-tile" href="hr-payroll-settings-hub.html"><strong>人事與薪資設定 <span class="badge" id="badge-hr-payroll"></span></strong><span>班表、假勤制度、薪資投保設定</span></a><a class="tile yz-feature-tile" href="employee-admin.html"><strong>員工管理</strong><span>員工基本資料、帳號狀態、離職與隱藏控管</span></a><a class="tile yz-feature-tile" href="application-admin.html"><strong>應聘管理 <span class="badge" id="badge-application"></span></strong><span>履歷投遞與審核通知</span></a><a class="tile yz-feature-tile" href="person-data-admin.html"><strong>人員資料整理</strong><span>集中查看歷史來源、歸到同一人、封存或安全刪除測試資料</span></a></div></section><section class="internal-home-group"><header><h2>簽核與工作</h2><p>待辦、通知與學習</p></header><div class="internal-home-links"><a class="tile yz-feature-tile" href="approval-hub.html"><strong>簽核 <span class="badge" id="badge-approval"></span></strong><span>註冊、打卡、臨時出勤、請假、個資簽核</span></a><a class="tile yz-feature-tile" href="items-hub.html"><strong>公告／交辦／定期 <span class="badge" id="badge-items"></span></strong><span>公告、交辦與定期</span></a><a class="tile yz-feature-tile" href="training-admin.html"><strong>教育訓練管理</strong><span>教材與學習內容</span></a><a class="tile yz-feature-tile" href="dashboard.html"><strong>員工服務</strong><span>打卡、請假、公告、交辦、定期事項與個人資料</span></a></div></section><section class="internal-home-group"><header><h2>外聘老師</h2><p>老師資料與合作管理</p></header><div class="internal-home-links"><a class="tile yz-feature-tile" href="teacher-hub.html"><strong>外聘老師 <span class="badge" id="badge-teacher"></span></strong><span>名單、資料、合約、公告、協助事項、拿貨與表格</span></a></div></section><section class="internal-home-group"><header><h2>租賃與表單</h2><p>契約、估價與證明文件</p></header><div class="internal-home-links"><a class="tile yz-feature-tile" href="rental-system-hub.html"><strong>租賃契約系統 <span class="badge" id="badge-rental"></span></strong><span>租賃申請、契約模板、費用設定與續約退租</span></a><a class="tile yz-feature-tile" href="quotation-contract-hub.html"><strong>表單與證明 <span class="badge" id="badge-forms"></span></strong><span>估價單、集點卡、證明設定與證明審核</span></a></div></section></div>
+    <div class="internal-home-sections"><section class="internal-home-group"><header><h2>人事與薪資</h2><p>人員、招募與薪資設定</p></header><div class="internal-home-links"><a class="tile yz-feature-tile" href="hr-payroll-settings-hub.html"><strong>人事與薪資設定 <span class="badge" id="badge-hr-payroll"></span></strong><span>班表、假勤制度、薪資投保設定</span></a></div></section><section class="internal-home-group"><header><h2>簽核與工作</h2><p>待辦、通知與學習</p></header><div class="internal-home-links"><a class="tile yz-feature-tile" href="approval-hub.html"><strong>簽核 <span class="badge" id="badge-approval"></span></strong><span>註冊、打卡、臨時出勤、請假、個資簽核</span></a><a class="tile yz-feature-tile" href="items-hub.html"><strong>日常工作與訓練 <span class="badge" id="badge-items"></span></strong><span>公告、交辦與定期</span></a><a class="tile yz-feature-tile" href="dashboard.html"><strong>員工服務</strong><span>打卡、請假、公告、交辦、定期事項與個人資料</span></a></div></section><section class="internal-home-group"><header><h2>外聘老師</h2><p>老師資料與合作管理</p></header><div class="internal-home-links"><a class="tile yz-feature-tile" href="teacher-hub.html"><strong>外聘老師 <span class="badge" id="badge-teacher"></span></strong><span>名單、資料、合約、公告、協助事項、拿貨與表格</span></a></div></section><section class="internal-home-group"><header><h2>租賃與表單</h2><p>契約、估價與證明文件</p></header><div class="internal-home-links"><a class="tile yz-feature-tile" href="rental-system-hub.html"><strong>租賃契約系統 <span class="badge" id="badge-rental"></span></strong><span>租賃申請、契約模板、費用設定與續約退租</span></a><a class="tile yz-feature-tile" href="quotation-contract-hub.html"><strong>表單與證明 <span class="badge" id="badge-forms"></span></strong><span>估價單、集點卡、證明設定與證明審核</span></a></div></section></div>
   </div>
   <script src="config.js?v=20260919-taiwan-storage-v3"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -481,7 +481,7 @@
       setBadge('badge-teacher', 0);
       setBadge('badge-application', r.applicationCount);
       setBadge('badge-items', items);
-      setBadge('badge-hr-payroll', r.salaryCount);
+      setBadge('badge-hr-payroll', Number(r.salaryCount||0)+Number(r.applicationCount||0));
       setBadge('badge-rental', r.rentalCount);
       setBadge('badge-forms', r.certificateReviewCount);
     }
@@ -501,7 +501,7 @@
   </script>
   <script src="global-nav.js?v=20260714-unified-theme-v1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-1"></script>
+  <script src="internal-workspace-routes.js?v=20261031-2"></script>
   <script src="internal-workspace.js?v=20261031-3"></script>
 </body>
 </html>

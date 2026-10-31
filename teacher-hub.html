@@ -44,16 +44,16 @@
       <div class="summary-card"><span>待管理者確認</span><b id="reviewCount">—</b></div>
     </section>
 
+    <div id="teacherLoadStatus" role="status"></div><button id="teacherLoadRetry" class="btn secondary" hidden type="button">重新讀取</button>
     <section class="section">
       <div class="section-head"><div><h2>管理功能</h2><p>所有外聘老師相關管理都集中在這裡。</p></div></div>
       <div class="manage-grid">
         <a class="manage-card" href="employee-admin.html?type=external&source=teacher-hub"><span class="icon">人</span><b>外聘老師名單與資料</b><span>直接使用員工管理的外聘老師分類，新增、查看、停用與封存都在同一份資料上。</span></a>
-        <a class="manage-card" href="external-teacher-admin.html?source=teacher-hub"><span class="icon">約</span><b>年度合約</b><span>建立年度簽約入口、查看待簽、待確認與已生效合約。</span></a>
-        <a class="manage-card" href="contract-admin.html"><span class="icon">文</span><b>年度合約與條文</b><span>編輯年度契約、發布給外聘老師，並管理未來簽署時使用的內容與版型。</span></a>
+        <a class="manage-card" href="external-teacher-admin.html?source=teacher-hub"><span class="icon">約</span><b>合約與條款</b><span>建立年度簽約入口、查看待簽、待確認與已生效合約。</span></a>
         <a class="manage-card" href="announcement-admin.html?audience=external&source=teacher-hub"><span class="icon">告</span><b>外聘老師公告</b><span>固定發布給外聘老師，可附圖片、影片、錄音與文件。</span></a>
         <a class="manage-card" href="task.html?mode=admin&identity=external&source=teacher-hub"><span class="icon">辦</span><b>協助事項</b><span>預設全體外聘老師、無期限；需要時再改負責人與完成規則。</span></a>
         <a class="manage-card" href="teacher-goods-admin.html?source=teacher-hub"><span class="icon">貨</span><b>拿貨／詢價</b><span>查看老師詢價、回覆老師價與庫存，管理提供給老師的商品。</span></a>
-        <a class="manage-card" href="external-teacher-forms-admin.html"><span class="icon">表</span><b>表格與證明</b><span>管理集點卡、在職證明、教學證明與待審核文件。</span></a>
+        <a class="manage-card" href="quotation-contract-hub.html?identity=external&source=teacher-hub"><span class="icon">表</span><b>表格與證明</b><span>管理集點卡、在職證明、教學證明與待審核文件。</span></a>
       </div>
     </section>
 
@@ -69,15 +69,15 @@
   <script src="manager-auth.js?v=20261024-session-stability-v1"></script>
   <script>
     (function(){
-      let user=null;
-      async function load(){try{const res=await api('getExternalTeacherWorkAssignees',{userId:user.id,workScope:'external-teacher-v2'});if(!res||res.ok===false)throw new Error(res&&res.message||'讀取失敗');const rows=res.rows||[];document.getElementById('activeCount').textContent=rows.length;document.getElementById('draftCount').textContent=rows.filter(row=>row.statusLabel==='資料填寫中').length;document.getElementById('reviewCount').textContent=rows.filter(row=>row.statusLabel==='待管理者確認').length;}catch(err){['activeCount','draftCount','reviewCount'].forEach(id=>document.getElementById(id).textContent='—');}}
-      async function init(){try{user=await window.YZManagerAuth.requireManager({next:'teacher-hub.html'});if(typeof fillHeader==='function')fillHeader();load();}catch(error){}}
+      let user=null;document.getElementById('teacherLoadRetry').addEventListener('click',()=>user?load():init());
+      async function load(){document.getElementById('teacherLoadStatus').textContent='';document.getElementById('teacherLoadRetry').hidden=true;try{const res=await api('getExternalTeacherWorkAssignees',{userId:user.id,workScope:'external-teacher-v2'});if(!res||res.ok===false)throw new Error(res&&res.message||'讀取失敗');const rows=res.rows||[];document.getElementById('activeCount').textContent=rows.length;document.getElementById('draftCount').textContent=rows.filter(row=>row.statusLabel==='資料填寫中').length;document.getElementById('reviewCount').textContent=rows.filter(row=>row.statusLabel==='待管理者確認').length;}catch(err){document.getElementById('teacherLoadStatus').textContent='老師名單暫時無法讀取：'+err.message;document.getElementById('teacherLoadRetry').hidden=false;['activeCount','draftCount','reviewCount'].forEach(id=>document.getElementById(id).textContent='—');}}
+      async function init(){try{user=await window.YZManagerAuth.requireManager({next:'teacher-hub.html'});if(typeof fillHeader==='function')fillHeader();load();}catch(error){document.getElementById('teacherLoadStatus').textContent=error.message;document.getElementById('teacherLoadRetry').hidden=false;}}
       if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
     })();
   </script>
   <script src="global-nav.js?v=20260806-external-teacher-center-v1"></script>
   <script src="ui-action-feedback.js?v=20260806-external-teacher-center-v1"></script>
-  <script src="internal-workspace-routes.js?v=20261031-1"></script>
+  <script src="internal-workspace-routes.js?v=20261031-2"></script>
   <script src="internal-workspace.js?v=20261031-3"></script>
 </body>
 </html>

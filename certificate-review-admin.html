@@ -10,7 +10,7 @@
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="internal-workspace.css?v=20261031-3">
-</head>
+<link rel="stylesheet" href="forms-workspace.css?v=20261031-1"></head>
 <body onload="initPage()" class="admin-wide-page">
   <div class="yz-global-nav" data-yz-global-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
@@ -21,7 +21,7 @@
     <div class="section-card" style="margin-top:0">
       <div class="topbar"><div><h1 class="title" style="margin:0">證明申請審核</h1><div class="muted-tip">這裡只審核在職證明與教學證明申請；範本設定請回「表格設定」。</div></div></div>
       <div class="toolbar-line"><div class="filters"><button class="btn secondary" onclick="setFilter('all')">全部</button><button class="btn" onclick="setFilter('pending')">待審核</button><button class="btn secondary" onclick="setFilter('approved')">已核准</button><button class="btn secondary" onclick="setFilter('rejected')">已退回</button></div><button class="btn secondary" style="width:auto" onclick="loadRows()">重新整理</button></div>
-      <div class="count-row"><span class="count-pill pending" id="pendingCount">待審核 0</span><span class="count-pill" id="approvedCount">已核准 0</span><span class="count-pill rejected" id="rejectedCount">已退回 0</span></div>
+      <div id="certificateScope"></div><div class="count-row"><span class="count-pill pending" id="pendingCount">待審核 0</span><span class="count-pill" id="approvedCount">已核准 0</span><span class="count-pill rejected" id="rejectedCount">已退回 0</span></div>
     </div>
     <div class="section-card"><div id="reviewList" class="review-list"></div></div>
   </div>
@@ -32,7 +32,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=20260919-taiwan-v2"></script>
   <script src="app.js?v=20260802-security-phase1"></script>
-  <script src="certificate-common-a4reset.js?v=20260530-a4reset-3"></script>
+  <script src="manager-auth.js?v=20261024-session-stability-v1"></script><script src="certificate-workspace.js?v=20261031-1"></script><script src="certificate-common-a4reset.js?v=20260530-a4reset-3"></script>
   <script>
     let rows=[]; let filter='pending'; let adminUser=null;
     function setText(id,text){const el=document.getElementById(id); if(el) el.textContent=text;}
@@ -41,9 +41,10 @@
     function findApp(id){return rows.find(r=>r.requestId===id);}
     function renderRows(){
       const box=document.getElementById('reviewList');
-      const pending=rows.filter(r=>r.status==='待主管審核').length, approved=rows.filter(r=>r.status==='已核准').length, rejected=rows.filter(r=>r.status==='已退回').length;
+      const scopedRows=CertificateWorkspace.filter(rows);
+      const pending=scopedRows.filter(r=>r.status==='待主管審核').length, approved=scopedRows.filter(r=>r.status==='已核准').length, rejected=scopedRows.filter(r=>r.status==='已退回').length;
       setText('pendingCount','待審核 '+pending); setText('approvedCount','已核准 '+approved); setText('rejectedCount','已退回 '+rejected);
-      let list=rows.slice();
+      let list=CertificateWorkspace.filter(rows);
       if(filter==='pending') list=list.filter(r=>r.status==='待主管審核');
       if(filter==='approved') list=list.filter(r=>r.status==='已核准');
       if(filter==='rejected') list=list.filter(r=>r.status==='已退回');
@@ -57,18 +58,18 @@
     }
     async function loadRows(){
       const box=document.getElementById('reviewList'); box.innerHTML='<div class="muted-tip">讀取中...</div>';
-      try{ const r=await api('getCertificateApplications',{admin:true,userId:adminUser.id||adminUser.employeeId,role:'admin'}); rows=(r.rows||[]).map(YZ_CERT.normalizeApplication); renderRows(); }
+      try{ await YZManagerAuth.requireManagerSession({redirect:false,expectedManager:adminUser}); const r=await api('getCertificateApplications',{admin:true,userId:adminUser.id||adminUser.employeeId,role:'admin'}); if(!r||r.ok===false)throw new Error(r?.message||'讀取失敗');rows=(r.rows||[]).map(YZ_CERT.normalizeApplication); renderRows(); }
       catch(e){ box.innerHTML='<div class="muted-tip">讀取失敗：'+YZ_CERT.esc(e.message)+'</div>'; }
     }
     function viewApplication(id){ const app=findApp(id); if(!app) return; document.getElementById('modalPreview').innerHTML=appHtml(app); const act=document.getElementById('modalActionButtons'); if(app.status==='待主管審核') act.innerHTML=`<button class="btn" type="button" onclick="approveApplication('${YZ_CERT.esc(app.requestId)}')">核准</button><button class="btn secondary" type="button" onclick="rejectApplication('${YZ_CERT.esc(app.requestId)}')">退回</button>`; else act.innerHTML='<span class="muted-tip">此申請已處理，管理端保留紀錄。</span>'; document.getElementById('certModal').classList.add('show'); }
     function closeModal(){ document.getElementById('certModal').classList.remove('show'); }
     async function approveApplication(id){ if(!confirm('確定核准這筆證明申請？核准後申請人即可列印與下載加密 PDF。')) return; try{ const r=await api('reviewCertificateApplication',{requestId:id,decision:'approve',reviewerId:adminUser.id||adminUser.employeeId,reviewerName:adminUser.name}); if(!r.ok) throw new Error(r.message||'核准失敗'); closeModal(); await loadRows(); }catch(e){ alert(e.message); } }
     async function rejectApplication(id){ const reason=prompt('請輸入退回原因：'); if(reason==null) return; try{ const r=await api('reviewCertificateApplication',{requestId:id,decision:'reject',rejectReason:reason,reviewerId:adminUser.id||adminUser.employeeId,reviewerName:adminUser.name}); if(!r.ok) throw new Error(r.message||'退回失敗'); closeModal(); await loadRows(); }catch(e){ alert(e.message); } }
-    async function initPage(){ fillHeader(); adminUser=requireLogin(); if(!adminUser) return; if(!hasSettingsZoneAccess(adminUser)){location.href='dashboard.html';return;} setPortalMode('settings'); YZ_CERT.injectCertificateStyles(); await loadRows(); }
+    async function initPage(){ fillHeader(); adminUser=requireLogin(); if(!adminUser) return; if(!hasSettingsZoneAccess(adminUser)){location.href='dashboard.html';return;} setPortalMode('settings'); YZ_CERT.injectCertificateStyles(); CertificateWorkspace.mount(renderRows,true); await loadRows(); }
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-1"></script>
+  <script src="internal-workspace-routes.js?v=20261031-2"></script>
   <script src="internal-workspace.js?v=20261031-3"></script>
 </body>
 </html>

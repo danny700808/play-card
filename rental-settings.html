@@ -24,7 +24,7 @@
     async function saveSettings(){ try{ const data={}; Object.keys(defaults).forEach(k=>data[k]=R.val(k)); data.updatedAt=window.firebase.firestore.FieldValue.serverTimestamp(); data.updatedBy=(R.user().id||R.user().email||''); await R.set('rentalReminderSettings','main',data,true); R.toast('租賃提醒設定已儲存。', true); }catch(e){ R.toast(e.message||String(e), false); } }
   </script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-1"></script>
+  <script src="internal-workspace-routes.js?v=20261031-2"></script>
   <script src="internal-workspace.js?v=20261031-3"></script>
 </body>
 </html>

@@ -17,7 +17,7 @@
     <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
   </div>
 
-  <div class="cert-wrap">
+  <div class="cert-wrap" data-teacher-utility-root>
     <div class="page-card">
       <div class="topbar"><div><h1 class="title" style="margin:0">教學證明申請</h1><div class="muted-tip">填寫後可先確認右側預覽。送出後會進入待主管審核，核准後才可列印或下載加密 PDF。</div></div></div>
       <div class="layout">
@@ -33,7 +33,7 @@
             <label style="display:flex;align-items:center;gap:8px;font-weight:800;margin:4px 0 12px"><input id="stillTeaching" type="checkbox" checked> 目前仍任教</label>
             <div class="warning-box">授課地點固定為「台中市豐原區圓環東路347號」，此為補習班合法立案地址，不提供修改。</div>
 
-            <div class="mini-actions"><button class="btn secondary" type="button" onclick="renderPreview()">預覽確認</button><button class="btn" type="button" onclick="submitApplication()">送出審核</button></div>
+            <div class="mini-actions"><button class="btn secondary" type="button" onclick="renderPreview()">預覽確認</button><button class="btn" type="button" id="submitCertificate" disabled onclick="submitApplication()">送出審核</button></div>
             <div id="msg" class="message"></div>
           </div>
         </div>
@@ -41,17 +41,17 @@
       </div>
     </div>
   </div>
-  <div class="modal-mask" id="submittedModal"><div class="modal-card"><h2>已送出申請</h2><p>您的證明文件已送出，待主管審核通過後，才可查看正式文件、列印或下載加密 PDF。</p><button class="btn" type="button" onclick="location.href='forms-hub.html'">我知道了</button></div></div>
+  <div class="modal-mask" id="submittedModal"><div class="modal-card"><h2>已送出申請</h2><p>您的證明文件已送出，待主管審核通過後，才可查看正式文件、列印或下載加密 PDF。</p><button class="btn" type="button" onclick="location.href='my-certificates.html'">查看申請進度</button></div></div>
   <script src="config.js?v=20260919-taiwan-storage-v3"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=20260919-taiwan-v2"></script>
   <script src="app.js?v=20260802-security-phase1"></script>
-  <script src="certificate-common.js?v=cert-preview-iframe-fix-20260530"></script>
+  <script src="teacher-more-auth-bridge.js?v=20261024-session-stability-v1"></script><script src="certificate-self-service.js?v=20261031-1"></script><script src="certificate-common.js?v=cert-preview-iframe-fix-20260530"></script>
   <script>
     const CERT_TYPE='teaching';
-    let currentTemplate=null;
+    let currentTemplate=null,templateReady=false,submitting=false;const submissionKey=crypto.randomUUID();
     function msg(text, ok=true){ const el=document.getElementById('msg'); el.textContent=text||''; el.style.color=ok?'#1f7a5a':'#b42318'; }
     function fillUserDefaults(user){
       if(CERT_TYPE==='teaching'){ document.getElementById('teacherName').value = document.getElementById('teacherName').value || (user.name||''); document.getElementById('teacherIdentity').value = YZ_CERT.identityLabelOfUser(user); }
@@ -74,13 +74,21 @@
       return '';
     }
     function renderPreview(){ const d=readData(); YZ_CERT.renderPreviewFrame(document.getElementById('previewArea'), {type:CERT_TYPE,template:currentTemplate||YZ_CERT.defaultTemplate(CERT_TYPE),data:d,status:'待主管審核',mode:'editing'}); }
-    async function loadTemplate(){ try{ const r=await api('getCertificateTemplate',{certificateType:CERT_TYPE}); currentTemplate=YZ_CERT.normalizeTemplate(CERT_TYPE,r.template||r.row||{}); }catch(e){ currentTemplate=YZ_CERT.defaultTemplate(CERT_TYPE); } }
+    async function loadTemplate(){
+      templateReady=false;document.getElementById('submitCertificate').disabled=true;
+      try{const r=await api('getCertificateTemplate',{certificateType:CERT_TYPE});if(!r||r.ok===false)throw new Error(r?.message||'讀取失敗');currentTemplate=YZ_CERT.normalizeTemplate(CERT_TYPE,r.template||{});templateReady=true;document.getElementById('submitCertificate').disabled=false;msg('');}
+      catch(e){msg('範本讀取失敗，請重新整理後再送出：'+e.message,false);}
+    }
+
     async function submitApplication(){
+      if(!templateReady||submitting)return;
       const d=readData(); const error=validateData(d); if(error){ msg(error,false); return; }
       if(!confirm('確認送出審核？送出後需待主管核准，核准後才可列印或下載加密 PDF。')) return;
-      try{ const user=getUser()||{}; const r=await api('submitCertificateApplication',{certificateType:CERT_TYPE,userId:user.id||user.employeeId,email:user.email,name:user.name,identityType:user.identityType,identityLabel:YZ_CERT.identityLabelOfUser(user),idNumber:d.idNumber,formData:d,templateSnapshot:currentTemplate}); if(!r.ok) throw new Error(r.message||'送出失敗'); document.getElementById('submittedModal').classList.add('show'); }catch(e){ msg('送出失敗：'+e.message,false); }
+      submitting=true;document.getElementById('submitCertificate').disabled=true;
+      try{ const user=getUser()||{}; const r=await api('submitCertificateApplication',{submissionKey,certificateType:CERT_TYPE,userId:user.id||user.employeeId,email:user.email,name:user.name,identityType:user.identityType,identityLabel:YZ_CERT.identityLabelOfUser(user),idNumber:d.idNumber,formData:d,templateSnapshot:currentTemplate}); if(!r.ok) throw new Error(r.message||'送出失敗'); document.getElementById('submittedModal').classList.add('show'); }catch(e){ msg('送出失敗：'+e.message,false);submitting=false;document.getElementById('submitCertificate').disabled=false; }
     }
     async function initPage(){
+      if(window.YZTeacherMoreAuth?.blockIfPortalOnly({title:'證明申請'}))return;
       const user=requireLogin(); if(!user) return; setPortalMode('staff'); YZ_CERT.injectCertificateStyles(); await loadTemplate(); fillUserDefaults(user);
       Array.from(document.querySelectorAll('input,select')).forEach(el=>{ el.addEventListener('input',renderPreview); el.addEventListener('change',renderPreview); });
       const idEl=document.getElementById('idNumber'); if(idEl) idEl.addEventListener('input',upperIdInput);
@@ -89,7 +97,7 @@
   </script>
   <script src="global-nav.js?v=20260808-teacher-nav-v1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-1"></script>
+  <script src="internal-workspace-routes.js?v=20261031-2"></script>
   <script src="internal-workspace.js?v=20261031-3"></script>
 </body>
 </html>

@@ -30,8 +30,8 @@
         "leave-policy-admin.html"
       ],
       [
-        "資料整理",
-        "person-data-admin.html"
+        "註冊建檔",
+        "registration-approval.html"
       ]
     ],
     "pages": [
@@ -146,10 +146,6 @@
         "external-teacher-admin.html?source=teacher-hub"
       ],
       [
-        "條款",
-        "contract-admin.html"
-      ],
-      [
         "公告",
         "announcement-admin.html?audience=external&source=teacher-hub"
       ],
@@ -163,7 +159,7 @@
       ],
       [
         "表單",
-        "external-teacher-forms-admin.html"
+        "quotation-contract-hub.html?identity=external&source=teacher-hub"
       ]
     ],
     "pages": [
@@ -220,15 +216,15 @@
         "quotation-contract-hub.html"
       ],
       [
-        "模板設定",
-        "form-settings-hub.html"
+        "集點卡列印",
+        "gift-point-card.html?source=forms"
       ],
       [
         "估價單",
         "quotation-admin.html"
       ],
       [
-        "集點卡",
+        "集點卡設定",
         "gift-point-card-admin.html"
       ],
       [
@@ -311,6 +307,7 @@
       "routine.html",
       "training.html",
       "forms-hub.html",
+      "my-certificates.html",
       "profile.html",
       "salary.html",
       "temporary-attendance.html",
@@ -324,6 +321,7 @@
  function resolve(path,search){
    const file=path.split('/').pop();const query=new URLSearchParams(search||'');
    if(query.get('source')==='teacher-hub' || (file==='employee-admin.html'&&query.get('type')==='external')) return 'teachers';
+   if(file==='gift-point-card.html'&&query.get('source')==='forms')return 'forms';
    if(file==='leave.html'&&query.get('mode')==='approval')return 'approval';
    if(['task.html','routine.html'].includes(file)&&query.get('mode')==='admin')return 'work';
    return Object.keys(groups).find(key=>groups[key].pages.includes(file))||null;
