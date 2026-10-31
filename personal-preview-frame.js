@@ -53,6 +53,7 @@
    doc.querySelectorAll('script[src]').forEach(n=>{if(/firebase(?:js|-[a-z]+-compat)|teacher-personal-entry\.js/.test(n.src))n.remove();});
    // Instrument only this isolated copy so existing links and page-specific routing work in srcdoc.
    const rewrite=source=>source.replace(/(?<![\w$.])(?:(?:window|global)\.)?location\.(href|search|pathname|origin|hash|host|hostname|protocol|assign|replace|reload)\b/g,'window.__previewLocation.$1');
+   doc.querySelectorAll('*').forEach(node=>{for(const attr of [...node.attributes])if(/^on/i.test(attr.name))node.setAttribute(attr.name,rewrite(attr.value));});
    await Promise.all([...doc.querySelectorAll('script')].map(async node=>{
     const src=node.getAttribute('src');if(src){const asset=new URL(src,url);if(asset.origin!==location.origin)return;const response=await fetch(asset.href,{credentials:'omit'});if(!response.ok)throw Error('預覽元件讀取失敗。');node.removeAttribute('src');node.textContent=rewrite(await response.text()).replace(/<\/script/gi,'<\\/script');}
     else node.textContent=rewrite(node.textContent);
