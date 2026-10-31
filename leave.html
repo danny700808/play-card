@@ -123,7 +123,7 @@
 
 </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-tree1">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact2">
 </head>
 <body onload="init()">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -156,7 +156,7 @@
         <div class="field hidden" id="fieldEventChoice"><label for="eventChoice">事件延續</label><select id="eventChoice" disabled><option value="">請先選擇婚假或喪假</option></select><div class="field-error" id="errorEventChoice"></div><div class="muted" id="eventChoiceHintText">若這次和上一次是同一事件，請選擇延續上一次；不是同一事件時再改選建立新事件。</div></div>
         <div class="event-box hidden" id="eventContextBox"></div>
         <div class="field hidden" id="fieldBereavementRelation"><label for="bereavementRelation">喪假關係人</label><select id="bereavementRelation" disabled><option value="">請先讀取關係資料</option></select><div class="field-error" id="errorBereavementRelation"></div><div class="muted" id="bereavementHintText">選擇關係人後，系統會顯示目前設定的喪假天數。</div></div>
-        <div class="field hidden" id="fieldSegments"><label>請假時間</label><div class="segment-wrap"><div class="muted">請先選擇整天請假、部分請假或事後補假。</div><div id="segmentList" class="segment-list"></div><div class="segment-toolbar"><button class="btn secondary" type="button" id="addSegmentBtn">＋新增請假時間</button></div><div class="field-error" id="errorSegments"></div><div id="leaveSegmentSummary" class="summary-box segment-summary hidden"></div></div></div>
+        <div class="field hidden" id="fieldSegments"><label>請假時間</label><div class="segment-wrap"><div class="internal-explanation muted">請先選擇整天請假、部分請假或事後補假。</div><div id="segmentList" class="segment-list"></div><div class="segment-toolbar"><button class="btn secondary" type="button" id="addSegmentBtn">＋新增請假時間</button></div><div class="field-error" id="errorSegments"></div><div id="leaveSegmentSummary" class="summary-box segment-summary hidden"></div></div></div>
         <div class="field" id="fieldNote"><label for="note">備註</label><textarea id="note" placeholder="有任何問題請填寫在這裡"></textarea></div>
         <div class="field" id="fieldFile"><label for="file" id="fileLabel">附件（選填）</label><input id="file" type="file" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx"><div class="muted" id="fileHintText">可上傳 jpg、png、pdf、doc、docx，單檔上限 30MB。婚假／喪假／病假可先送出，核准後可再補證明。</div></div>
         <input id="editingRequestId" type="hidden">
@@ -1450,8 +1450,8 @@ function renderLeaveApprovalCard(x, history){
 function renderApprovalRows(rows){
   approvalRows = rows || [];
   const q = leaveSearchText();
-  const list = approvalRows.filter(x => !q || [x.name,x.reason,x.status,x.simpleText,x.leaveDate,x.startDate,x.endDate,x.note].some(v => String(v || '').toLowerCase().indexOf(q) >= 0));
-  qs('#leavePendingTab').textContent = `未處理（${approvalRows.length}）`;
+  const list = PersonnelApprovalScope.filter(approvalRows).filter(x => !q || [x.name,x.reason,x.status,x.simpleText,x.leaveDate,x.startDate,x.endDate,x.note].some(v => String(v || '').toLowerCase().indexOf(q) >= 0));
+  qs('#leavePendingTab').textContent = `未處理（${PersonnelApprovalScope.filter(approvalRows).length}）`;
   qs('#approvalCountText').textContent = list.length ? `${list.length} 筆未處理` : '目前沒有未處理請假單';
   qs('#approvalList').innerHTML = list.map(x => renderLeaveApprovalCard(x, false)).join('') || '<div class="approval-empty">目前沒有資料</div>';
   qsa('[data-approve-id]').forEach(btn => btn.onclick = () => handleApproval(btn.dataset.approveId, 'approve', btn));
@@ -1462,12 +1462,12 @@ function leaveRecordDateText(x){ return x.leaveDate || x.startDate || x.date || 
 function renderApprovalRecordRows(rows){
   approvalHistoryRows = Array.isArray(rows) ? rows : [];
   const q = leaveSearchText();
-  let list = approvalHistoryRows.filter(x => String(x.status || '') !== '待審核');
+  let list = PersonnelApprovalScope.filter(approvalHistoryRows).filter(x => String(x.status || '') !== '待審核');
   if(q){
     list = list.filter(x => [x.name,x.reason,x.status,x.simpleText,x.leaveDate,x.startDate,x.endDate,x.note].some(v => String(v || '').toLowerCase().indexOf(q) >= 0));
   }
   list.sort((a,b) => String(leaveRecordDateText(b) || '').localeCompare(String(leaveRecordDateText(a) || '')) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-  const allHistoryCount = approvalHistoryRows.filter(x => String(x.status || '') !== '待審核').length;
+  const allHistoryCount = PersonnelApprovalScope.filter(approvalHistoryRows).filter(x => String(x.status || '') !== '待審核').length;
   qs('#leaveHistoryTab').textContent = allHistoryCount ? `歷史紀錄（${allHistoryCount}）` : '歷史紀錄';
   qs('#approvalRecordCountText').textContent = list.length ? `${list.length} 筆歷史紀錄` : '目前沒有歷史紀錄';
   qs('#approvalRecordList').innerHTML = list.map(x => renderLeaveApprovalCard(x, true)).join('') || '<div class="approval-empty">目前沒有資料</div>';
@@ -1489,6 +1489,7 @@ async function loadApprovalRecords(){
   setMsg(qs('#approvalRecordMsg'), '');
   qs('#approvalRecordCountText').textContent = '讀取中…';
   try{
+    await PersonnelApprovalScope.load(() => {renderApprovalRows(approvalRows);renderApprovalRecordRows(approvalHistoryRows);});
     const res = await api('getAdminLeaveRecords', { userId:user.id });
     if(!res.ok){
       setMsg(qs('#approvalRecordMsg'), res.message || '請假歷史紀錄讀取失敗', true);
@@ -1505,6 +1506,8 @@ async function loadApprovalRecords(){
 async function loadApprovalList(){
   const user = requireLogin();
   if(!user || !leaveApprovalMode) return;
+  try{await PersonnelApprovalScope.load(() => {renderApprovalRows(approvalRows);renderApprovalRecordRows(approvalHistoryRows);});}
+  catch(error){setMsg(qs('#approvalMsg'),error.message||'人員分類讀取失敗',true);return;}
   const r = await api('getPendingLeaveApprovals', { userId:user.id });
   if(!r.ok){
     setMsg(qs('#approvalMsg'), r.message || '待簽核資料讀取失敗', true);
@@ -1975,6 +1978,7 @@ async function init(){
 }
 </script>  <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-tree1"></script>
-  <script src="internal-workspace.js?v=20261031-tree1"></script>
+  <script src="personnel-approval-scope.js?v=20261031-compact2"></script>
+  <script src="internal-workspace-routes.js?v=20261031-compact2"></script>
+  <script src="internal-workspace.js?v=20261031-compact2"></script>
 </body></html>

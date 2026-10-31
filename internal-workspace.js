@@ -20,7 +20,7 @@
   }
   if(manager){
    primary.append(link('營運中心','portal.html#overview',false),link('管理樹狀圖','settings.html',file==='settings.html'));
-   const approvals=link('待簽核','approval-hub.html',groupKey==='approval');
+   const approvals=link('人事','settings.html#people',false);
    const badge=document.createElement('span');badge.id='badge-approval';badge.className='internal-nav-badge';approvals.append(badge);primary.append(approvals);
   }else primary.append(link('員工服務','dashboard.html',file==='dashboard.html'));
   const logout=document.createElement('button');logout.type='button';logout.textContent='登出';logout.className='internal-logout';
@@ -41,7 +41,7 @@
    if(parent){const back=link('返回'+parent.label,routes.treeLink(parent),false);back.className='internal-parent-link';crumbs.append(back);}
    }
    renderCrumbs();
-   window.InternalWorkspaceNavigation={setPersonnelType(type){
+   window.InternalWorkspaceNavigation={refresh:renderCrumbs,setPersonnelType(type){
     if(!['employee-admin.html','salary-admin.html'].includes(file))return;
     const u=new URL(location.href);u.searchParams.delete('nav');
     if(['staff','parttime','external'].includes(type))u.searchParams.set('type',type);else u.searchParams.delete('type');
@@ -59,23 +59,18 @@
    });shell.append(secondary);
   }
   if(nav)nav.replaceWith(shell);else document.body.prepend(shell);
-  // Fold static explanations only; live status, totals, form controls, and warnings stay visible.
-  const noteSelectors=['.internal-home-intro','.internal-home-group header p','.tile > span:not(.badge)', '.hub-card .d','.home-tile .tile-desc','.manage-card > span','.hero > div > p','.section-head p','.compact-note','.hr-help','.rule','.sheet-desc','.subtitle','.sub','.hub-desc','.entry-card > span','.internal-explanation','.help-text','.field-hint'];
-  const notes=Array.from(document.querySelectorAll(noteSelectors.join(','))).filter(node=>
-    !node.id && !node.querySelector('[id],input,select,textarea,button,[role="alert"],[aria-live]') && node.textContent.trim() && !node.closest('[role="dialog"],.modal,.dialog')
-  );
-  if(notes.length){
-   const details=document.createElement('details');details.className='internal-help';
-   const summary=document.createElement('summary');summary.textContent='操作說明';details.append(summary);
-   notes.forEach(node=>{
-    if(node.closest('.internal-description'))return;
-    const copy=node.cloneNode(true);copy.removeAttribute('class');copy.className='internal-help-item';
-    const parentLink=node.closest('a');
-    if(parentLink){const label=parentLink.querySelector('strong,b,.h,.tile-title,.hub-title');if(label){const heading=document.createElement('strong');heading.textContent=label.textContent+'：';copy.prepend(heading);}}
-    details.append(copy);node.classList.add('internal-description');
+  // Remove static explanatory copy only. IDs, fields, links, alerts and live data are preserved.
+  const noteSelectors=['.internal-home-intro','.internal-home-group header p','.tile > span:not(.badge)','.hub-card .d','.home-tile .tile-desc','.manage-card > span','.hero > div > p','.hero > p','.section-head p','.compact-note','.hr-help','.rule','.sheet-desc','.subtitle','.sub','.hub-desc','.entry-card > span','.internal-explanation','.help-text','.field-hint','.section-desc','.section-note','.hint'];
+  function hideStaticNotes(){
+   document.querySelectorAll(noteSelectors.join(',')).forEach(node=>{
+    if(node.id||node.querySelector('[id],input,select,textarea,button,a,[role="alert"],[aria-live]')||node.closest('[role="alert"],[aria-live],.approval-note,.approval-meta')||!node.textContent.trim())return;
+    node.classList.add('internal-description');
    });
-   const content=document.querySelector('.internal-home-sections')?.parentElement || document.querySelector('body > .container,body > main,body > .wrap');
-   (content||document.body).append(details);
+  }
+  hideStaticNotes();
+  if(typeof MutationObserver==='function'){
+   let queued=false;
+   new MutationObserver(()=>{if(queued)return;queued=true;queueMicrotask(()=>{queued=false;hideStaticNotes();});}).observe(document.body,{childList:true,subtree:true});
   }
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();

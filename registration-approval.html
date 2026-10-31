@@ -54,7 +54,7 @@
     @media(max-width:980px){.onboarding-grid{grid-template-columns:1fr}.application-list{max-height:none}.identity-layout{grid-template-columns:1fr}}
     @media(max-width:620px){.info-grid,.form-grid{grid-template-columns:1fr}.form-grid .full{grid-column:auto}.salary-line{grid-template-columns:1fr}.sticky-actions{display:grid}.sticky-actions .btn{width:100%}}
   </style>
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-tree1">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact2">
 </head>
 <body onload="init()" class="admin-wide-page">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -199,14 +199,14 @@
     function isRegistrationPending(row){const s=String((row&&row.applicationStatus)||'').trim();return !['approved','rejected','archived','deleted','已核准','已駁回'].includes(s)}
     function setRegistrationTab(tab){activeTab=tab==='history'?'history':'pending';$('pendingTab').classList.toggle('active',activeTab==='pending');$('historyTab').classList.toggle('active',activeTab==='history');$('editor').style.display='none';$('editorEmpty').style.display=activeTab==='pending'?'block':'none';selected=null;renderList();if(activeTab==='history'&&!historyRows.length)loadRegistrationHistory();}
     function renderTabs(){
-      const pendingCount=rows.length;
+      const pendingCount=PersonnelApprovalScope.filter(rows).length;
       $('pendingTab').textContent=`未處理（${pendingCount}）`;
-      $('historyTab').textContent=historyRows.length?`歷史紀錄（${historyRows.length}）`:'歷史紀錄';
+      const h=PersonnelApprovalScope.filter(historyRows).length;$('historyTab').textContent=h?`歷史紀錄（${h}）`:'歷史紀錄';
     }
     function renderList(){
       renderTabs();
       const kw=String($('keyword').value||'').trim().toLowerCase();
-      const source=activeTab==='history'?historyRows:rows;
+      const source=PersonnelApprovalScope.filter(activeTab==='history'?historyRows:rows);
       const list=source.filter(r=>!kw||[r.name,r.email,r.idNumber,r.idNumberMasked,r.applicationStatusLabel,r.statusLabel,r.createdAtText,r.updatedAtText,r.requestedIdentityLabel,r.notificationPreferenceLabel,r.lineBindStatus].join(' ').toLowerCase().includes(kw));
       $('countText').textContent=activeTab==='pending'?(list.length?`${list.length} 筆未處理`:'目前沒有未處理申請'):(list.length?`${list.length} 筆歷史紀錄`:'目前沒有歷史紀錄');
       if(activeTab==='history'){
@@ -271,7 +271,7 @@
     function renderChecklist(){if(!selected)return;const m=missing();$('checklist').innerHTML=m.length?m.map(x=>`<div class="check-item">尚未完成：${esc(x)}</div>`).join(''):'<div class="check-item ok">所有必要資料已完成，可以進行核准與建檔。</div>';$('approveBtn').disabled=m.length>0}
     async function loadRows(preselect){
       const user=requireLogin();if(!user)return;setMsg($('pageMsg'),'讀取申請資料中…');
-      try{const [r,opt]=await Promise.all([api('getPendingRegistrations',{userId:user.id}),api('getOnboardingSetupOptions',{userId:user.id})]);rows=r&&r.ok!==false?(r.rows||r.list||[]):[];scheduleTemplates=opt&&opt.ok!==false?(opt.scheduleTemplates||[]):[];$('scheduleTemplateId').innerHTML='<option value="">請選擇班表模板</option>'+scheduleTemplates.map(t=>`<option value="${esc(t.templateId)}">${esc(t.templateName)}</option>`).join('');setMsg($('pageMsg'),'');renderList();if(historyRows.length||activeTab==='history')loadRegistrationHistory();if(activeTab!=='pending')return;if(preselect&&rows.some(x=>x.applicationId===preselect))selectRow(preselect);else if(selected&&rows.some(x=>x.applicationId===selected.applicationId))selectRow(selected.applicationId);else if(rows[0])selectRow(rows[0].applicationId);else{selected=null;$('editor').style.display='none';$('editorEmpty').style.display='block'}}catch(err){setMsg($('pageMsg'),err.message||String(err),true)}
+      try{await PersonnelApprovalScope.load(()=>{selected=null;$('editor').style.display='none';$('editorEmpty').style.display='block';renderList();},{roster:false});const [r,opt]=await Promise.all([api('getPendingRegistrations',{userId:user.id}),api('getOnboardingSetupOptions',{userId:user.id})]);rows=r&&r.ok!==false?(r.rows||r.list||[]):[];scheduleTemplates=opt&&opt.ok!==false?(opt.scheduleTemplates||[]):[];$('scheduleTemplateId').innerHTML='<option value="">請選擇班表模板</option>'+scheduleTemplates.map(t=>`<option value="${esc(t.templateId)}">${esc(t.templateName)}</option>`).join('');setMsg($('pageMsg'),'');renderList();if(historyRows.length||activeTab==='history')loadRegistrationHistory();if(activeTab!=='pending')return;const scoped=PersonnelApprovalScope.filter(rows);if(preselect&&scoped.some(x=>x.applicationId===preselect))selectRow(preselect);else if(selected&&scoped.some(x=>x.applicationId===selected.applicationId))selectRow(selected.applicationId);else if(scoped[0])selectRow(scoped[0].applicationId);else{selected=null;$('editor').style.display='none';$('editorEmpty').style.display='block'}}catch(err){setMsg($('pageMsg'),err.message||String(err),true)}
     }
     async function saveDraft(){if(!selected)return;const user=requireLogin();const btn=$('saveDraftBtn'),progress=startActionButtonProgress(btn,{label:'儲存中'});try{const r=await api('saveRegistrationOnboardingDraft',{userId:user.id,applicationId:selected.applicationId,onboardingDraft:buildDraft()});if(!r||r.ok===false)throw new Error((r&&r.message)||'儲存失敗');progress.done('已儲存',500,true);setMsg($('pageMsg'),r.message||'已儲存草稿');await loadRows(r.row&&r.row.applicationId)}catch(err){progress.fail('儲存失敗');setMsg($('pageMsg'),err.message||String(err),true)}}
     async function approve(){if(!selected)return;const m=missing();if(m.length){setMsg($('pageMsg'),'尚有資料未完成：'+m.join('、'),true);return}if(!confirm(`確定完成 ${selected.name||'此申請人'} 的入職建檔嗎？`))return;const user=requireLogin();const btn=$('approveBtn'),progress=startActionButtonProgress(btn,{label:'建檔中',maxPct:88});try{const r=await api('approveRegistrationOnboarding',{userId:user.id,applicationId:selected.applicationId,onboardingDraft:buildDraft()});if(!r||r.ok===false)throw new Error((r&&r.message)||'核准失敗');progress.done('已完成',600,true);showApprovalResult(r);selected=null;await loadRows()}catch(err){progress.fail('核准失敗');setMsg($('pageMsg'),err.message||String(err),true)}}
@@ -282,7 +282,8 @@
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-tree1"></script>
-  <script src="internal-workspace.js?v=20261031-tree1"></script>
+  <script src="personnel-approval-scope.js?v=20261031-compact2"></script>
+  <script src="internal-workspace-routes.js?v=20261031-compact2"></script>
+  <script src="internal-workspace.js?v=20261031-compact2"></script>
 </body>
 </html>

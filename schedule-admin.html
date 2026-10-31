@@ -302,7 +302,7 @@
 </style>
 
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-tree1">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact2">
 </head>
 <body class="admin-wide-page">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -334,7 +334,7 @@
       <div class="card">
         <div class="toolbar"><div><h2 class="section-title">員工班表套用</h2></div><div class="right"><button class="btn btn-secondary" type="button" onclick="resetAssignmentForm()">新增套用</button></div></div>
         <form id="assignmentForm"><input type="hidden" id="assignmentId" /><div class="field"><label for="employeeId">員工</label><select id="employeeId" required></select></div><div class="field"><label for="assignTemplateId">班表模板</label><select id="assignTemplateId" required></select></div><div class="row"><div class="field"><label for="assignStartDate">開始日期</label><input id="assignStartDate" type="date" required /></div><div class="field"><label for="assignEndDate">結束日期</label><input id="assignEndDate" type="date" /></div></div><label class="checkbox-line"><input id="assignIndefinite" type="checkbox" onchange="toggleEndDate()" />無期限</label><div class="row"><div class="field"><label for="assignEnabled">是否啟用</label><select id="assignEnabled"><option value="TRUE">啟用</option><option value="FALSE">停用</option></select></div><div class="field"><label for="assignNote">備註</label><input id="assignNote" type="text" placeholder="例如：長期套用" /></div></div><div class="actions"><button class="btn btn-primary" type="submit">儲存員工套用班表</button><button class="btn btn-ghost" type="button" onclick="resetAssignmentForm()">清空表單</button></div></form>
-        <div class="notice">提醒：如果同一位員工同一天有兩筆都啟用中的班表套用資料，系統只會採用最晚建立的一筆。為了避免混亂，建議同時只保留一筆有效資料。</div>
+        <div class="internal-explanation notice">提醒：如果同一位員工同一天有兩筆都啟用中的班表套用資料，系統只會採用最晚建立的一筆。為了避免混亂，建議同時只保留一筆有效資料。</div>
         <div id="assignmentStatus" class="status"></div>
       </div>
       <div class="card" style="margin-top:18px;"><h2 class="section-title">員工目前套用中的班表</h2><div id="assignmentList" class="assignment-list"></div></div>
@@ -1156,7 +1156,7 @@
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-tree1"></script>
-  <script src="internal-workspace.js?v=20261031-tree1"></script>
+  <script src="internal-workspace-routes.js?v=20261031-compact2"></script>
+  <script src="internal-workspace.js?v=20261031-compact2"></script>
 </body>
 </html>

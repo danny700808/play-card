@@ -234,7 +234,7 @@
 
 </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-tree1">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact2">
 </head>
 <body onload="init()">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -295,7 +295,7 @@
           <option value="12">12 小時</option>
         </select>
         <div id="hoursGrid" class="hour-grid" role="group" aria-label="選擇時數"></div>
-        <div class="muted">先選整數小時，再點「＋0.5 小時」加半小時；再點一次可取消，也可以先選半小時。最多 12 小時。</div>
+        <div class="internal-explanation muted">先選整數小時，再點「＋0.5 小時」加半小時；再點一次可取消，也可以先選半小時。最多 12 小時。</div>
         <div id="parttimeSelectedTotal" class="parttime-selected-total" aria-live="polite"></div>
         <div class="field-error" id="errorHours"></div>
       </div>
@@ -313,7 +313,7 @@
 
     <div class="card" id="parttimePendingCard" style="display:none">
       <h2 class="title" style="font-size:20px;margin:0 0 8px">待處理事項</h2>
-      <div class="muted">超出排班時數、臨時出勤或工讀時數相關申請會顯示在這裡。</div>
+      <div class="internal-explanation muted">超出排班時數、臨時出勤或工讀時數相關申請會顯示在這裡。</div>
       <div id="parttimePendingList" class="pending-panel"></div>
     </div>
 
@@ -321,7 +321,7 @@
       <div class="topbar" style="margin-bottom:10px">
         <div>
           <h2 class="title" style="font-size:20px;margin:0">本月時數紀錄</h2>
-          <div class="muted">只顯示當月資料，月份切換後前台不再顯示舊月份。</div>
+          <div class="internal-explanation muted">只顯示當月資料，月份切換後前台不再顯示舊月份。</div>
         </div>
         <span id="monthBadge" class="month-badge"></span>
       </div>
@@ -335,7 +335,7 @@
     <div class="card">
       <details class="history-search-panel">
         <summary>歷史紀錄搜尋</summary>
-        <div class="muted inline-note">一次最多查詢 60 天。</div>
+        <div class="internal-explanation muted inline-note">一次最多查詢 60 天。</div>
         <div class="history-grid">
           <div class="field">
             <label for="historyStart">開始日期</label>
@@ -734,7 +734,7 @@
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-tree1"></script>
-  <script src="internal-workspace.js?v=20261031-tree1"></script>
+  <script src="internal-workspace-routes.js?v=20261031-compact2"></script>
+  <script src="internal-workspace.js?v=20261031-compact2"></script>
 </body>
 </html>

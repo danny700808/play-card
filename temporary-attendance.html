@@ -27,7 +27,7 @@ body{background:var(--bg);color:var(--ink)}
 @media(max-width:720px){.grid{grid-template-columns:1fr}.container{padding:10px}.title{font-size:23px}}
 </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-tree1">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact2">
 </head>
 <body onload="init()">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -37,7 +37,7 @@ body{background:var(--bg);color:var(--ink)}
 <div class="container">
 <div class="card">
   <h1 class="title">臨時出勤申請</h1>
-  <div class="muted">主管尚未排班、臨時增加出勤、需要班表外額外出勤，或已提出請假後又臨時回來出勤時使用。請假與臨時出勤是兩筆獨立紀錄，會各自保留、各自審核。
+  <div class="internal-explanation muted">主管尚未排班、臨時增加出勤、需要班表外額外出勤，或已提出請假後又臨時回來出勤時使用。請假與臨時出勤是兩筆獨立紀錄，會各自保留、各自審核。
 若是「原本有班但忘記打卡」，請回打卡頁下方「有班但未完成打卡」提出補打卡；若是已打卡但時間錯誤，請在該筆紀錄點「修正這筆」。
 主管核准後，系統會正式補進打卡紀錄、工讀時數與薪資；員工不需要再回工讀時數頁重複登記。</div>
   <div id="msg" class="message"></div>
@@ -534,6 +534,6 @@ async function submitRequest(){
 </script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-tree1"></script>
-  <script src="internal-workspace.js?v=20261031-tree1"></script>
+  <script src="internal-workspace-routes.js?v=20261031-compact2"></script>
+  <script src="internal-workspace.js?v=20261031-compact2"></script>
 </body></html>

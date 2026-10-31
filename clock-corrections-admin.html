@@ -11,7 +11,7 @@
     .container{width:min(96vw,1300px);max-width:1300px;margin:0 auto;padding:16px}
     .clock-export-card{margin-top:16px}
   </style>
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-tree1">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact2">
 </head>
 <body onload="init()" class="admin-wide-page">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -100,7 +100,7 @@
       const out=[];snap.forEach(doc=>out.push(Object.assign({__id:doc.id},doc.data()||{})));return out;
     }
     function setTab(tab){activeTab=tab==='history'?'history':'pending';qs('#pendingTab').classList.toggle('active',activeTab==='pending');qs('#historyTab').classList.toggle('active',activeTab==='history');render();}
-    function renderTabs(){const pending=rows.filter(r=>isPendingStatus(r.status)).length;const history=rows.filter(r=>!isPendingStatus(r.status)).length;qs('#pendingTab').textContent=`未處理（${pending}）`;qs('#historyTab').textContent=history?`歷史紀錄（${history}）`:'歷史紀錄';}
+    function renderTabs(){const pending=PersonnelApprovalScope.filter(rows).filter(r=>isPendingStatus(r.status)).length;const history=PersonnelApprovalScope.filter(rows).filter(r=>!isPendingStatus(r.status)).length;qs('#pendingTab').textContent=`未處理（${pending}）`;qs('#historyTab').textContent=history?`歷史紀錄（${history}）`:'歷史紀錄';}
     function typeLabel(r){if(r.requestKind==='earlyLeave')return '提早下班';if(r.requestKind==='midShiftLeave')return '中途請假（保留已工作時數）';if(r.requestKind==='specialClock')return '特殊打卡';if(r.requestKind==='missingClock')return '補打卡';return r.correctionType||'打卡修正'}
     function changeLine(r){if(r.requestKind==='earlyLeave')return `上班 ${r.actualClockInTime||'—'} → 提早下班 ${r.correctTime||'—'}`;const oldText=r.requestKind==='specialClock'?'特殊打卡申請':(r.requestKind==='missingClock'?'缺少打卡':(r.originalRecordId&&r.originalTime!=='—'?r.originalTime:'無原始紀錄'));return `${oldText} → ${r.correctTime||'—'}`}
     function card(row){
@@ -123,7 +123,7 @@
     function render(){
       renderTabs();
       const kw=lower(qs('#keyword').value);
-      const list=rows.filter(r=>(activeTab==='pending'?isPendingStatus(r.status):!isPendingStatus(r.status))).filter(r=>!kw||[r.name,r.email,r.employeeId,r.correctDate,r.correctTime,r.correctAction,r.correctionType,r.reason,r.status].join(' ').toLowerCase().includes(kw));
+      const list=PersonnelApprovalScope.filter(rows).filter(r=>(activeTab==='pending'?isPendingStatus(r.status):!isPendingStatus(r.status))).filter(r=>!kw||[r.name,r.email,r.employeeId,r.correctDate,r.correctTime,r.correctAction,r.correctionType,r.reason,r.status].join(' ').toLowerCase().includes(kw));
       qs('#list').innerHTML=list.map(card).join('')||'<div class="approval-empty">目前沒有資料</div>';
     }
     async function init(){
@@ -134,6 +134,7 @@
     async function loadRows(){
       msg('讀取中…','notice');
       try{
+        await PersonnelApprovalScope.load(render);
         const pendingRes=await api('getPendingClockCorrections',{userId:currentUser.id}).catch(()=>({rows:[]}));
         const all=await readAllCorrections().catch(()=>[]);
         rows=mergeRows([].concat(all,pendingRes&&pendingRes.rows||[]));
@@ -151,7 +152,8 @@
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-tree1"></script>
-  <script src="internal-workspace.js?v=20261031-tree1"></script>
+  <script src="personnel-approval-scope.js?v=20261031-compact2"></script>
+  <script src="internal-workspace-routes.js?v=20261031-compact2"></script>
+  <script src="internal-workspace.js?v=20261031-compact2"></script>
 </body>
 </html>

@@ -22,11 +22,11 @@ function fixture(hash=''){
  const dom=new JSDOM('<main><section data-management-tree="root"></section></main>',{url:'https://example.test/settings.html'+hash,runScripts:'outside-only'});
  dom.window.InternalWorkspaceRoutes=routes;dom.window.eval(read('management-tree.js'));return dom;
 }
-test('tree expands only chosen children, supports browser history and safe invalid hashes',async()=>{
+test('tree exposes deep links in one map, supports focus, history and safe invalid hashes',async()=>{
  const dom=fixture(),w=dom.window,doc=w.document;
- assert.equal(doc.querySelectorAll('.management-node').length,4);
+ assert.ok(doc.querySelector('[data-node-id=staff-salary]'));assert.ok(doc.querySelector('[data-node-id=parttime-leave-review]'));assert.ok(doc.querySelector('[data-node-id=external-contract-review]'));
  w.location.hash='people';w.dispatchEvent(new w.HashChangeEvent('hashchange'));
- assert.equal(doc.querySelectorAll('.management-node').length,4);
+ assert.ok(doc.querySelector('[data-node-id=staff-salary]'));assert.ok(doc.querySelector('[data-node-id=parttime-salary]'));assert.ok(!doc.querySelector('[data-node-id=rental-applications]'));
  assert.equal(doc.querySelector('.management-up').getAttribute('href'),'#root');
  w.location.hash='parttime';w.dispatchEvent(new w.HashChangeEvent('hashchange'));
  assert.equal(doc.querySelector('.management-ancestor.is-current').textContent,'工讀生');

@@ -140,7 +140,7 @@
   <link rel="stylesheet" href="hr-workspace.css?v=20261031-1">
   <script src="operations-manager-auth.js?v=20261024-session-stability-v1"></script>
   <script src="hr-session.js?v=20261031-1"></script>
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-tree1">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact2">
 </head>
 <body>
   <nav class="hr-workspace-nav" data-yz-global-nav aria-label="人事工作區">
@@ -177,7 +177,7 @@
       <div class="settings-head">
         <div>
           <div class="settings-title">欄位顯示設定</div>
-          <div class="cat-secondary">姓名與返回按鈕固定保留；其他資料勾選後顯示，取消勾選後不會出現在人員資料頁。</div>
+          
         </div>
         <button class="ghost" type="button" onclick="cancelVisibilitySettings()">回到類別</button>
       </div>
@@ -649,7 +649,7 @@
       allEmployees = cleaned.rows;
       const duplicateCount=Math.max(cleaned.duplicateCount,Array.isArray(res.duplicateGroups)?res.duplicateGroups.length:0);
       const notice=$('#dataNotice');
-      if(duplicateCount){notice.style.display='block';notice.textContent=`系統偵測到 ${duplicateCount} 組可能重複的人員主檔；目前名單已合併顯示，正式刪除前仍應先核對歷史薪資、班表與打卡資料。`;}
+      if(duplicateCount){notice.style.display='block';notice.innerHTML=`<a href="person-data-admin.html">重複資料待核對 ${duplicateCount} 組 →</a>`;}
       else{notice.style.display='none';notice.textContent='';}
       renderCategories();
     }
@@ -668,8 +668,8 @@
           <div class="cat-secondary">填寫／待確認：${onboarding[type] || 0} 人<br>離職／停用／封存：${inactive[type] || 0} 人</div>
         </div>
       `).join('');
-      const cleanupCard=`<div class="category-card settings" onclick="location.href='person-data-admin.html'"><div class="cat-title">人員資料整理</div><div class="cat-count" style="font-size:28px">查看</div><div class="cat-secondary">找出舊資料、歸到同一人或安全刪除</div></div>`;
-      const settingsCard=`<div class="category-card settings" onclick="openVisibilitySettings()"><div class="cat-title">顯示設定</div><div class="cat-count" style="font-size:28px">自訂</div><div class="cat-secondary">勾選各身分要顯示的資料</div></div>`;
+      const cleanupCard=`<div class="category-card settings" onclick="location.href='person-data-admin.html'"><div class="cat-title">人員資料整理</div><div class="cat-count" style="font-size:28px">查看</div></div>`;
+      const settingsCard=`<div class="category-card settings" onclick="openVisibilitySettings()"><div class="cat-title">顯示設定</div><div class="cat-count" style="font-size:28px">自訂</div></div>`;
       $('#categoryCards').innerHTML=peopleCards+cleanupCard+settingsCard;
     }
 
@@ -968,7 +968,7 @@
       if(k==='statusNoteControl')return `<div class="field full"><label>主管狀態備註</label><textarea id="statusNote" rows="3" placeholder="主管內部備註">${esc(firstValue(e,['statusNote','狀態備註','managerNote']))}</textarea></div>`;
       if(k==='saveStatusAction')return `<div class="field full"><div class="actions"><button class="save" type="button" onclick="saveEmployeeStatus()">儲存資料</button></div></div>`;
       if(k==='archiveAction')return `<div class="field full"><div class="actions" style="margin-top:0"><button class="danger" type="button" onclick="archiveEmployee()">${ctx.type==='external'?'結束合作並封存':'離職並封存人員'}</button></div></div>`;
-      if(k==='archiveHint')return `<div class="field full"><div class="hint">封存後不再出現在日常名單，但歷史打卡、請假、薪資與契約紀錄仍會保留。</div></div>`;
+      if(k==='archiveHint')return `<div class="field full"></div>`;
       if(spec.kind==='summary'){
         let value='',state='warn';
         if(k==='basicCompleteness'){const ok=!!(nameOf(e)&&emailOf(e)&&firstValue(e,['idNumber','身分證字號'])&&firstValue(e,['birthDate']));value=ok?'已完成':'尚未完成';state=ok?'ok':'warn';}
@@ -1165,7 +1165,7 @@
   <script src="global-nav.js?v=20260801-teacher-session-v2"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
   <script src="hr-workspace.js?v=20261031-1"></script>
-  <script src="internal-workspace-routes.js?v=20261031-tree1"></script>
-  <script src="internal-workspace.js?v=20261031-tree1"></script>
+  <script src="internal-workspace-routes.js?v=20261031-compact2"></script>
+  <script src="internal-workspace.js?v=20261031-compact2"></script>
 </body>
 </html>

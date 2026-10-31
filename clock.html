@@ -96,7 +96,7 @@
 
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-tree1">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact2">
 </head>
 <body onload="init()">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -179,7 +179,7 @@
       <div class="history-head">
         <div>
           <h2 class="title" style="font-size:20px;margin-bottom:4px">待處理事項</h2>
-          <div class="muted">這裡只顯示需要處理、已送審或尚未完成的出勤項目。已送出的項目會鎖定，不能重複送出。</div>
+          <div class="internal-explanation muted">這裡只顯示需要處理、已送審或尚未完成的出勤項目。已送出的項目會鎖定，不能重複送出。</div>
         </div>
       </div>
       <div id="pendingReviewList" class="pending-review-list"></div>
@@ -195,7 +195,7 @@
       <div class="history-head">
         <div>
           <h2 class="title" style="font-size:20px;margin-bottom:4px">近期打卡記錄</h2>
-          <div class="muted">顯示今日與昨日已完成的正式打卡紀錄。若時間錯誤，請點「修正這筆」。</div>
+          <div class="internal-explanation muted">顯示今日與昨日已完成的正式打卡紀錄。若時間錯誤，請點「修正這筆」。</div>
         </div>
       </div>
       <div id="editableList" class="list"></div>
@@ -204,7 +204,7 @@
     <div class="card">
       <details id="clockHistoryDetails">
         <summary class="title" style="font-size:20px;margin-bottom:4px;cursor:pointer">歷史打卡紀錄</summary>
-        <div class="muted" style="margin:8px 0 14px">可查詢正式打卡紀錄。單次最長 70 天；選擇開始日期後，結束日期會自動帶 70 天。</div>
+        <div class="internal-explanation muted" style="margin:8px 0 14px">可查詢正式打卡紀錄。單次最長 70 天；選擇開始日期後，結束日期會自動帶 70 天。</div>
         <div class="search-grid">
           <div class="field" id="fieldRangeStart">
             <label>開始日期</label>
@@ -1235,7 +1235,7 @@ function init(){
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-tree1"></script>
-  <script src="internal-workspace.js?v=20261031-tree1"></script>
+  <script src="internal-workspace-routes.js?v=20261031-compact2"></script>
+  <script src="internal-workspace.js?v=20261031-compact2"></script>
 </body>
 </html>

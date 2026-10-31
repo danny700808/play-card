@@ -12,7 +12,7 @@
     @media(max-width:1180px){.layout{grid-template-columns:1fr}.preview-panel{position:static}.preview-shell{overflow:auto}}@media(max-width:720px){.row2,.row3,.meta,.official-sign-grid{grid-template-columns:1fr}.preview-page{padding:8mm}}
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-tree1">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact2">
 </head>
 <body onload="init()" class="admin-wide-page admin-quote-page">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -56,13 +56,13 @@
         </div>
         <div class="subcard">
           <h2 class="section-title">契約內容</h2>
-          <div class="helper">藍色標籤可插入契約內容。系統會盡量依條文段落切成兩張 A4。</div>
+          <div class="internal-explanation helper">藍色標籤可插入契約內容。系統會盡量依條文段落切成兩張 A4。</div>
           <div class="token-wrap" id="tokenWrap" style="margin:10px 0"></div>
           <div class="field"><label>契約內容</label><textarea id="contractText" style="min-height:420px"></textarea></div>
         </div>
         <div class="subcard">
           <h2 class="section-title">發布合約</h2>
-          <div class="helper">發布後會建立老師待簽署任務；草稿不會出現在老師端。</div>
+          <div class="internal-explanation helper">發布後會建立老師待簽署任務；草稿不會出現在老師端。</div>
           <div class="actions" style="margin:10px 0"><button class="btn" style="width:auto" onclick="publishAll()">發布給全部外聘老師</button><button class="btn secondary" style="width:auto" onclick="publishSelected()">發布給勾選老師</button><button class="btn secondary" style="width:auto" onclick="selectAllTeachers(true)">全選</button><button class="btn secondary" style="width:auto" onclick="selectAllTeachers(false)">取消全選</button></div>
           <div id="teacherList" class="teacher-list"><div class="helper">讀取中...</div></div>
         </div>
@@ -72,7 +72,7 @@
         </div>
       </div>
       <div class="preview-panel">
-        <div class="preview-top"><div><h2 class="section-title" style="margin:0">A4 預覽</h2><div class="helper">第 1 頁右側、第 2 頁左側為左右半顆騎縫章。</div></div><button class="btn secondary" style="width:auto" onclick="window.print()">列印預覽</button></div>
+        <div class="preview-top"><div><h2 class="section-title" style="margin:0">A4 預覽</h2><div class="internal-explanation helper">第 1 頁右側、第 2 頁左側為左右半顆騎縫章。</div></div><button class="btn secondary" style="width:auto" onclick="window.print()">列印預覽</button></div>
         <div id="printArea" class="preview-shell"></div>
       </div>
     </div>
@@ -116,7 +116,7 @@
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-tree1"></script>
-  <script src="internal-workspace.js?v=20261031-tree1"></script>
+  <script src="internal-workspace-routes.js?v=20261031-compact2"></script>
+  <script src="internal-workspace.js?v=20261031-compact2"></script>
 </body>
 </html>

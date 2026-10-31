@@ -336,7 +336,13 @@
     leaf('staff-salary','薪資與投保','salary-admin.html?type=staff'),
     leaf('staff-schedule','班表','schedule-admin.html'),
     leaf('staff-leave','假勤制度','leave-policy-admin.html'),
-    leaf('staff-leave-review','請假簽核','leave.html?mode=approval'),
+    branch('staff-approvals','簽核',[
+     leaf('staff-leave-review','請假','leave.html?mode=approval&identity=staff'),
+     leaf('staff-clock','打卡','clock-corrections-admin.html?identity=staff'),
+     leaf('staff-temporary','臨時出勤','temporary-attendance-admin.html?identity=staff'),
+     leaf('staff-profile','個資修改','profile-change-admin.html?identity=staff'),
+     leaf('staff-registration','入職建檔','registration-approval.html?identity=staff')
+    ]),
     leaf('staff-certificate','在職證明','employment-certificate-hub.html?identity=staff')
    ]),
    branch('parttime','工讀生',[
@@ -344,12 +350,14 @@
     leaf('parttime-salary','薪資與投保','salary-admin.html?type=parttime'),
     leaf('parttime-settlement','薪資結算','data-center.html?module=parttime'),
     leaf('parttime-schedule','班表','schedule-admin.html'),
-    branch('parttime-attendance','出勤與請假',[
-     leaf('parttime-clock','打卡簽核','clock-corrections-admin.html'),
-     leaf('parttime-temporary','臨時出勤簽核','temporary-attendance-admin.html'),
-     leaf('parttime-leave-review','請假簽核','leave.html?mode=approval'),
-     leaf('parttime-leave','假勤制度','leave-policy-admin.html'),
-     leaf('parttime-check','出勤核對','attendance-flow-check.html')
+    leaf('parttime-leave','假勤制度','leave-policy-admin.html'),
+    leaf('parttime-check','出勤核對','attendance-flow-check.html'),
+    branch('parttime-attendance','簽核',[
+     leaf('parttime-clock','打卡','clock-corrections-admin.html?identity=parttime'),
+     leaf('parttime-temporary','臨時出勤','temporary-attendance-admin.html?identity=parttime'),
+     leaf('parttime-leave-review','請假','leave.html?mode=approval&identity=parttime'),
+     leaf('parttime-profile','個資修改','profile-change-admin.html?identity=parttime'),
+     leaf('parttime-registration','入職建檔','registration-approval.html?identity=parttime')
     ]),
     leaf('parttime-certificate','在職證明','employment-certificate-hub.html?identity=parttime')
    ]),
@@ -357,6 +365,11 @@
     leaf('external-people','名單與資料','employee-admin.html?type=external&source=teacher-hub'),
     leaf('external-payroll','課務薪資','portal.html#course-teachers'),
     leaf('external-contract','合約與條款','external-teacher-admin.html?source=teacher-hub'),
+    branch('external-approvals','簽核',[
+     leaf('external-profile','個資修改','profile-change-admin.html?identity=external'),
+     leaf('external-registration','合作建檔','registration-approval.html?identity=external'),
+     leaf('external-contract-review','合約確認','external-teacher-admin.html?from=approval&filterStatus=submitted_pending_admin&source=teacher-hub')
+    ]),
     branch('external-work','公告與協助',[
      leaf('external-announcement','老師公告','announcement-admin.html?audience=external&source=teacher-hub'),
      leaf('external-task','協助事項','task.html?mode=admin&identity=external&source=teacher-hub'),
@@ -367,7 +380,7 @@
    ],{common:[leaf('external-overview','老師總覽','teacher-hub.html')]}),
    branch('recruit','應聘與入職',[
     leaf('recruit-applications','應聘管理','application-admin.html'),
-    leaf('recruit-registration','註冊建檔','registration-approval.html'),
+    leaf('recruit-registration','註冊建檔','registration-approval.html',{preferred:true}),
     leaf('recruit-notification','應聘通知設定','application-notification-settings.html')
    ])
   ],{badge:'badge-hr-payroll',common:[
@@ -375,7 +388,9 @@
    leaf('all-schedule','共用班表','schedule-admin.html',{preferred:true}),
    leaf('all-leave','共用假勤制度','leave-policy-admin.html',{preferred:true}),
    leaf('people-sources','資料來源整理','person-data-admin.html'),
-   leaf('people-binding','帳號綁定','line-binding-admin.html')
+   leaf('people-binding','帳號綁定','line-binding-admin.html'),
+   branch('approvals','全部簽核',groups.approval.links.filter(([,href])=>href!=='approval-hub.html').map(([label,href],i)=>leaf('approval-'+i,label,href,{preferred:true}))),
+   leaf('people-approval-notifications','簽核提醒','approval-notification-settings.html')
   ]}),
   branch('work','日常工作',[
    leaf('work-announcements','公告','announcement-admin.html'),
@@ -407,7 +422,7 @@
     leaf('teaching-template','範本設定','teaching-certificate-admin.html')
    ])
   ],{badge:'badge-forms',common:[leaf('forms-overview','表單總覽','quotation-contract-hub.html'),leaf('forms-notification','證明提醒','certificate-notification-settings.html')]})
- ],{common:[branch('approvals','簽核',groups.approval.links.map(([label,href],i)=>leaf('approval-'+i,label,href)))]});
+ ]);
  const treeIndex=new Map();
  function indexTree(node,parents){treeIndex.set(node.id,{node,path:parents.concat(node)});[...(node.children||[]),...(node.common||[])].forEach(child=>indexTree(child,parents.concat(node)));}
  indexTree(tree,[]);

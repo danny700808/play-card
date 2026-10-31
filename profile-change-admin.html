@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="approval-common.css?v=20260626approval1">
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <style>.container{width:min(96vw,1200px);margin:0 auto;padding:16px}.msg{margin-top:12px}.success{padding:12px 14px;border-radius:14px;background:#ecfdf3;border:1px solid #bbf7d0;color:#166534;font-weight:900}.error{padding:12px 14px;border-radius:14px;background:#fff1f2;border:1px solid #fecaca;color:#991b1b;font-weight:900}.notice{padding:12px 14px;border-radius:14px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-weight:900}.change-list{display:grid;gap:8px;margin-top:12px}.change-row{border:1px solid #d8e4dd;border-radius:13px;padding:10px 12px;background:#f8fbf9}.change-label{display:flex;align-items:center;gap:7px;font-weight:900;color:#254f40}.change-values{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:center;margin-top:5px}.change-before{color:#7a8580;text-decoration:line-through;overflow-wrap:anywhere}.change-after{font-weight:800;color:#143e30;overflow-wrap:anywhere}.change-arrow{color:#789086}.immediate-chip{display:inline-flex;border-radius:999px;padding:2px 7px;background:#e0f4e9;color:#17634a;font-size:11px}.subject-note{margin-top:10px;padding:9px 11px;border-radius:11px;background:#eef8f3;color:#17634a;font-weight:800;font-size:13px}.approval-meta{overflow-wrap:anywhere}@media(max-width:600px){.container{width:100%;padding:8px}.change-values{grid-template-columns:1fr}.change-arrow{display:none}.change-before::before{content:"原：";text-decoration:none}.change-after::before{content:"改："}}</style>
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-tree1">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact2">
 </head>
 <body onload="init()" class="admin-wide-page">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -54,15 +54,15 @@
     function isPending(row){if(row&&row.pending===true)return true;return ['待審核','pending','pending_review','未處理'].includes(lower(row&&row.status||'待審核'))}
     function pill(status){const s=clean(status||'待審核');const cls=s==='已核准'?'approved':(s==='已駁回'?'rejected':(s==='待審核'?'pending':'history'));return `<span class="approval-pill ${cls}">${esc(s)}</span>`}
     function field(label,value){return clean(value)?`<div class="approval-field"><div class="approval-label">${esc(label)}</div><div class="approval-value">${esc(value)}</div></div>`:''}
-    function renderTabs(){const p=rows.filter(isPending).length,h=rows.filter(r=>!isPending(r)).length;$('pendingTab').textContent=`未處理（${p}）`;$('historyTab').textContent=h?`歷史紀錄（${h}）`:'歷史紀錄'}
+    function renderTabs(){const p=PersonnelApprovalScope.filter(rows).filter(isPending).length,h=PersonnelApprovalScope.filter(rows).filter(r=>!isPending(r)).length;$('pendingTab').textContent=`未處理（${p}）`;$('historyTab').textContent=h?`歷史紀錄（${h}）`:'歷史紀錄'}
     function setTab(tab){activeTab=tab==='history'?'history':'pending';$('pendingTab').classList.toggle('active',activeTab==='pending');$('historyTab').classList.toggle('active',activeTab==='history');render()}
     async function init(){fillHeader();currentUser=requireLogin();if(!currentUser)return;if(!hasSettingsZoneAccess(currentUser)){location.href='dashboard.html';return}setPortalMode('settings');$('keyword').addEventListener('input',render);$('refreshBtn').onclick=loadRequests;$('pendingTab').onclick=()=>setTab('pending');$('historyTab').onclick=()=>setTab('history');try{await waitForManagerAuth();await loadRequests()}catch(error){setMsg(errorText(error),'error')}}
-    async function loadRequests(){try{setMsg('讀取中...','notice');const r=await managerCall('personDataAdminProfileChangeInventory',{});rows=Array.isArray(r&&r.rows)?r.rows:[];render();setMsg('')}catch(e){setMsg('讀取失敗：'+errorText(e),'error')}}
+    async function loadRequests(){try{setMsg('讀取中...','notice');await PersonnelApprovalScope.load(render);const r=await managerCall('personDataAdminProfileChangeInventory',{});rows=Array.isArray(r&&r.rows)?r.rows:[];render();setMsg('')}catch(e){setMsg('讀取失敗：'+errorText(e),'error')}}
     function changesHtml(row){const changes=Array.isArray(row&&row.changes)?row.changes:[];if(!changes.length)return '<div class="approval-empty">沒有可顯示的異動欄位</div>';return `<div class="change-list">${changes.map(change=>`<div class="change-row"><div class="change-label">${esc(change.label||'資料欄位')}${change.immediate?'<span class="immediate-chip">已立即同步</span>':''}</div><div class="change-values"><span class="change-before">${esc(change.before||'未填寫')}</span><span class="change-arrow">→</span><span class="change-after">${esc(change.after||'已刪除')}</span></div></div>`).join('')}</div>${row.subjectChangesAlreadyEffective?'<div class="subject-note">授課科目與程度由老師自行認定，已立即同步；主管在此查閱紀錄，不需逐科核准。</div>':''}`}
     function render(){
       renderTabs();
       const kw=lower($('keyword').value);
-      const list=rows.filter(r=>activeTab==='pending'?isPending(r):!isPending(r)).filter(r=>{const text=[r.name,r.employeeId,r.teacherId,r.status,JSON.stringify(r.changes||[])].join(' ').toLowerCase();return !kw||text.includes(kw)});
+      const list=PersonnelApprovalScope.filter(rows).filter(r=>activeTab==='pending'?isPending(r):!isPending(r)).filter(r=>{const text=[r.name,r.employeeId,r.teacherId,r.status,JSON.stringify(r.changes||[])].join(' ').toLowerCase();return !kw||text.includes(kw)});
       $('requestList').innerHTML=list.length?list.map(r=>{
         const can=isPending(r);
         return `<article class="approval-card"><div class="approval-head"><div><div class="approval-name">${esc(r.name||'未命名人員')}</div><div class="approval-meta">人員 ${esc(r.employeeId||'—')}${r.teacherId?`｜老師 ${esc(r.teacherId)}`:''}${r.createdAt?`｜${esc(r.createdAt)}`:''}</div></div>${pill(r.status)}</div>${changesHtml(r)}${r.rejectReason?`<div class="approval-note">退回原因：${esc(r.rejectReason)}</div>`:''}${r.reviewedBy?`<div class="approval-note">處理人：${esc(r.reviewedBy)}${r.reviewedAt?`｜${esc(r.reviewedAt)}`:''}</div>`:''}${can?`<div class="approval-actions"><button class="btn" type="button" onclick="approveReq('${esc(r.requestId)}')">核准正式資料</button><button class="btn secondary" type="button" onclick="rejectReq('${esc(r.requestId)}')">退回修改</button></div>`:''}</article>`;
@@ -73,7 +73,8 @@
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-tree1"></script>
-  <script src="internal-workspace.js?v=20261031-tree1"></script>
+  <script src="personnel-approval-scope.js?v=20261031-compact2"></script>
+  <script src="internal-workspace-routes.js?v=20261031-compact2"></script>
+  <script src="internal-workspace.js?v=20261031-compact2"></script>
 </body>
 </html>
