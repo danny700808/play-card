@@ -1,0 +1,49 @@
+name: Correct Explicitly Confirmed Bank Account Suffix
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [inspect, apply]
+        default: inspect
+        required: true
+      request_id:
+        required: true
+        type: string
+      profile_id:
+        required: true
+        type: string
+      employee_id:
+        required: true
+        type: string
+      teacher_id:
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: correct-bank-suffix-${{ inputs.request_id }}
+  cancel-in-progress: false
+jobs:
+  correction:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: node --test tests/bank-suffix-correction.test.cjs
+      - run: npm ci --prefix functions --ignore-scripts --no-audit --no-fund
+      - name: Inspect or apply only the explicitly identified approved account
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          CORRECTION_MODE: ${{ inputs.mode }}
+          REQUEST_ID: ${{ inputs.request_id }}
+          PROFILE_ID: ${{ inputs.profile_id }}
+          EMPLOYEE_ID: ${{ inputs.employee_id }}
+          TEACHER_ID: ${{ inputs.teacher_id }}
+        run: node .github/scripts/correct-approved-bank-suffix.cjs
