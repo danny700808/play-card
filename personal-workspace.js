@@ -31,7 +31,7 @@
  async function attendance(){
   body(card('', '<div class="personal-row"><h2 style="margin:0">'+esc(today())+'</h2><span class="personal-tag">'+(preview?'今日排班':'我的出勤')+'</span></div><div id="todaySchedule" class="personal-value">'+(preview?(state.user.identityType==='parttime'?'14:00 — 18:00':'09:00 — 18:00'):'讀取中…')+'</div><div style="margin-top:14px" class="personal-grid">'+button('上／下班打卡','clock','primary')+button('補登出勤','temporary','soft')+'</div>')+
    actions([...(state.user.identityType==='parttime'?[['填寫工時','hours','時']]:[]),['請假申請','leave','假'],['打卡紀錄','clock','錄'],['我的班表','schedule-own','班']])+
-   '<h2 class="personal-section-title">近期紀錄</h2>'+card('',preview?row('10/30　下班打卡','18:02')+row('10/30　填寫工時','4 小時')+row('10/29　請假','主管已核准'):'<div id="recentAttendance" class="personal-muted">讀取中…</div>'));
+   '<h2 class="personal-section-title">近期紀錄</h2>'+card('',preview?row('10/30　下班打卡','18:02')+(state.user.identityType==='parttime'?row('10/30　填寫工時','4 小時'):row('10/30　上班打卡','09:00'))+row('10/29　請假','主管已核准'):'<div id="recentAttendance" class="personal-muted">讀取中…</div>'));
   if(preview)return;const version=generation,payload={userId:state.user.id};
   const results=await Promise.allSettled([api('getTodaySchedule',payload),api('getEditableClockHistory',payload)]);
   if(version!==generation)return;
@@ -57,7 +57,7 @@
  }
  function previewFeature(key){
   if(key==='clock'){
-   body(card('打卡','<div class="personal-row"><span>'+today()+'</span><span class="personal-tag">示範班表</span></div><div class="personal-value">'+(state.user.identityType==='parttime'?'14:00 — 18:00':'09:00 — 18:00')+'</div><div class="personal-grid" style="margin-top:14px">'+button('上班打卡','demo-send','primary')+button('下班打卡','demo-send','soft')+'</div>')+card('打卡紀錄',row('10/30　14:00','上班')+row('10/30　18:02','下班')+'<details><summary>補登／修正</summary>'+menu([['補登出勤','temporary'],['修正時間','correction']])+'</details>'));return;
+   body(card('打卡','<div class="personal-row"><span>'+today()+'</span><span class="personal-tag">示範班表</span></div><div class="personal-value">'+(state.user.identityType==='parttime'?'14:00 — 18:00':'09:00 — 18:00')+'</div><div class="personal-grid" style="margin-top:14px">'+button('上班打卡','demo-send','primary')+button('下班打卡','demo-send','soft')+'</div>')+card('打卡紀錄',row(state.user.identityType==='parttime'?'10/30　14:00':'10/30　09:00','上班')+row('10/30　18:02','下班')+'<details><summary>補登／修正</summary>'+menu([['補登出勤','temporary'],['修正時間','correction']])+'</details>'));return;
   }
   if(key==='schedule-own'){body(card('我的班表',row('10/31　週六',state.user.identityType==='parttime'?'14:00 — 18:00':'09:00 — 18:00')+row('11/01　週日','休息')+row('11/02　週一','休息')));return;}
   if(['hours','leave','temporary','correction'].includes(key)){

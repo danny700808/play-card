@@ -17,3 +17,12 @@ test('manager preview is interactive but never writes, loads real employee data 
  w.document.getElementById('previewRole').value='staff';w.document.getElementById('previewRole').dispatchEvent(new w.Event('change'));assert(!w.document.querySelector('[data-action=hours]'));w.document.getElementById('previewTeacher').checked=true;w.document.getElementById('previewTeacher').dispatchEvent(new w.Event('change'));assert(w.document.querySelector('[data-tab=schedule]'));
  assert.equal(w.document.querySelectorAll('iframe').length,0);assert.equal(calls,0);dom.window.close();
 });
+test('teacher attendance entry stays hidden unless the protected service confirms an employee role',async()=>{
+ const {JSDOM}=require('jsdom');
+ for(const employee of [null,{identityType:'parttime'}]){
+  const dom=new JSDOM('<nav><button id="teacherEmployeeEntry" hidden style="display:none">出勤</button></nav><a id="teacherMobilePreview" hidden style="display:none"></a>',{url:'https://example.test/teacher-course-portal.html',runScripts:'outside-only'}),w=dom.window;let calls=[];
+  w.firebase={apps:[{}],auth:()=>({currentUser:null})};w.CoursePortal={getSession:()=> 'verified-session',call:async(name,data)=>{calls.push([name,data.action]);return {employee};}};
+  w.eval(fs.readFileSync('teacher-personal-entry.js','utf8'));await new Promise(r=>setTimeout(r,10));
+  assert.equal(w.document.getElementById('teacherEmployeeEntry').hidden,!employee);assert.deepEqual(calls,[['personalWorkspace','portal-capabilities']]);assert.equal(w.document.getElementById('teacherMobilePreview').hidden,true);dom.window.close();
+ }
+});

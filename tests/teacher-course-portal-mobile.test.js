@@ -55,7 +55,9 @@ assert(source.includes("PAYROLL_MIN_MONTH = '2026-07'"), '薪資月份前端沒�
 
 const tabsStart = html.indexOf('<nav class="tabs teacher-bottom-tabs"');
 const tabs = html.slice(tabsStart, html.indexOf('</nav>', tabsStart));
-assert.strictEqual((tabs.match(/<(?:button|a)\b/g) || []).length, 5, '老師頁底部必須維持五個功能頁籤');
+const tabTags=tabs.match(/<(?:button|a)\b[^>]*>/g)||[];
+assert.strictEqual(tabTags.filter(tag=>!tag.includes(' hidden')).length,5,'一般老師維持五個可見頁籤');
+assert.strictEqual(tabTags.filter(tag=>tag.includes('id="teacherEmployeeEntry"')&&tag.includes(' hidden')&&tag.includes('display:none')).length,1,'員工出勤預設隱藏，等待伺服器驗證已啟用身分');
 assert(!html.includes('id="teacherProfileAlert"'), '老師首頁不應常駐顯示未完成資料明細');
 assert.strictEqual((html.match(/id="teacherDailyReminderBackdrop"/g) || []).length, 1, '老師首頁必須只有一個每日合併提醒視窗');
 assert(html.includes('id="teacherDailyReminderList"'), '每日提醒缺少合併待辦清單');
