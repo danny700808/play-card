@@ -15,7 +15,7 @@ test('approval grouping uses the subject ID, preserves unknowns, and never match
 });
 test('filtering keeps full rows unchanged and updates counts/context without business writes',async()=>{
  const dom=new JSDOM('<nav data-yz-global-nav></nav><main><div class="approval-toolbar"></div><input id="other" value="preserved"></main>',{url:'https://example.test/clock-corrections-admin.html?identity=parttime&nav=parttime-clock',runScripts:'outside-only'});
- const w=dom.window;w.InternalWorkspaceRoutes=routes;w.localStorage.setItem('employeeUser',JSON.stringify({id:'admin',role:'admin'}));w.hasSettingsZoneAccess=()=>true;
+ const w=dom.window;w.InternalWorkspaceRoutes=routes;w.localStorage.setItem('employeeUser',JSON.stringify({id:'admin',role:'admin'}));w.hasSettingsZoneAccess=()=>true;w.ensureHrSession=async()=>{};
  let calls=0,renders=0;w.api=async(action)=>{assert.equal(action,'getEmployeeManagementData');calls++;return {ok:true,rows:[{id:'a',identityType:'staff'},{id:'b',identityType:'parttime'}]};};
  w.eval(read('internal-workspace.js'));w.document.dispatchEvent(new w.Event('DOMContentLoaded'));w.eval(read('personnel-approval-scope.js'));
  await Promise.all([w.PersonnelApprovalScope.load(()=>renders++),w.PersonnelApprovalScope.load(()=>renders++)]);assert.equal(calls,1);
@@ -28,7 +28,7 @@ test('filtering keeps full rows unchanged and updates counts/context without bus
 });
 test('roster failure is surfaced and retriable; unprivileged sessions do not read personnel',async()=>{
  const dom=new JSDOM('<div class="approval-toolbar"></div>',{url:'https://example.test/leave.html?mode=approval&identity=staff',runScripts:'outside-only'});const w=dom.window;w.eval(read('personnel-approval-scope.js'));
- let calls=0;w.api=async()=>{calls++;return {ok:false};};w.hasSettingsZoneAccess=()=>true;
+ let calls=0;w.api=async()=>{calls++;return {ok:false};};w.hasSettingsZoneAccess=()=>true;w.ensureHrSession=async()=>{};
  await assert.rejects(w.PersonnelApprovalScope.load(),/重新登入/);assert.equal(calls,0);
  w.localStorage.setItem('employeeUser',JSON.stringify({id:'manager'}));await assert.rejects(w.PersonnelApprovalScope.load(),/讀取失敗/);
  w.api=async()=>({ok:true,rows:[]});await w.PersonnelApprovalScope.load();assert.equal(w.PersonnelApprovalScope.filter([{name:'unknown'}]).length,0);dom.window.close();
@@ -51,4 +51,9 @@ test('new standard schedule exposes editable times and retains existing off-day 
  start.value='09:00';end.value='18:00';const kind=w.document.querySelector('#mondayType');kind.value='無班';w.toggleDayTime('monday');assert(start.parentElement.classList.contains('hidden'));
  kind.value='標準打卡';w.toggleDayTime('monday');assert(!start.parentElement.classList.contains('hidden'));assert.equal(start.value,'');assert.equal(end.value,'');start.value='09:00';end.value='18:00';w.updateDayPreview('monday');assert.match(w.document.querySelector('#mondayPreview').textContent,/09:00-18:00/);
  assert(w.document.querySelector('#mondayPreview').closest('details'));dom.window.close();
+});
+test('approval list waits for restored manager authentication and does not read on rejection',async()=>{
+ const dom=new JSDOM('<div class="approval-toolbar"></div>',{url:'https://example.test/clock-corrections-admin.html?identity=parttime',runScripts:'outside-only'});const w=dom.window;w.eval(read('personnel-approval-scope.js'));w.localStorage.setItem('employeeUser',JSON.stringify({id:'admin'}));w.hasSettingsZoneAccess=()=>true;
+ let resume,reads=0;w.ensureHrSession=()=>new Promise(r=>resume=r);w.api=async()=>{reads++;return {ok:true,rows:[]};};const pending=w.PersonnelApprovalScope.load();await Promise.resolve();assert.equal(reads,0);resume();await pending;assert.equal(reads,1);dom.window.close();
+ const denied=new JSDOM('<div class="approval-toolbar"></div>',{url:'https://example.test/registration-approval.html',runScripts:'outside-only'});const d=denied.window;d.eval(read('personnel-approval-scope.js'));d.localStorage.setItem('employeeUser',JSON.stringify({id:'admin'}));d.hasSettingsZoneAccess=()=>true;d.ensureHrSession=async()=>{throw Error('session expired');};d.api=async()=>{throw Error('must not read');};await assert.rejects(d.PersonnelApprovalScope.load(null,{roster:false}),/session expired/);denied.window.close();
 });

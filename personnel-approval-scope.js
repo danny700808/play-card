@@ -22,8 +22,20 @@
   select.addEventListener('change',()=>{scope=select.value;const u=new URL(location.href);u.searchParams.delete('nav');if(scope==='all')u.searchParams.delete('identity');else u.searchParams.set('identity',scope);history.replaceState(null,'',u.pathname+u.search+u.hash);root.InternalWorkspaceNavigation?.refresh?.();rerender();});
  }
  async function load(onChange,{roster=true}={}){
-  mount(onChange);if(!roster||loaded)return;
-  if(!inflight)inflight=(async()=>{const user=JSON.parse(localStorage.getItem('employeeUser')||'null');if(!user||typeof root.hasSettingsZoneAccess!=='function'||!root.hasSettingsZoneAccess(user))throw new Error('無法讀取人員分類，請重新登入管理帳號。');const res=await root.api('getEmployeeManagementData',{userId:user.id,statusMode:'all'});if(!res||res.ok===false||!Array.isArray(res.rows))throw new Error('人員分類讀取失敗，請重新整理。');index=indexEmployees(res.rows);loaded=true;})().finally(()=>{inflight=null;});
+  mount(onChange);if(loaded)return;
+  if(!inflight)inflight=(async()=>{
+   const user=JSON.parse(localStorage.getItem('employeeUser')||'null');
+   if(!user||typeof root.hasSettingsZoneAccess!=='function'||!root.hasSettingsZoneAccess(user))throw new Error('無法讀取人員分類，請重新登入管理帳號。');
+   if(typeof root.ensureHrSession==='function')await root.ensureHrSession(user);
+   else if(root.YZManagerAuth?.requireManagerSession)await root.YZManagerAuth.requireManagerSession({expectedManager:user,next:location.pathname.split('/').pop()+location.search});
+   else throw new Error('登入服務尚未就緒，請重新整理。');
+   if(roster){
+    const res=await root.api('getEmployeeManagementData',{userId:user.id,statusMode:'all'});
+    if(!res||res.ok===false||!Array.isArray(res.rows))throw new Error('人員分類讀取失敗，請重新整理。');
+    index=indexEmployees(res.rows);
+   }
+   loaded=true;
+  })().finally(()=>{inflight=null;});
   await inflight;
  }
  root.PersonnelApprovalScope={...pure,load,filter,get scope(){return scope;}};

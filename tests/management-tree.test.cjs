@@ -33,7 +33,7 @@ test('tree exposes deep links in one map, supports focus, history and safe inval
  const salary=[...doc.querySelectorAll('.management-node')].find(n=>n.textContent.includes('薪資與投保'));
  assert.equal(salary.getAttribute('href'),'salary-admin.html?type=parttime&nav=parttime-salary');
  assert.equal(doc.querySelector('.management-up').getAttribute('href'),'#people');
- w.history.back();await new Promise(resolve=>w.setTimeout(resolve,20));
+ await new Promise((resolve,reject)=>{const timeout=w.setTimeout(()=>reject(Error('history did not return to people')),1000);const listener=()=>{if(w.location.hash!=='#people')return;w.clearTimeout(timeout);w.removeEventListener('hashchange',listener);resolve();};w.addEventListener('hashchange',listener);w.history.back();});
  assert.equal(doc.querySelector('.management-ancestor.is-current').textContent,'人事');
  w.location.hash='<script>';w.dispatchEvent(new w.HashChangeEvent('hashchange'));
  assert.equal(doc.querySelector('.management-ancestor.is-current').textContent,'管理工作區');
