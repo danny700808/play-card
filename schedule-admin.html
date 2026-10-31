@@ -302,7 +302,7 @@
 </style>
 
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact2">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact3">
 </head>
 <body class="admin-wide-page">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -428,12 +428,12 @@
           </div>
           <label class="checkbox-line" style="margin-top:8px;">
             <input id="${day.key}AllowSpecial" type="checkbox" onchange="updateDayPreview('${day.key}')" />
-            當天允許「標準打卡＋特殊打卡」共用
+            允許特殊打卡
           </label>
-          <div class="schedule-preview muted" id="${day.key}Preview" style="margin-top:8px;"></div>
+          <details class="schedule-day-details"><summary>班段明細</summary><div class="schedule-preview" id="${day.key}Preview"></div></details>
         </div>
       `).join('');
-      DAYS.forEach(day => updateDayPreview(day.key));
+      DAYS.forEach(day => toggleDayTime(day.key));
     }
 
     function bindForms() {
@@ -1156,7 +1156,7 @@
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-compact2"></script>
-  <script src="internal-workspace.js?v=20261031-compact2"></script>
+  <script src="internal-workspace-routes.js?v=20261031-compact3"></script>
+  <script src="internal-workspace.js?v=20261031-compact3"></script>
 </body>
 </html>

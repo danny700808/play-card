@@ -43,3 +43,12 @@ test('scoped links require an implemented filter and valid personnel context',()
   const n=routes.treeNode(id),u=new URL(routes.treeLink(n),'https://example.test/');assert(read(u.pathname.slice(1)).includes('personnel-approval-scope.js'));assert.equal(u.searchParams.get('identity'),id.split('-')[0]);assert(routes.pageContext(u.pathname,u.search,u.hash).some(x=>x.id===id.split('-')[0]));
  }
 });
+test('new standard schedule exposes editable times and retains existing off-day behavior',()=>{
+ const html=read('schedule-admin.html');const dom=new JSDOM(html,{url:'https://example.test/schedule-admin.html',runScripts:'outside-only'});const w=dom.window;
+ for(const script of w.document.querySelectorAll('script:not([src])'))if(script.textContent.trim())w.eval(script.textContent);
+ w.buildDayFields();const start=w.document.querySelector('#mondayTime'),end=w.document.querySelector('#mondayEndTime');
+ assert(!start.parentElement.classList.contains('hidden'));assert(!end.parentElement.classList.contains('hidden'));
+ start.value='09:00';end.value='18:00';const kind=w.document.querySelector('#mondayType');kind.value='無班';w.toggleDayTime('monday');assert(start.parentElement.classList.contains('hidden'));
+ kind.value='標準打卡';w.toggleDayTime('monday');assert(!start.parentElement.classList.contains('hidden'));assert.equal(start.value,'');assert.equal(end.value,'');start.value='09:00';end.value='18:00';w.updateDayPreview('monday');assert.match(w.document.querySelector('#mondayPreview').textContent,/09:00-18:00/);
+ assert(w.document.querySelector('#mondayPreview').closest('details'));dom.window.close();
+});

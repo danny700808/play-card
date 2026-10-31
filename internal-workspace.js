@@ -10,7 +10,7 @@
   const groupKey=routes.resolve(location.pathname,location.search);
   if(!groupKey&&file!=='settings.html')return;
   if(!manager&&groupKey!=='employee')return;
-  document.body.classList.add('internal-workspace');
+  document.body.classList.add('internal-workspace','internal-'+file.replace(/\.html$/,''));
   let nav=document.querySelector('[data-yz-global-nav]');
   const shell=document.createElement('nav');shell.className='internal-nav';shell.setAttribute('aria-label','工作區導覽');
   const primary=document.createElement('div');primary.className='internal-nav-primary';
