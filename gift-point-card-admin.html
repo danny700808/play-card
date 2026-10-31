@@ -73,7 +73,7 @@
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="internal-workspace.css?v=20261031-3">
-<link rel="stylesheet" href="forms-workspace.css?v=20261031-1"></head>
+<link rel="stylesheet" href="forms-workspace.css?v=20261031-2"></head>
 <body>
   <div class="yz-global-nav" data-yz-global-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
@@ -109,10 +109,7 @@
 3. 本卡遺失一律不補發，點數重新計算。
 4. 20點可以轉一次扭蛋，可到一樓轉換扭蛋；或直接更換對應點數的禮物。</textarea></div>
             <div class="mini-actions">
-              <button class="btn" type="button" onclick="renderPreview()">預覽</button>
               <button class="btn" type="button" id="giftSave" disabled onclick="saveTemplate()">儲存共用版面</button>
-              <button class="btn secondary" type="button" onclick="printCards()">列印</button>
-              <button class="btn secondary" type="button" onclick="saveAsPdf()">另存 PDF</button>
             </div>
             <div id="msg" class="message" role="status">讀取共用版面中…</div><button id="giftRetry" class="btn secondary" hidden onclick="loadFirebaseTemplate()">重新讀取</button><button id="giftLocal" class="btn secondary" hidden onclick="restoreLocalDraft()">載入本機舊稿</button>
           </div>

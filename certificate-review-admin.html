@@ -10,7 +10,7 @@
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="internal-workspace.css?v=20261031-3">
-<link rel="stylesheet" href="forms-workspace.css?v=20261031-1"></head>
+<link rel="stylesheet" href="forms-workspace.css?v=20261031-2"></head>
 <body onload="initPage()" class="admin-wide-page">
   <div class="yz-global-nav" data-yz-global-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
@@ -19,7 +19,7 @@
 
   <div class="review-wrap">
     <div class="section-card" style="margin-top:0">
-      <div class="topbar"><div><h1 class="title" style="margin:0">證明申請審核</h1><div class="muted-tip">這裡只審核在職證明與教學證明申請；範本設定請回「表格設定」。</div></div></div>
+      <div class="topbar"><div><h1 class="title" style="margin:0">證明申請審核</h1></div></div>
       <div class="toolbar-line"><div class="filters"><button class="btn secondary" onclick="setFilter('all')">全部</button><button class="btn" onclick="setFilter('pending')">待審核</button><button class="btn secondary" onclick="setFilter('approved')">已核准</button><button class="btn secondary" onclick="setFilter('rejected')">已退回</button></div><button class="btn secondary" style="width:auto" onclick="loadRows()">重新整理</button></div>
       <div id="certificateScope"></div><div class="count-row"><span class="count-pill pending" id="pendingCount">待審核 0</span><span class="count-pill" id="approvedCount">已核准 0</span><span class="count-pill rejected" id="rejectedCount">已退回 0</span></div>
     </div>
