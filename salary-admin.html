@@ -82,7 +82,7 @@
         <div class="section-title">員工清單</div>
         <div class="hr-type-tabs" role="group" aria-label="員工類型"><button type="button" data-hr-type="parttime">工讀生</button><button type="button" data-hr-type="staff">專職</button></div>
         <p class="hr-help" id="typeHelp"></p>
-        <a class="hr-help" href="employee-admin.html">新增人員／查看停用與舊資料</a>
+        <a class="hr-help" href="employee-admin.html">查看人員／停用與舊資料</a><br><a class="hr-help" href="registration-approval.html">註冊建檔與身分設定</a>
         <div class="employee-search">
           <input id="keyword" aria-label="搜尋員工" placeholder="搜尋姓名或 Email">
         </div>
@@ -623,7 +623,7 @@
           '<div class="employee-name">' + escapeHtml(row.name || '未命名') + '</div>' +
           '<div class="employee-email">' + escapeHtml(row.email || '未填寫 Email') + '</div>' +
         '</div>';
-      }).join('') || '<div class="empty-box">目前此類別沒有符合的在職人員。可至人員頁查看舊資料，或建立人員後再設定薪資。</div>';
+      }).join('') || '<div class="empty-box">目前此類別沒有符合的在職人員。可先查看舊資料；新人請先完成註冊，再由主管於「註冊建檔」確認身分。</div>';
       qsa('#employeeList [data-id]').forEach(function(el){ el.onclick = function(){ selectEmployee(el.dataset.id); }; });
     }
     function clearValidation(){ qsa('.field.has-error').forEach(function(el){ el.classList.remove('has-error'); }); }
