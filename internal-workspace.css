@@ -1,7 +1,7 @@
 /* One visual system for internal tools. Printed documents retain their templates. */
 @media screen{
 body.internal-workspace{--bg:#f3f6fa;--brand:#216c69;--brand2:#195653;--radius:12px;background:#f3f6fa!important;color:#24394b!important;line-height:1.55;font-family:system-ui,"Microsoft JhengHei","Noto Sans TC",sans-serif!important;}
-body.internal-workspace .internal-nav{box-sizing:border-box;position:relative;width:100%;max-width:1440px;margin:0 auto 12px;padding:8px 20px;background:#f3f6fa;border-bottom:1px solid #dbe4ed;z-index:30;}
+body.internal-workspace .internal-nav{box-sizing:border-box;position:relative;width:100%;max-width:1280px;margin:0 auto 12px;padding:8px 20px;background:#f3f6fa;border-bottom:1px solid #dbe4ed;z-index:30;}
 body.internal-workspace .internal-nav-primary,body.internal-workspace .internal-nav-secondary{display:flex;align-items:center;flex-wrap:wrap;gap:4px;}
 body.internal-workspace .internal-nav-secondary{padding-top:7px;margin-top:6px;border-top:1px solid #e1e8ef;}
 body.internal-workspace .internal-nav a,body.internal-workspace .internal-nav button{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-height:34px;width:auto;margin:0;padding:6px 11px;border:1px solid transparent;border-radius:7px;background:transparent!important;color:#41566d!important;-webkit-text-fill-color:currentColor!important;font:600 14px/1.4 system-ui,'Microsoft JhengHei',sans-serif;text-decoration:none;box-shadow:none;cursor:pointer;}
@@ -62,6 +62,10 @@ body.internal-workspace .summary-card{border-radius:10px!important;padding:12px!
 body.internal-workspace .summary-card b{font-size:24px!important;}
 body.internal-workspace .section-head h2{font-size:19px!important;}
 body.internal-workspace .top-return-btn,body.internal-workspace .return-home-btn,body.internal-workspace .page-return-btn{width:auto!important;min-width:0!important;min-height:34px!important;padding:7px 12px!important;font-size:14px!important;background:#e8eff4!important;border:1px solid #d3e0e9!important;color:#31536d!important;-webkit-text-fill-color:#31536d!important;border-radius:7px!important;}
+body.internal-workspace[data-internal-hub] > .container,body.internal-workspace[data-internal-hub] > .wrap,body.internal-workspace[data-internal-hub] > main.shell{width:calc(100% - 28px)!important;max-width:1240px!important;padding-left:0!important;padding-right:0!important;}
+body.internal-workspace[data-internal-hub] .hub-mark,body.internal-workspace[data-internal-hub] .mark{display:none!important;}
+body.internal-workspace[data-internal-hub] .hub-title{font-size:18px!important;line-height:1.45!important;margin:0!important;color:#254c64!important;}
+body.internal-workspace[data-internal-hub] .hub-card{display:flex;flex-direction:column;justify-content:center;min-height:65px!important;}
 @media(max-width:760px){
  body.internal-workspace .internal-nav{padding:7px 10px;margin-bottom:8px;}
  body.internal-workspace .internal-nav-primary,body.internal-workspace .internal-nav-secondary{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;}

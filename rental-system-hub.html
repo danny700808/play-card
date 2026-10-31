@@ -9,7 +9,7 @@
   <style>
     body{background:#eef3f7}.wrap{max-width:1180px;margin:0 auto;padding:18px 14px 56px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:22px;box-shadow:0 10px 28px rgba(15,23,42,.05)}.title{font-size:30px;font-weight:950;margin:0 0 8px}.sub{color:#64748b;line-height:1.8}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:18px}.hub-card{display:block;text-decoration:none;color:#0f172a;background:#fff;border:1px solid #dbe5ef;border-radius:22px;padding:22px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.hub-card:hover{transform:translateY(-1px);border-color:#94a3b8}.mark{font-size:13px;color:#0f766e;font-weight:900;margin-bottom:8px}.h{font-size:24px;font-weight:950;margin-bottom:8px}.badge{display:inline-flex;min-width:24px;height:24px;padding:0 8px;border-radius:999px;background:#dc2626;color:#fff;font-size:13px;align-items:center;justify-content:center;font-weight:950}.badge:empty{display:none}.d{font-size:14px;line-height:1.8;color:#475569}.notice{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:18px;padding:14px 16px;margin-top:16px;font-weight:800;line-height:1.8}@media(max-width:860px){.grid{grid-template-columns:1fr}.wrap{padding:12px 8px}.title{font-size:26px}}
   </style>
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-2">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-3">
 </head>
 <body data-internal-hub="true" onload="initPage()">
   <div class="yz-global-nav" data-yz-global-nav><button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button><button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button></div>
@@ -30,6 +30,6 @@
   <script>async function initPage(){ if(typeof fillHeader==='function') fillHeader(); const user=typeof requireLogin==='function'?requireLogin():null; if(user&&typeof hasSettingsZoneAccess==='function'&&!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;} try{ const r=await api('getDashboardSummary',{userId:user&&user.id, role:'admin'}); const counts=(r&&r.counts)||r||{}; const n=Number(counts.rentalCount||counts.rentalPendingCount||counts.pendingRentalCount||0)||0; const b=document.getElementById('rentalPendingBadge'); if(b) b.textContent=n?(n>99?'99+':String(n)):''; }catch(e){} }</script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
   <script src="internal-workspace-routes.js?v=20261031-1"></script>
-  <script src="internal-workspace.js?v=20261031-2"></script>
+  <script src="internal-workspace.js?v=20261031-3"></script>
 </body>
 </html>
