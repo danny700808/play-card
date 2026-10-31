@@ -9,6 +9,10 @@
   const storage={getItem:k=>storageMap.get(k)??null,setItem:(k,v)=>storageMap.set(k,String(v)),removeItem:k=>storageMap.delete(k),clear:()=>storageMap.clear(),key:i=>[...storageMap.keys()][i]??null,get length(){return storageMap.size;}};
   Object.defineProperty(window,'localStorage',{value:storage});Object.defineProperty(window,'sessionStorage',{value:storage});
   const send=(kind,data)=>parent.postMessage({previewChannel:config.channel,kind,...data},'*');
+  const pageUrl=new URL(config.page);
+  const virtualLocation={assign:href=>send('navigate',{href:new URL(href,pageUrl).href}),replace:href=>send('navigate',{href:new URL(href,pageUrl).href}),reload:()=>send('navigate',{href:pageUrl.href})};
+  for(const key of ['href','search','pathname','origin','hash','host','hostname','protocol'])Object.defineProperty(virtualLocation,key,{get:()=>pageUrl[key],set:value=>{const next=new URL(pageUrl);next[key]=value;send('navigate',{href:next.href});}});
+  window.__previewLocation=virtualLocation;
   const rpc=(method,payload={})=>new Promise((resolve,reject)=>{const id=++next;const timer=setTimeout(()=>{pending.delete(id);reject(Error('讀取逾時，請重新開啟。'));},175000);pending.set(id,{resolve,reject,timer});send('read',{id,method,payload});});
   addEventListener('message',event=>{if(event.source!==parent||event.data?.previewChannel!==config.channel)return;const p=pending.get(event.data.id);if(!p)return;clearTimeout(p.timer);pending.delete(event.data.id);event.data.error?p.reject(Error(event.data.error)):p.resolve(event.data.result);});
   const blocked=()=>Promise.reject(Error('唯讀檢視，不會送出或修改資料。'));
@@ -25,7 +29,7 @@
   window.WebSocket=class {constructor(){throw Error('唯讀檢視已隔離網路寫入。');}};
   window.open=()=>null;window.confirm=()=>false;window.alert=message=>send('notice',{message:String(message)});
   const writeLabel=/^(送出|儲存|確認(送出|簽|預約|辦理)|刪除|登出|寄送|上班打卡|下班打卡|送交主管)/;
-  function protect(){document.querySelectorAll('button,input[type=submit]').forEach(n=>{if(writeLabel.test(n.textContent.trim())||n.type==='submit'){n.disabled=true;n.title='唯讀檢視';}});document.querySelectorAll('input[type=file]').forEach(n=>n.disabled=true);}
+  function protect(){document.querySelectorAll('button,input[type=submit]').forEach(n=>{if(writeLabel.test(n.textContent.trim())||(n.type==='submit'&&n.form)){n.disabled=true;n.title='唯讀檢視';}});document.querySelectorAll('input[type=file]').forEach(n=>n.disabled=true);}
   addEventListener('submit',event=>{event.preventDefault();event.stopImmediatePropagation();send('notice',{message:'唯讀檢視，不會送出。'});},true);
   addEventListener('click',event=>{
    const link=event.target.closest('a[href]');if(link){const href=link.getAttribute('href');if(!href||href.startsWith('#'))return;event.preventDefault();event.stopImmediatePropagation();send('navigate',{href:link.href});return;}
@@ -41,15 +45,23 @@
   container.replaceChildren();const toolbar=document.createElement('div');toolbar.className='personal-frame-head';const back=document.createElement('button');back.className='personal-btn';back.textContent='← 返回';toolbar.append(back);const status=document.createElement('span');status.setAttribute('role','status');toolbar.append(status);container.append(toolbar,frame);
   const history=[];let currentPage='',navigation=0;
   async function navigate(href,remember=true){
-   const url=new URL(href,location.href),name=url.pathname.split('/').pop();if(!pages.has(name)){status.textContent='此連結不在唯讀檢視範圍';return;}
+   const url=new URL(href,location.href),name=url.pathname.split('/').pop();if(url.origin!==location.origin||!pages.has(name)){status.textContent='此連結不在唯讀檢視範圍';return;}
    if(remember&&currentPage)history.push(currentPage);currentPage=url.href;const version=++navigation;status.textContent='讀取中…';
    const response=await fetch(url.href,{credentials:'omit'});if(!response.ok)throw Error('頁面讀取失敗。');const doc=new DOMParser().parseFromString(await response.text(),'text/html');if(!active||active.channel!==channel||version!==navigation)return;
    doc.querySelectorAll('meta[http-equiv="refresh"],base').forEach(n=>n.remove());
    doc.querySelectorAll('script[src]').forEach(n=>{if(/firebase(?:js|-[a-z]+-compat)|teacher-personal-entry\.js/.test(n.src))n.remove();});
+   // Instrument only this isolated copy so existing links and page-specific routing work in srcdoc.
+   const rewrite=source=>source.replace(/(?<![\w$.])(?:(?:window|global)\.)?location\.(href|search|pathname|origin|hash|host|hostname|protocol|assign|replace|reload)\b/g,'window.__previewLocation.$1');
+   await Promise.all([...doc.querySelectorAll('script')].map(async node=>{
+    const src=node.getAttribute('src');if(src){const asset=new URL(src,url);if(asset.origin!==location.origin)return;const response=await fetch(asset.href,{credentials:'omit'});if(!response.ok)throw Error('預覽元件讀取失敗。');node.removeAttribute('src');node.textContent=rewrite(await response.text()).replace(/<\/script/gi,'<\\/script');}
+    else node.textContent=rewrite(node.textContent);
+   }));
+   if(!active||active.channel!==channel||version!==navigation)return;
    const base=doc.createElement('base');base.href=url.href;doc.head.prepend(base);
    const policy=doc.createElement('meta');policy.httpEquiv='Content-Security-Policy';policy.content="default-src 'none'; script-src 'unsafe-inline' https://danny700808.github.io https://cdn.jsdelivr.net; style-src 'unsafe-inline' https:; img-src https: data: blob:; font-src https: data:; media-src https: data: blob:; connect-src 'none'; form-action 'none'; frame-src 'none'";doc.head.prepend(policy);
-   const storage={employeeUser:JSON.stringify(user),employeeUserId:user.id,employeeSecureAuthVersion:'1','youzi.coursePortal.teacher.session.v1':'readonly-preview','youzi.coursePortal.lastRole.v2':'teacher'};
-   const script=doc.createElement('script');script.textContent='('+childBootstrap.toString()+')('+JSON.stringify({channel,storage}).replace(/</g,'\\u003c')+');';doc.head.insertBefore(script,base.nextSibling);
+   let fingerprint=2166136261;for(const char of 'readonly-preview')fingerprint=Math.imul(fingerprint^char.charCodeAt(0),16777619);
+   const storage={employeeUser:JSON.stringify(user),employeeUserId:user.id,employeeSecureAuthVersion:'1','youzi.coursePortal.teacher.session.v1':'readonly-preview','youzi.coursePortal.lastRole.v2':'teacher','youzi.coursePortal.authStateMigration.20260805.v1':'done','youzi.teacherMore.authorization.v4':JSON.stringify({employeeId:user.employeeId||user.id,tokenFingerprint:(fingerprint>>>0).toString(16).padStart(8,'0'),validatedAt:Date.now()})};
+   const script=doc.createElement('script');script.textContent='('+childBootstrap.toString()+')('+JSON.stringify({channel,storage,page:url.href}).replace(/</g,'\\u003c')+');';doc.head.insertBefore(script,base.nextSibling);
    frame.srcdoc='<!doctype html>'+doc.documentElement.outerHTML;status.textContent='唯讀';
   }
   const listener=async event=>{

@@ -144,7 +144,7 @@
  }
  async function loadPreviewRoster(){
   try{const r=await managerRead('preview-roster');for(const person of r.rows||[]){const option=document.createElement('option');option.value=person.id;option.textContent=person.name+'（'+person.identityLabel+'）';$('previewPerson').append(option);}
-   $('previewPerson').addEventListener('change',changePerson);const requested=params.get('preview'),type=requested==='teacher'?'external':requested==='staff'?'staff':'parttime';const people=(r.rows||[]).filter(p=>p.identityType===type);const target=people.find(p=>p.name==='張雲慈')||people[0];if(target){$('previewPerson').value=target.id;await changePerson();}else{$('personalName').textContent='尚無可檢視的人員';status('請從上方選擇已建檔的人員。');}
+   $('previewPerson').addEventListener('change',changePerson);const requested=params.get('preview'),type=requested==='teacher'?'external':requested==='staff'?'staff':'parttime';const people=(r.rows||[]).filter(p=>p.identityType===type);const target=people.find(p=>['張雲慈','張妘慈'].includes(p.name))||people[0];if(target){$('previewPerson').value=target.id;await changePerson();}else{$('personalName').textContent='尚無可檢視的人員';status('請從上方選擇已建檔的人員。');}
   }catch(e){status(e.message||'人員名單讀取失敗。',true);}
  }
  async function init(){
