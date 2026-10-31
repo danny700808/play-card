@@ -52,8 +52,9 @@ registerCoursePortal(exports, {
 });
 registerEmployeeAuth(exports, { sendEmail: sendEmailViaGmail });
 const personalWorkspace = require('./personalWorkspace').createPersonalWorkspace({db,auth:admin.auth(),FieldValue:admin.firestore.FieldValue,
-  findPortalAccount:require('./coursePortal').findEmailLoginAccount,issuePortalSession:require('./coursePortal').issueSession,requirePortalSession:require('./coursePortal').requireSession});
-exports.personalWorkspace=onCall({region:['us-central1','asia-east1'],timeoutSeconds:60},request=>personalWorkspace.handle(request.data||{},request));
+  findPortalAccount:require('./coursePortal').findEmailLoginAccount,issuePortalSession:require('./coursePortal').issueSession,requirePortalSession:require('./coursePortal').requireSession,
+  teacherRoster:require('./coursePortal').mobileTeacherRoster,teacherRead:require('./coursePortal').mobileTeacherRead});
+exports.personalWorkspace=onCall({region:['us-central1','asia-east1'],timeoutSeconds:180,memory:'1GiB'},request=>personalWorkspace.handle(request.data||{},request));
 const { createUnifiedEmailLogin } = require('./unifiedEmailLogin');
 const unifiedEmailLogin = createUnifiedEmailLogin({db,auth:admin.auth(),FieldValue:admin.firestore.FieldValue,sendEmail:sendEmailViaGmail,
   findPortalAccount:require('./coursePortal').findEmailLoginAccount,issuePortalSession:require('./coursePortal').issueSession});

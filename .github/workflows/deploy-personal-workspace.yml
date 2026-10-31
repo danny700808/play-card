@@ -40,7 +40,7 @@ jobs:
           node --check functions/personalWorkspace.js
           node --check functions/personDataAdmin.js
           node --check functions/index.js
-          node --test tests/personal-workspace-backend.test.cjs tests/teacher-profile-change-review.test.js tests/private-data-backend.test.cjs
+          node --test tests/personal-workspace-backend.test.cjs tests/personal-payroll-preview.test.cjs tests/teacher-profile-change-review.test.js tests/private-data-backend.test.cjs
       - name: Prepare existing Firebase runtime settings
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}

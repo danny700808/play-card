@@ -332,7 +332,7 @@
  const tree=branch('root','管理工作區',[
   branch('people','人事',[
    branch('staff','專職人員',[
-    leaf('staff-mobile','手機版預覽','dashboard.html?preview=staff'),
+    leaf('staff-mobile','手機版檢視','dashboard.html?preview=staff'),
     leaf('staff-people','人員資料','employee-admin.html?type=staff'),
     leaf('staff-salary','薪資與投保','salary-admin.html?type=staff'),
     leaf('staff-schedule','班表','schedule-admin.html'),
@@ -364,6 +364,7 @@
     leaf('parttime-certificate','在職證明','employment-certificate-hub.html?identity=parttime')
    ]),
    branch('external','外聘老師',[
+    leaf('external-mobile','手機版檢視','dashboard.html?preview=teacher'),
     leaf('external-people','名單與資料','employee-admin.html?type=external&source=teacher-hub'),
     leaf('external-payroll','課務薪資','portal.html#course-teachers'),
     leaf('external-contract','合約與條款','external-teacher-admin.html?source=teacher-hub'),

@@ -516,7 +516,7 @@ async function teacherAnnouncementList(data, identity) {
   if (history && end) rows = rows.filter((row) => row.publishDate <= end);
   rows.sort((left, right) => Number(right.pinned) - Number(left.pinned) || clean(right.publishDate).localeCompare(clean(left.publishDate)) || asMillis(right.updatedAt) - asMillis(left.updatedAt));
 
-  if (!history && identity.employeeId && rows.length) {
+  if (!history && identity.employeeId && rows.length && !require('./mobilePreviewContext').current()) {
     const writes = rows.map((row) => ({
       ref: db.collection(COLLECTIONS.announcementViews).doc(safeId(`${row.id}__${identity.employeeId}`)),
       data: { announcementId: row.id, employeeId: identity.employeeId, teacherId: identity.teacherId, read: true, readAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), source: VERSION }
@@ -871,6 +871,14 @@ function registerExternalTeacherWork(exportsObject, helpers = {}) {
 }
 
 module.exports = {
+  previewRead: async (data,resolved,session) => {
+    const identity=Object.assign({manager:false},identityFromResolved(resolved,session));
+    if(data.action==='getAnnouncements')return {ok:true,rows:await teacherAnnouncementList(data,identity)};
+    if(['getTasks','getUnifiedWorkItems'].includes(data.action))return {ok:true,rows:await teacherTaskList(data,identity)};
+    if(['getCertificateTemplate','getCertificateApplications'].includes(data.action))return require('./certificateSelfService').handleCertificateSelfService(data,identity,db);
+    if(data.action==='getGiftPointCardTemplate'){const d=await db.collection('printTemplates').doc('giftPointCard').get();return {ok:true,exists:d.exists,template:d.exists?d.data():{}};}
+    throw new HttpsError('permission-denied','唯讀檢視不允許此操作。');
+  },
   VERSION,
   SOURCE,
   ALL_EXTERNAL,

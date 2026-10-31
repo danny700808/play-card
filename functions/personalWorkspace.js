@@ -3,9 +3,9 @@ const {HttpsError}=require('firebase-functions/v2/https');
 const {findAccount,accountStatus,normalizeUser}=require('./employeeAuth');
 const clean=v=>String(v??'').trim();
 const active=row=>['active','enabled','啟用','是'].includes(accountStatus(row));
-const PROFILE_FIELDS={mobilePhone:'手機',birthDate:'生日',idNumber:'證件號碼',address:'聯絡地址',householdAddress:'戶籍地址',emergencyContact:'緊急聯絡人',emergencyPhone:'緊急聯絡電話',bankCode:'銀行代碼',bankName:'銀行名稱',bankAccount:'薪資帳號',accountName:'戶名'};
+const PROFILE_FIELDS={mobilePhone:'手機',birthDate:'生日',idNumber:'證件號碼',address:'聯絡地址',householdAddress:'戶籍地址',emergencyContact:'緊急聯絡人',emergencyPhone:'緊急聯絡電話',paymentMethod:'領薪方式',bankCode:'銀行代碼',bankName:'銀行名稱',bankAccount:'薪資帳號',accountName:'戶名'};
 const PROFILE_ALIASES={mobilePhone:['phone','mobile','行動電話'],birthDate:['birthday','出生年月日'],idNumber:['身分證字號'],address:['contactAddress','聯絡地址'],householdAddress:['戶籍地址'],emergencyContact:['緊急聯絡人'],emergencyPhone:['emergencyContactPhone','緊急聯絡人電話'],bankCode:['銀行代碼'],bankName:['銀行名稱'],bankAccount:['bankAccountNumber','銀行帳號'],accountName:['bankAccountName','戶名']};
-function profileOf(row){return Object.fromEntries(Object.keys(PROFILE_FIELDS).map(key=>[key,[key,...PROFILE_ALIASES[key]].map(k=>clean(row[k])).find(Boolean)||'']));}
+function profileOf(row){return Object.fromEntries(Object.keys(PROFILE_FIELDS).map(key=>[key,[key,...(PROFILE_ALIASES[key]||[])].map(k=>clean(row[k])).find(Boolean)||'']));}
 function reviewedProfilePatch(requestRow,current,docId){
  const canonicalId=clean(current.employeeId||current['員工ID']||docId);
  if(canonicalId!==clean(requestRow.employeeId))throw new HttpsError('failed-precondition','人員歸屬不一致。');
@@ -18,7 +18,7 @@ function reviewedProfilePatch(requestRow,current,docId){
  }
  return patch;
 }
-function createPersonalWorkspace({db,auth,FieldValue,findPortalAccount,issuePortalSession,requirePortalSession}){
+function createPersonalWorkspace({db,auth,FieldValue,findPortalAccount,issuePortalSession,requirePortalSession,teacherRoster,teacherRead}){
  async function employee(request){
   const token=request?.auth?.token;
   if(token?.employee!==true)throw new HttpsError('unauthenticated','請先登入。');
@@ -60,17 +60,21 @@ function createPersonalWorkspace({db,auth,FieldValue,findPortalAccount,issuePort
   }
   let {account,user}=await employee(request);
   if(clean(data.expectedEmployeeId)&&clean(data.expectedEmployeeId)!==user.employeeId)throw new HttpsError('permission-denied','帳號已切換，請重新開啟工作台。');
-  if(['preview-roster','preview'].includes(action)){
+  if(['preview-roster','preview','preview-month','teacher-read'].includes(action)){
    if(request.auth.token.manager!==true||!user.isManagerAccount)throw new HttpsError('permission-denied','僅管理者可檢視員工畫面。');
    if(action==='preview-roster'){
     const snapshot=await db.collection('employees').get();
-    return {ok:true,rows:snapshot.docs.flatMap(doc=>{const row=doc.data(),person=normalizeUser({collection:'employees',id:doc.id,data:row});return active(row)&&!person.isManagerAccount&&['staff','parttime'].includes(person.identityType)?[{id:doc.id,employeeId:person.employeeId,name:person.name,identityType:person.identityType,identityLabel:person.identityLabel}]:[];})};
+    const rows=snapshot.docs.flatMap(doc=>{const row=doc.data(),person=normalizeUser({collection:'employees',id:doc.id,data:row});return active(row)&&!person.isManagerAccount&&['staff','parttime'].includes(person.identityType)?[{id:doc.id,employeeId:person.employeeId,name:person.name,identityType:person.identityType,identityLabel:person.identityLabel}]:[];});
+    const teachers=teacherRoster?await teacherRoster():[];
+    return {ok:true,rows:rows.concat(teachers.map(t=>({...t,id:'teacher:'+t.id,teacherId:t.id})))};
    }
+   if(action==='teacher-read')return teacherRead(clean(data.teacherId),clean(data.method),data.payload||{});
    const id=clean(data.employeeDocId);if(!id||id.includes('/'))throw new HttpsError('invalid-argument','請選擇員工。');
    const doc=await db.collection('employees').doc(id).get();if(!doc.exists||!active(doc.data()))throw new HttpsError('not-found','找不到已啟用的人員資料。');
    account={collection:'employees',id:doc.id,ref:doc.ref,data:doc.data()};user=normalizeUser(account);
    if(user.isManagerAccount||!['staff','parttime'].includes(user.identityType))throw new HttpsError('permission-denied','請選擇工讀生或專職人員。');
   }
+  if(action==='payroll-month'||action==='preview-month')return require('./personalPayroll').monthData(db,account,user,clean(data.month));
   if(action==='open-role'){
    const role=clean(data.role);if(!['teacher','renter'].includes(role))throw new HttpsError('invalid-argument','不支援的功能。');
    const linked=await findPortalAccount(role,user.email);
@@ -78,16 +82,14 @@ function createPersonalWorkspace({db,auth,FieldValue,findPortalAccount,issuePort
    return {ok:true,role,...await issuePortalSession({...linked,authMethod:'employee-verified-account'})};
   }
   if(action==='overview'||action==='preview'){
-   const [teacher,renter,changes,payments]=await Promise.all([
+   const [teacher,renter,changes]=await Promise.all([
     findPortalAccount('teacher',user.email),findPortalAccount('renter',user.email),
-    db.collection('profileChangeRequests').where('employeeId','==',user.employeeId).get(),
-    db.collection('employeeSalaryPayments').where('employeeId','==',user.employeeId).get()
+    db.collection('profileChangeRequests').where('employeeId','==',user.employeeId).get()
    ]);
    const profile=profileOf(account.data);
-   return {ok:true,readOnly:action==='preview',user,profile,missingFields:Object.keys(PROFILE_FIELDS).filter(k=>!profile[k]),
+   return {ok:true,readOnly:action==='preview',user,profile,hireDate:clean(account.data.hireDate||account.data.startDate||account.data['到職日']),missingFields:Object.keys(PROFILE_FIELDS).filter(k=>!profile[k]&&!(profile.paymentMethod==='cash'&&['bankCode','bankName','bankAccount','accountName'].includes(k))),
     capabilities:{attendance:['staff','parttime'].includes(user.identityType),teacher:!!teacher,renter:!!renter},
-    profilePending:changes.docs.some(d=>['pending','pending_review','待審核','未處理'].includes(clean(d.data().approvalStatus||d.data().status))),
-    payments:payments.docs.map(d=>d.data()).filter(r=>r.status==='paid'&&/^\d{4}-\d{2}-\d{2}$/.test(clean(r.paidDate))&&Number.isFinite(Number(r.amount))).map(r=>({month:clean(r.month),paidDate:clean(r.paidDate),amount:Number(r.amount)})).sort((a,b)=>b.paidDate.localeCompare(a.paidDate))};
+    profilePending:changes.docs.some(d=>['pending','pending_review','待審核','未處理'].includes(clean(d.data().approvalStatus||d.data().status)))};
   }
   if(action==='profile-submit'){
    if(!['staff','parttime'].includes(user.identityType))throw new HttpsError('permission-denied','請使用您的專屬資料入口。');
@@ -96,6 +98,8 @@ function createPersonalWorkspace({db,auth,FieldValue,findPortalAccount,issuePort
     const value=clean(payload[key]);if(value.length>300)throw new HttpsError('invalid-argument','欄位內容過長。');
     if(value)patch[key]=value;
    }
+   if(patch.paymentMethod&&!['bank','cash'].includes(patch.paymentMethod))throw new HttpsError('invalid-argument','請選擇領薪方式。');
+   if(patch.paymentMethod==='cash')for(const k of ['bankCode','bankName','bankAccount','accountName'])delete patch[k];
    if(patch.bankAccount&&!/^\d{8,20}$/.test(patch.bankAccount))throw new HttpsError('invalid-argument','請填寫 8～20 碼銀行帳號。');
    if(patch.birthDate&&!/^\d{4}-\d{2}-\d{2}$/.test(patch.birthDate))throw new HttpsError('invalid-argument','生日格式不正確。');
    const ref=db.collection('profileChangeRequests').doc(),lockRef=db.collection('employeeMobileProfileLocks').doc(account.id);

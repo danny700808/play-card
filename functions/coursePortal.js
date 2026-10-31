@@ -56,7 +56,8 @@ const {
 
 if (!admin.apps.length) admin.initializeApp();
 
-const db = admin.firestore();
+const mobilePreviewContext = require('./mobilePreviewContext');
+const db = mobilePreviewContext.guard(admin.firestore());
 const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
 const REGION = 'us-central1';
@@ -2341,6 +2342,11 @@ async function exchangeAccessToken(data) {
 }
 
 async function requireSession(data, allowedRoles) {
+  const previewSession = typeof mobilePreviewContext !== 'undefined' && mobilePreviewContext.current();
+  if (previewSession) {
+    if (allowedRoles && !allowedRoles.includes(previewSession.role)) throw new HttpsError('permission-denied', '這個身分不能檢視此功能。');
+    return previewSession;
+  }
   const raw = clean(data && data.sessionToken);
   if (!raw) throw new HttpsError('unauthenticated', '請先登入。');
   const ref = db.collection('coursePortalSessions').doc(hash(raw));
@@ -2670,7 +2676,7 @@ async function resolveTeacherUtilityEmployee(session) {
     updatedAt: FieldValue.serverTimestamp()
   };
   if (!existingProfile) freshSeed.createdAt = FieldValue.serverTimestamp();
-  const batch = db.batch();
+  const batch = typeof mobilePreviewContext !== 'undefined' && mobilePreviewContext.current() ? {set(){},delete(){}} : db.batch();
   if (!existingProfile) batch.set(profileRef, freshSeed, { merge: false });
   else batch.set(profileRef, {
     employeeId: canonicalEmployeeId,
@@ -2789,7 +2795,7 @@ async function resolveTeacherUtilityEmployee(session) {
     }
   }
   batch.set(canonicalRef, employeeSeed, { merge: true });
-  await batch.commit();
+  if (typeof mobilePreviewContext === 'undefined' || !mobilePreviewContext.current()) await batch.commit();
 
   const [profileReload, privateProfileReload, employeeReload] = await Promise.all([
     profileRef.get(),
@@ -13957,6 +13963,8 @@ function registerCoursePortal(exportsObject, helpers = {}) {
 }
 
 module.exports = {
+  mobileTeacherRoster,
+  mobileTeacherRead,
   teacherPortalProfileId,
   findEmailLoginAccount,
   issueSession,
@@ -13974,6 +13982,38 @@ module.exports = {
   managerScheduleCatalog,
   managerCalendarFollowup
 };
+async function mobileTeacherRoster() {
+  const [bindings,teachers]=await Promise.all([db.collection('coursePortalTeacherBindings').where('status','==','active').get(),mirrorRows('teachers')]);
+  const ids=new Set(bindings.docs.map(d=>clean(d.data().teacherId)));
+  return teachers.filter(t=>sourceActive(t)&&ids.has(sourceId(t))).map(t=>({id:sourceId(t),name:clean(t.name),identityType:'external',identityLabel:'外聘老師'})).sort((a,b)=>a.name.localeCompare(b.name,'zh-TW'));
+}
+async function mobileTeacherRead(teacherId,method,payload={}) {
+  const bindings=await db.collection('coursePortalTeacherBindings').where('teacherId','==',clean(teacherId)).get();
+  const binding=bindings.docs.map(d=>d.data()).find(r=>r.status==='active'&&(r.authAccountId||r.lineUserId));
+  if(!binding)throw new HttpsError('permission-denied','這位老師尚無有效登入綁定。');
+  const session={role:'teacher',teacherId:clean(teacherId),authAccountId:clean(binding.authAccountId),lineUserId:clean(binding.lineUserId),authMethod:binding.lineUserId?'line':'email'};
+  const handlers={coursePortalTeacherData:teacherPortalData,coursePortalTeacherUtilitySession:teacherUtilitySession,coursePortalTeacherContractSession:teacherContractSession,coursePortalTeacherAvailability:teacherAvailability,coursePortalTeacherSlotOptions:teacherSlotOptions,coursePortalTeacherAttendanceCorrectionOptions:teacherAttendanceCorrectionOptions,coursePortalLessonHistory:courseLessonHistory,coursePortalRentalDayBoard:rentalDayBoard,coursePortalRentalWeekBoard:rentalWeekBoard,coursePortalRentalAvailability:rentalAvailability,coursePortalRentalMyBookings:rentalMyBookings,coursePortalRentalUseSettings:publicRentalSettings};
+  method=clean(method).replace(/Taiwan$/,'');
+  if(payload.save===true)throw new HttpsError('permission-denied','唯讀檢視不允許儲存。');
+  return mobilePreviewContext.run(session,withPortalReads(async()=>{
+    if(method==='externalTeacherWork'){
+      const resolved=await resolveTeacherUtilityEmployee(session);
+      return require('./externalTeacherWork').previewRead(payload,resolved,session);
+    }
+    if(method==='employeeDataRead'){
+      const resolved=await resolveTeacherUtilityEmployee(session);
+      const gateway=require('./employeeDataGateway').createEmployeeDataGateway({db,FieldValue,Filter:admin.firestore.Filter,resolveTeacher:async()=>resolved});
+      return gateway.read({...payload,sessionToken:'preview'},{});
+    }
+    if(method==='coursePortalClassClosures'){
+      let dates;try{dates=courseClosures.datesBetween(clean(payload.startDate),clean(payload.endDate||payload.startDate));}catch(e){throw new HttpsError('invalid-argument',e.message);}
+      const docs=await Promise.all(dates.map(day=>db.collection(courseClosures.COLLECTION).doc(day).get()));
+      return {ok:true,closures:docs.filter(d=>d.data()?.active===true).map(d=>({date:d.id,reason:clean(d.data().reason)}))};
+    }
+    if(!handlers[method])throw new HttpsError('permission-denied','唯讀檢視不允許此操作。');
+    return handlers[method]({...payload,sessionToken:'preview'});
+  }));
+}
 function parseContactBookImages(values) {
   const images = Array.isArray(values) ? values : [];
   if (images.length > CONTACT_BOOK_IMAGE_MAX_COUNT) {

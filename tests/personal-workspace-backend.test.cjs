@@ -10,11 +10,11 @@ test('legacy contact fields remain visible and stale review compares the origina
  assert.throws(()=>reviewedProfilePatch({employeeId:'e1',changes:[{key:'address',before:'',after:'新地址'}]},row,'e1'));
  assert.equal(profileOf({...row,mobilePhone:'0911111111'}).mobilePhone,'0911111111');
 });
-test('personal overview verifies employee identity and returns only their confirmed payments',async()=>{
+test('personal overview verifies identity and omits payment history',async()=>{
  const f=fixture({'employeeSalaryPayments/p1':{employeeId:'e1',status:'paid',paidDate:'2026-10-05',month:'2026-09',amount:500},'employeeSalaryPayments/p2':{employeeId:'e2',status:'paid',amount:90000,paidDate:'2026-10-05'},'employeeSalaryPayments/p3':{employeeId:'e1',status:'draft',paidDate:'2026-10-05',amount:800}});
  await assert.rejects(f.service.handle({},{}));await assert.rejects(f.service.handle({}, {auth:{token:{...request.auth.token,employeeId:'e2'}}}));
  await assert.rejects(f.service.handle({action:'profile-submit',expectedEmployeeId:'e2',profile:{address:'must not write'}},request));assert.equal([...f.rows.keys()].filter(k=>k.startsWith('profileChangeRequests/')).length,0);
- const r=await f.service.handle({employeeId:'e2'},request);assert.equal(r.user.employeeId,'e1');assert.deepEqual(r.payments.map(p=>p.amount),[500]);assert.deepEqual(r.capabilities,{attendance:true,teacher:false,renter:false});assert.equal(r.profile.password,undefined);assert.equal(r.user.passwordHash,undefined);
+ const r=await f.service.handle({employeeId:'e2'},request);assert.equal(r.user.employeeId,'e1');assert.equal(r.payments,undefined);assert.deepEqual(r.capabilities,{attendance:true,teacher:false,renter:false});assert.equal(r.profile.password,undefined);assert.equal(r.user.passwordHash,undefined);
  f.rows.get('employees/e1').accountStatus='disabled';await assert.rejects(f.service.handle({},request));
 });
 test('capabilities require existing verified portal accounts; caller cannot invent a role',async()=>{
@@ -42,6 +42,19 @@ test('manager approval of a mobile supplement refuses stale or cross-person chan
  assert.throws(()=>reviewedProfilePatch(row,{employeeId:'e2',address:'原地址'},'e2'));
  assert.throws(()=>reviewedProfilePatch(row,{employeeId:'e1',address:'主管已更新'},'e1'));
  assert.throws(()=>reviewedProfilePatch({employeeId:'e1',changes:[{key:'role',before:'staff',after:'admin'}]},user,'e1'));
+});
+test('cash payment queues review without clearing existing bank data',async()=>{
+ const f=fixture({'employees/e1':{...user,bankAccount:'01234567890123'}});
+ await f.service.handle({action:'profile-submit',profile:{paymentMethod:'cash',bankAccount:'invalid'}},request);
+ const row=[...f.rows].find(([key])=>key.startsWith('profileChangeRequests/'))[1];
+ assert.equal(row.paymentMethod,'cash');assert.equal(row.bankAccount,undefined);assert.equal(f.rows.get('employees/e1').bankAccount,'01234567890123');
+ const {reviewedProfilePatch}=require('../functions/personalWorkspace');assert.deepEqual(reviewedProfilePatch(row,f.rows.get('employees/e1'),'e1'),{paymentMethod:'cash'});
+});
+test('teacher preview requires a manager and forwards only the chosen teacher identity',async()=>{
+ const calls=[];const f=fixture({'admins/m1':{employeeId:'m1',email:'manager@example.test',role:'admin',accountStatus:'active'}},{teacherRead:async(...args)=>{calls.push(args);return {ok:true};}});
+ const input={action:'teacher-read',teacherId:'t1',method:'coursePortalTeacherData',payload:{teacherId:'t2'}};
+ await assert.rejects(f.service.handle(input,request));assert.equal(calls.length,0);
+ await f.service.handle(input,{auth:{token:{employee:true,manager:true,employeeId:'m1',email:'manager@example.test'}}});assert.equal(calls[0][0],'t1');assert.equal(f.minted(),0);
 });
 test('manager employee preview is read-only, rejects employee impersonation and uses the selected canonical person',async()=>{
  const f=fixture({'admins/m1':{employeeId:'m1',email:'manager@example.test',name:'Manager',role:'admin',accountStatus:'active'},'employees/e2':{...user,employeeId:'e2',email:'two@example.test',name:'Other',identityType:'staff'}});
