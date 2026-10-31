@@ -2738,3 +2738,18 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-product-stock-save footer{display:flex;justify-content:flex-end;padding:13px 18px;border-top:1px solid var(--ops-line);gap:8px;flex-wrap:wrap;}
 .ops-product-stock-save .ops-modal-body p{line-height:1.6;}
 @media(max-width:560px){.ops-product-stock-save footer .ops-button{flex:1 1 auto;}.ops-product-stock-save .ops-form-grid{grid-template-columns:1fr;}}
+
+/* Compact operating expenses: three independent ledgers. */
+.ops-expenses-compact .ops-card{padding:14px;margin-bottom:12px}
+.ops-expenses-compact .ops-expense-department-tabs{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ops-expenses-compact .ops-expense-department-tabs button{min-height:44px;padding:9px 12px}
+.ops-expenses-compact .ops-expense-department-tabs span{display:none}
+.ops-expenses-compact .ops-expense-page-kpis{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.ops-expenses-compact .ops-expense-master-table td,.ops-expenses-compact .ops-expense-master-table th{padding:8px 10px}
+.ops-expenses-compact .ops-expense-master-table td:nth-child(4),.ops-expenses-compact .ops-expense-master-table th:nth-child(4){display:none}
+.ops-expenses-compact .ops-expense-master-table td:nth-child(3) .ops-expense-cell-note{display:none}
+.ops-expenses-compact:not(.show-zero) .ops-expense-zero{display:none}
+.ops-expense-zero-toggle{display:flex;align-items:center;gap:6px;font-size:13px;margin:0 0 10px;color:var(--ops-muted)}
+.ops-expense-details>summary{cursor:pointer;font-weight:700;padding:3px}
+.ops-expenses-compact .ops-expense-month-toolbar{flex-wrap:wrap}
+@media(max-width:600px){.ops-expenses-compact .ops-expense-department-tabs b{font-size:13px}.ops-expenses-compact .ops-expense-department-tabs button{justify-content:center;padding:8px 4px}.ops-expenses-compact .ops-expense-page-kpis{grid-template-columns:1fr}.ops-expenses-compact .ops-expense-master-table{min-width:560px}}

@@ -117,7 +117,7 @@ assert.match(operationsHubSource,/href="#expenses" data-view="expenses"/,'左側
 assert.match(operationsHubSource,/>營運支出</,'左側選單必須明確標示營運支出');
 assert.match(formalPortalSource,/href="#expenses" data-view="expenses"/,'正式入口的左側選單也必須有營運支出');
 assert.match(formalPortalSource,/operations-expenses\.js\?v=20260801-operating-expenses-v6/,'正式入口必須先載入支出期間分攤新版程式');
-assert.match(formalPortalSource,/operations-phase1\.js\?v=20260916-native-school-v1/,'正式入口必須使用目前租賃續約收入流程主程式快取號');
+assert.match(formalPortalSource,/operations-phase1\.js\?v=20261031-expenses-shared-v1/,'正式入口必須使用目前租賃續約收入流程主程式快取號');
 assert.match(operationsSource,/expenses:renderOperatingExpensesPage/,'營運支出入口必須顯示獨立右側頁面');
 assert.match(operationsSource,/id="operatingExpenseMonth"/,'營運支出頁必須可以選擇查詢月份');
 assert.match(operationsSource,/data-action="expense-month-shift"/,'營運支出頁必須可以切換前後月份');
@@ -136,13 +136,8 @@ assert.match(operationsSource,/plan\.systemManaged\|\|periodManaged\?'disabled r
 assert.match(operationsSource,/\{id:'store',label:'尚品樂器行',shortLabel:'營業部門'\}/,'既有支出帳必須明確歸屬尚品樂器行／營業部門');
 assert.match(operationsSource,/\{id:'academy',label:'凱立音樂補習班',shortLabel:'補習部門'\}/,'第二本支出帳必須明確歸屬凱立音樂補習班／補習部門');
 assert.match(operationsSource,/data-action="expense-department"/,'支出頁必須可以直接切換兩個部門');
-assert.match(operationsSource,/departments\.store\|\|source/,'既有單一帳冊資料必須完整保留為營業部門資料');
-assert.match(operationsSource,/departments\.academy\?operatingExpenseEngine\(\)\.normalizeSettings\(departments\.academy\):zeroOperatingExpenseSettings\(\)/,'補習部門首次建立時必須全部從 0 開始');
-assert.match(operationsSource,/schemaVersion:2,departments:\{store:store,academy:academy\}/,'雙部門帳冊必須使用可辨識的第二版資料結構');
-assert.match(operationsSource,/operatingExpenseLedgerForDepartmentBounds\('store',bounds\)\.concat\(operatingExpenseLedgerForDepartmentBounds\('academy',bounds\)\)/,'營運總覽必須合併兩個部門的支出後再扣除');
 assert.match(operationsSource,/operatingExpenseSettingsForDepartment\(operatingExpenseDepartmentKey\(\)\),changed=0/,'主表批次儲存必須只寫入目前選擇的部門');
 assert.match(operationsSource,/settings=operatingExpenseSettingsForDepartment\(operatingExpenseDepartmentKey\(\)\)/,'自訂支出項目必須只新增到目前選擇的部門');
-assert.match(operationsSource,/clean\(row\.department\|\|row\.departmentKey\)\|\|'store'/,'沒有部門欄位的舊支出紀錄必須自動視為營業部門');
 assert.match(operationsSource,/department=existing\?clean\(existing\.department\|\|existing\.departmentKey\)\|\|'store':operatingExpenseDepartmentKey\(\)/,'新支出紀錄必須保存部門且舊紀錄不得被搬錯帳');
 assert.match(operationsSource,/<th>部門<\/th>/,'合併支出明細必須顯示每筆所屬部門');
 assert.match(operationsSource,/function automaticPayrollLedger/,'營運支出必須能從新系統薪資資料自動建立人事成本');
@@ -169,16 +164,16 @@ assert.ok(formalPortalSource.indexOf('href="#expenses" data-view="expenses"')>fo
 assert.doesNotMatch(formalPortalSource,/<b>營運支出<\/b><small>/,'營運支出選單不得再顯示小字');
 
 const startupDocument={readyState:'loading',addEventListener:function(){}};
-const startupWindow={document:startupDocument};
+const startupWindow={document:startupDocument,matchMedia:()=>({matches:false})};
 startupWindow.window=startupWindow;
 vm.runInNewContext(operationsSource,{window:startupWindow,document:startupDocument,console,Date,Map,Set,Promise,JSON,Math,Number,String,Array,Object,RegExp,Error,Intl,URL,Blob,FormData,setTimeout,clearTimeout});
 assert.ok(startupWindow.OperationsCenterV1,'支出模組即使暫時沒載入，營運中心也不得白畫面');
 
-const payrollWindow={document:startupDocument,YouziOperatingExpenses:expenses};
+const payrollWindow={document:startupDocument,matchMedia:()=>({matches:false}),YouziOperatingExpenses:expenses};
 payrollWindow.window=payrollWindow;
 const instrumentedOperationsSource=operationsSource.replace(
   'global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};',
-  'global.__testAutomaticPayrollLedger=automaticPayrollLedger;global.__testPeriodExpenseSettings=periodExpenseSettings;global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};'
+  'global.__testNormalizeExpenses=normalizeOperatingExpenseSettings;global.__testExpenseLedger=operatingExpenseLedgerForBounds;global.__testAutomaticPayrollLedger=automaticPayrollLedger;global.__testPeriodExpenseSettings=periodExpenseSettings;global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};'
 );
 vm.runInNewContext(instrumentedOperationsSource,{window:payrollWindow,document:startupDocument,console,Date,Map,Set,Promise,JSON,Math,Number,String,Array,Object,RegExp,Error,Intl,URL,Blob,FormData,setTimeout,clearTimeout});
 const payrollState=payrollWindow.OperationsCenterV1.state;
@@ -237,3 +232,26 @@ const savedElectricOverrides=savedElectricRule.monthlyOverrides.filter(row=>row.
 assert.deepEqual(savedElectricOverrides.map(row=>row.amount),expenses.allocatePeriodByMonth(6001,'2026-07','2026-08').map(row=>row.amount),'兩月帳單必須依整個涵蓋期間的非星期一日期分攤');
 
 console.log('operations expense allocation tests passed');
+
+// Moving common costs preserves every historical billing period and total.
+const normalizeThree=payrollWindow.__testNormalizeExpenses;
+const legacySettings={departments:{store:expenses.normalizeSettings({recurringRules:[
+ {id:'rent',category:'房屋租金',amount:42500,startMonth:'2026-07',monthlyOverrides:[{month:'2026-08',amount:43000,mode:'monthly'}]},
+ {id:'yamaha-authorization',category:'Yamaha 授權費',amount:6500,startMonth:'2026-07'},
+ {id:'line',category:'LINE 帳號 費用',amount:0,startMonth:'2026-07',monthlyOverrides:[{month:'2026-08',amount:278,mode:'annual',periodId:'annual:2026-08:2027-07',periodStartMonth:'2026-08',periodEndMonth:'2027-07',periodTotal:2000}]}
+]}),academy:expenses.normalizeSettings({recurringRules:[{id:'rent',category:'房屋租金',amount:0},{id:'yamaha-authorization',category:'Yamaha 授權費',amount:0}]})}};
+const migrated=normalizeThree(legacySettings);
+assert.equal(migrated.schemaVersion,3);
+assert.equal(migrated.departments.shared.recurringRules.find(r=>r.id==='rent').monthlyOverrides[0].amount,43000);
+assert.equal(migrated.departments.academy.recurringRules.find(r=>r.id==='yamaha-authorization').amount,6500);
+assert.equal(migrated.departments.store.recurringRules.find(r=>r.id==='rent').amount,0);
+assert.equal(migrated.departments.shared.recurringRules.find(r=>r.id==='line').monthlyOverrides[0].periodTotal,2000);
+assert.equal(JSON.stringify(normalizeThree(migrated)),JSON.stringify(migrated),'repeated normalization must not duplicate transferred rules');
+const ledgerSum=settings=>['store','academy','shared'].reduce((n,k)=>n+(settings.departments[k]?total(expenses.buildLedger({settings:settings.departments[k],expenses:[],start:'2026-08-01',end:'2026-08-31'})):0),0);
+assert.equal(ledgerSum(migrated),ledgerSum(legacySettings),'classification cannot change the total');
+const conflict=JSON.parse(JSON.stringify(legacySettings));conflict.departments.academy.recurringRules.find(r=>r.id==='rent').amount=1000;
+const conflictMoved=normalizeThree(conflict);
+assert.equal(ledgerSum(conflictMoved),ledgerSum(conflict),'nonzero rules from both departments must be retained');
+assert.equal(JSON.stringify(normalizeThree(conflictMoved)),JSON.stringify(conflictMoved));
+assert.ok(operationsSource.includes('employees:state.employees,employeeSalaryConfigs:state.employeeSalaryConfigs,employeeSalaryConfigHistory:state.employeeSalaryConfigHistory,parttimeRecords:state.parttimeRecords'),'fast cache must preserve payroll inputs');
+console.log('Three expense groups, historical amounts, repeated migration and payroll cache checks passed');
