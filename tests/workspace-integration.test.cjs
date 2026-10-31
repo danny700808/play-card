@@ -76,8 +76,14 @@ test('contract reads wait for authentication and report denied sources',async()=
   await assert.rejects(()=>context.readExternalTeacherCollection('externalTeacherContracts',100),/denied/);
   assert.match(page,/setLoading\(true\);await waitForManagerAuth\(\);const year=/);
 });
+test('certificate administration waits for manager identity and propagates read failures',async()=>{
+  const steps=[];const user={id:'manager'};
+  const context={window:null,getUser:()=>user,api:async()=>{throw Error('legacy fallback forbidden');},YZManagerAuth:{requireManagerSession:async options=>{assert.equal(options.expectedManager,user);steps.push('auth');}},YZFirebase:{handleApi:async()=>{steps.push('read');throw Error('offline');}}};context.window=context;
+  vm.runInNewContext(read('certificate-admin-session.js'),context);
+  await assert.rejects(()=>context.api('getCertificateTemplate',{}),/offline/);assert.deepEqual(steps,['auth','read']);
+});
 test('modified inline scripts parse and new workspace links resolve locally',()=>{
-  const pages=['quotation-contract-hub.html','form-settings-hub.html','external-teacher-forms-admin.html','gift-point-card.html','gift-point-card-admin.html','employment-certificate.html','teaching-certificate.html','certificate-review-admin.html','certificate-history-admin.html','my-certificates.html','teacher-hub.html','forms-hub.html'];
+  const pages=['quotation-contract-hub.html','form-settings-hub.html','external-teacher-forms-admin.html','gift-point-card.html','gift-point-card-admin.html','employment-certificate.html','teaching-certificate.html','certificate-review-admin.html','certificate-history-admin.html','my-certificates.html','teacher-hub.html','forms-hub.html','employment-certificate-admin.html','teaching-certificate-admin.html','employment-certificate-admin-issue.html','teaching-certificate-admin-issue.html'];
   for(const file of pages){const html=read(file);for(const match of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi))if(match[1].trim())new vm.Script(match[1],{filename:file});for(const match of html.matchAll(/(?:href|src)="([^"#]+)"/g)){const url=match[1].split(/[?#]/)[0];if(!/^(https?:|data:|javascript:)/.test(url)&&!/[{}]/.test(url))assert.ok(fs.existsSync(path.join(root,url)),file+' → '+url);}}
   assert.match(read('my-certificates.html'),/currentApp\?\.status==='已核准'/);
   assert.match(read('gift-point-card-admin.html'),/if\(!giftLoaded\|\|giftSaving\)return/);

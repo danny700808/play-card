@@ -48,11 +48,11 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260919-taiwan-v2"></script>
+  <script src="firebase-client.js?v=20261031-cert1"></script>
   <script src="app.js?v=20260802-security-phase1"></script>
-  <script src="certificate-common.js?v=cert-preview-iframe-fix-20260530"></script>
+  <script src="manager-auth.js?v=20261024-session-stability-v1"></script><script src="certificate-admin-session.js?v=20261031-1"></script><script src="certificate-common.js?v=cert-preview-iframe-fix-20260530"></script>
   <script>
-    const CERT_TYPE='employment';
+    let certificateReady=false;const CERT_TYPE='employment';
     let currentTemplate=null;
     function msg(text, ok=true){ const el=document.getElementById('msg'); el.textContent=text||''; el.style.color=ok?'#1f7a5a':'#b42318'; }
     function readTemplate(){
@@ -83,9 +83,9 @@
       YZ_CERT.renderPreviewFrame(document.getElementById('previewArea'), {type:CERT_TYPE,template:t,data:sampleData(),status:'待主管審核',mode:'editing'});
     }
     async function loadTemplate(){
-      try{ const r=await api('getCertificateTemplate',{certificateType:CERT_TYPE}); applyTemplate(r.template||r.row||{}); }catch(e){ applyTemplate(YZ_CERT.defaultTemplate(CERT_TYPE)); msg('目前使用預設範本。',true); }
+      try{ const r=await api('getCertificateTemplate',{certificateType:CERT_TYPE}); applyTemplate(r.template||r.row||{});certificateReady=true; }catch(e){certificateReady=false;msg('範本讀取失敗，請重新整理：'+e.message,false);}
     }
-    async function saveTemplate(){
+    async function saveTemplate(){if(!certificateReady){msg('請先完成範本讀取。',false);return;}
       try{ const user=getUser()||{}; const template=readTemplate(); const r=await api('saveCertificateTemplate',{userId:user.id,certificateType:CERT_TYPE,template}); if(!r.ok) throw new Error(r.message||'儲存失敗'); msg('範本已儲存。'); await loadHistory(); }catch(e){ msg('儲存失敗：'+e.message,false); }
     }
     async function loadHistory(){
