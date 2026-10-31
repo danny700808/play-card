@@ -164,18 +164,24 @@ function identityKeys(spec, row, docId) {
     return teacher ? [`teacher:${teacher}`] : [];
   }
   const keys = [];
+  const subjectEmployee = first(row, ['employeeId', '員工ID', 'externalTeacherEmployeeId', 'employeeDocId']);
+  const actorOrFallbackFields = new Set(['userId', '使用者ID', 'targetEmployeeId', 'applicantId', '申請人ID']);
   if (spec.collection === 'employees') keys.push(`employee:${clean(docId)}`);
   uniq((spec.employeeFields || []).concat([
     'employeeId', 'userId', 'personMasterId', 'canonicalEmployeeId', 'targetEmployeeId',
     'approvedEmployeeId', 'linkedEmployeeId', 'externalTeacherEmployeeId', 'employeeDocId',
     'applicantId', '員工ID', '使用者ID', '申請人ID'
   ])).forEach((field) => {
+    // In old schedules/requests userId is the operator. An explicit subject
+    // takes precedence; manager-approved canonical links remain separate fields.
+    if (subjectEmployee && actorOrFallbackFields.has(field)) return;
     const value = clean(row && row[field]);
     if (value) keys.push(`employee:${value.replace(/^employees\//, '')}`);
   });
   uniq((spec.teacherFields || []).concat([
     'teacherId', 'coursePortalTeacherId', 'legacyTeacherId', '老師ID', '教師ID'
   ])).forEach((field) => {
+    if (field === 'createdByTeacherId' && first(row, ['teacherId', 'coursePortalTeacherId'])) return;
     const value = clean(row && row[field]);
     if (value) keys.push(`teacher:${value}`);
   });

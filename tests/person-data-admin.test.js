@@ -51,6 +51,19 @@ test('notification subject and manager recipient cannot join personnel masters',
   }
 });
 
+test('a manager creating an employee schedule or request does not merge their identities', () => {
+  for (const collection of ['employeeSchedules','clockCorrections','parttimeRecords','leaveRequests']) {
+    const groups=helpers.buildGroups([
+      record('employees','E1',{employeeId:'E1'}),
+      record('employees','M1',{employeeId:'M1'}),
+      record(collection,'R1',{employeeId:'E1',userId:'M1',targetEmployeeId:'M1'})
+    ]);
+    assert.equal(groups.length,2);
+    assert.deepEqual(groups.find(group=>group.employeeIds.includes('E1')).employeeIds,['E1']);
+    assert.equal(groups.find(group=>group.employeeIds.includes('M1')).sourceCount,1);
+  }
+});
+
 test('manager-linked legacy master remains history under one canonical person', () => {
   const groups = helpers.buildGroups([
     record('employees', 'E1', { employeeId: 'E1', accountStatus: 'active' }),

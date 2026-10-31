@@ -60,6 +60,22 @@ test('gift loader propagates failure and never writes defaults; saves preserve u
   await assert.rejects(()=>context.GiftCardService.load({id:'manager'},true),/offline/);assert.equal(writes,0);
   await context.GiftCardService.save({id:'manager'},{cardTitle:'新版',unknown:'keep server value'});assert.equal(writes,1);assert.equal(auth,2);
 });
+test('personal certificate calls initialize Firebase and never fall back to the legacy API',async()=>{
+  let initialized=0,legacy=0;
+  const context={window:null,APP_CONFIG:{FIREBASE_CONFIG:{}},firebase:{apps:[],initializeApp(){initialized++;this.apps.push({});}},api:async()=>{legacy++;return {};},YZProtectedData:{call:async(name,payload)=>{assert.equal(name,'externalTeacherWork');throw Error('permission-denied');}}};context.window=context;
+  vm.runInNewContext(read('certificate-self-service.js'),context);
+  await assert.rejects(()=>context.api('getCertificateApplications'),/permission-denied/);
+  assert.equal(initialized,1);assert.equal(legacy,0);
+  await context.api('unrelatedAction');assert.equal(legacy,1);
+});
+test('contract reads wait for authentication and report denied sources',async()=>{
+  const page=read('external-teacher-admin.html');
+  const start=page.indexOf('async function readExternalTeacherCollection('),end=page.indexOf('async function readExternalTeacherRows(',start);
+  const context={db:()=>({collection:()=>({limit:()=>({get:async()=>{throw Error('denied');}})})}),console:{warn(){}}};
+  vm.runInNewContext(page.slice(start,end),context);
+  await assert.rejects(()=>context.readExternalTeacherCollection('externalTeacherContracts',100),/denied/);
+  assert.match(page,/setLoading\(true\);await waitForManagerAuth\(\);const year=/);
+});
 test('modified inline scripts parse and new workspace links resolve locally',()=>{
   const pages=['quotation-contract-hub.html','form-settings-hub.html','external-teacher-forms-admin.html','gift-point-card.html','gift-point-card-admin.html','employment-certificate.html','teaching-certificate.html','certificate-review-admin.html','certificate-history-admin.html','my-certificates.html','teacher-hub.html','forms-hub.html'];
   for(const file of pages){const html=read(file);for(const match of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi))if(match[1].trim())new vm.Script(match[1],{filename:file});for(const match of html.matchAll(/(?:href|src)="([^"#]+)"/g)){const url=match[1].split(/[?#]/)[0];if(!/^(https?:|data:|javascript:)/.test(url)&&!/[{}]/.test(url))assert.ok(fs.existsSync(path.join(root,url)),file+' → '+url);}}
