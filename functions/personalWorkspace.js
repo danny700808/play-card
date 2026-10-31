@@ -77,7 +77,7 @@ function createPersonalWorkspace({db,auth,FieldValue,findPortalAccount,issuePort
   if(action==='preview-role-read'){
    const role=clean(data.role);if(!['teacher','renter'].includes(role))throw new HttpsError('permission-denied','不支援此身分。');
    const linked=await findPortalAccount(role,user.email);if(!linked)throw new HttpsError('permission-denied','尚未連結此身分。');
-   return portalRoleRead(role,linked.targetId,clean(data.method),data.payload||{});
+   return portalRoleRead(role,role==='renter'?linked.renterId:linked.targetId,clean(data.method),data.payload||{});
   }
   if(action==='payroll-month'||action==='preview-month')return require('./personalPayroll').monthData(db,account,user,clean(data.month));
   if(action==='open-role'){
