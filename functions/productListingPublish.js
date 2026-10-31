@@ -1341,7 +1341,7 @@ function platformListingStatusFromPublish(previous, platforms, stages) {
       ...old,
       status: resolvedStatus,
       listingId: clean(receipt.listingId || raw.productId || raw.listingId || old.listingId),
-      note: clean(pendingReview ? '正式清單確認審核中，本次送審完成；不安排回查，後續由獨立狀態檢測更新。' : raw.message).slice(0, 800),
+      note: clean(pendingReview ? '正式清單確認審核中，本次送審完成；不安排回查，後續由獨立狀態檢測更新。' : stageVerified && successSubmitted ? '正式商品已核對完成。' : raw.message).slice(0, 800),
       lastCheckedAt: checkedAt,
       lastCheckedBy: stageVerified ? '商品上架正式清單核對' : (old.lastCheckedBy || ''),
       lastAttemptedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -6026,6 +6026,7 @@ async function publishProductListingCaseHandler(request) {
         };
         stages.easyStore = {
           status: 'verified', productId: easyStoreResult.result.productId,
+          message: 'EasyStore 正式商品與細項已核對完成。',
           variantIds: easyStoreResult.result.variantIds, receipt: easyStoreResult.receipt
         };
         stages.shopee = { status: 'awaiting-verification', dependsOn: ['easyStore'] };

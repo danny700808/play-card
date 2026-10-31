@@ -1,6 +1,13 @@
 'use strict';
 const version = 'youzi-v3-execution-2026-09-24-r7';
 const instructions = [
+  "[共用內容｜已確認] 2026-10-31 媒體預檢：開平台前先產生符合平台限制的副本。蝦皮介紹圖寬至少700px、高至少32px、比例0.5–32、2,000,000 bytes內；MOMO詳細圖小於500,000 bytes。保留來源、SHA256與副本對照，正確副檔名，原始素材不覆寫；本機暫存與正式媒體優先E:/GPT資料庫。蝦皮原生圖片可用scripts/stage-existing-shopee-job.mjs預先處理。",
+  "[共用內容｜已實頁驗證] 2026-10-31 續跑：平台取得商品ID即記斷點；之後只修同ID。人工完成回條必須同步中央商品各SKU的platformMappings與platformListingStatus、案件和同一job，保留原始preparedSnapshot，補圖以獨立修訂記錄；完成後清掉過時錯誤訊息，不拿排隊、同步上架或API成功代替媒體保存驗證。",
+  "[蝦皮｜已實頁驗證] 2026-10-31 官網同步商品不會保證原生描述圖與影片齊全；同步完成後於同商品原生編輯器補圖與影片，更新成功回清單，再重開核對。輸入無效時檢查焦點，點文字區後原生ctrl+a與輸入，避免重複新增商品。",
+  "[MOMO｜已實頁驗證] 2026-10-31 商品主圖以既定綠底品牌圖為首，廣告用圖另用乾淨商品圖。規格圖片逐款保存並重開核對。數字看似填入但報空值時，點該欄ctrl+a原生輸入並Tab離焦，讀回再發佈；不盲目重送整頁。同名素材只在確認相同圖片時沿用素材銀行。",
+  "[EasyStore｜已實頁驗證] 2026-10-31 既有多細項名稱要用正式option_type／option_value更新方式；variant PUT的name／option1回200不代表名稱已變更。寫入後按SKU讀回名稱與image_id。更新商品body_html需帶現有title，不能因400而另建商品。",
+  "[酷澎｜已實頁驗證] 2026-10-31 建立群組前先比對分類實際曝露選項。只有尺寸／數量而兩款相同時，不能用非曝露型號欄規避重複選項或虛構尺寸；依已授權範圍分開SKU，每款保存獨立sellerProductId/vendorItemId，介紹明示本賣場型號。APPROVED商品不重送approve。",
+  "[共用內容｜已確認] 2026-10-31 補充安裝照片應先納入凍結前的描述圖計畫；凍結後新增則記修訂並於各平台同商品補正。安裝圖標明示範型號，實拍拼圖保留浮水印，固定尾圖和原始綠底紅字logo不變；相同圖不同角色不得重複上傳。",
   "2026-10-30 固定圖片標準：主圖只能沿用原始綠底、原始紅色標語字形與原圓形Logo，保留20%頁首及既定尺寸；取消過去批次白字例外，不得自行改色或重畫品牌資產。",
   "實體圖合成規則 physical-collage-watermark-v2-20261030：同商品全部原始實拍依保存順序合成一張；四張排四格，其他張數依比例分格，單張保留單張。保留完整內容與比例，不裁切、不拉伸、不美化、不改色、不去背、不換背景、不使用圖片模型。合成後只加一次淡斜向「柚子樂器｜實體圖」浮水印，透明度0.13，沿用既有樣式，不加不透明底條。已合成者不再拼接，已有合格浮水印不重加。保留原照、來源URL與SHA256、輸出SHA256和平台副本對應；僅放四平台詳細介紹，不當主圖或輪播圖。新增原照時以完整來源組重新合成並替換舊合成圖。",
   "影片固定製作與上傳：有實拍時沿用youzi-product-video-brand-v1-2026-09-06，原始3秒片頭＋完整實拍原音及既有淡浮水印＋1.2秒片尾供YouTube；蝦皮另選完整語意片段，含片頭尾目標58.9秒、29MB內。無實拍時沿用已核准小人指示、雷射筆、中文講解模板，不得以無聲輪播代替。另製16:9 YouTube封面，標題及說明包含完整貨號，儲存後重開同videoId確認影片、縮圖、標題、說明與商品連結才記完成。",
@@ -43,4 +50,11 @@ const instructions = [
   "酷澎requested=true後CREATE_REQ_ACCEPTED／臨時保存中僅為建立接受，立即保存同一listingId與回條，不重建、不立刻重送approve；短暫查詢失敗保留處理中。只有正式狀態已審核中才pending-review且本次送審完成，APPROVED才active。分類推薦僅候選，核對正式分類樹及該分類metadata必填（例如效果器盒尺寸與數量）後送出。",
   "讀案件時即列出各平台圖片角色及來源／角色唯一性：cleanMain、品牌圖、官網直式、MOMO乾淨細節與固定尾圖。專案內部角色要求不得說成平台官方限制；有合格成品沿用，不重做成功通路。蝦皮一般更新錯誤可先原生重輸合格標題並離焦再試，這是實測恢復方式而非已證實唯一根因。"
 ];
-module.exports = { version, instructions };
+// Named rules keep image prompts stable when execution instructions are added.
+const imageRules = {
+  background: instructions.find(text => text.startsWith('2026-09-24商業主圖背景修訂：')),
+  brandHeader: instructions.find(text => text.startsWith('固定品牌區只能合成原始綠底')),
+  productAppearance: instructions.find(text => text.startsWith('主商品外觀以使用者第一張來源圖製作。'))
+};
+if (Object.values(imageRules).some(text => !text)) throw new Error('Required image policy rule missing');
+module.exports = { version, instructions, imageRules };
