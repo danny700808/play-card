@@ -17,6 +17,15 @@ test('unknown historical insurance remains unknown instead of borrowing a future
  assert.equal(payroll.configForMonth([],{effectiveDate:'2026-11-01'},'2026-10'),null);
  assert.equal(payroll.insuranceOf(null).labor,null);
 });
+test('existing 2026 configured insurance calculation matches the management screen only for its known year',()=>{
+ const config={laborStatus:'在保',laborPlan:'LAB_PART_11100',healthStatus:'未保',laborRetirementSalary:6000};
+ const current=payroll.insuranceOf(config,'2026-10');assert.equal(current.labor,277);assert.equal(current.health,0);assert.equal(current.employerRetirement,360);
+ assert.equal(payroll.insuranceOf(config,'2024-10').labor,null);
+});
+test('legacy manager-deleted wage records never contribute to the monthly total',async()=>{
+ const f=database({'parttimeRecords/deleted':{employeeId:'e1',date:'2026-10-01',status:'主管刪除',grossPay:9999,totalHours:8}});
+ assert.equal((await payroll.monthData(f.db,{data:{}},{employeeId:'e1',identityType:'parttime'},'2026-10')).hasData,false);
+});
 test('preview context permits reads but blocks writes through references and snapshots, without affecting concurrent normal requests',async()=>{
  const f=database({'employees/e1':{name:'Before'}}),db=context.guard(f.db);
  await Promise.all([context.run({teacherId:'t1'},async()=>{
