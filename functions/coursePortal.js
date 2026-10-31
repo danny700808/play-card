@@ -13965,6 +13965,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
 module.exports = {
   mobileTeacherRoster,
   mobileTeacherRead,
+  mobilePortalRead,
   teacherPortalProfileId,
   findEmailLoginAccount,
   issueSession,
@@ -13987,14 +13988,17 @@ async function mobileTeacherRoster() {
   const ids=new Set(bindings.docs.map(d=>clean(d.data().teacherId)));
   return teachers.filter(t=>sourceActive(t)&&ids.has(sourceId(t))).map(t=>({id:sourceId(t),name:clean(t.name),identityType:'external',identityLabel:'外聘老師'})).sort((a,b)=>a.name.localeCompare(b.name,'zh-TW'));
 }
-async function mobileTeacherRead(teacherId,method,payload={}) {
-  const bindings=await db.collection('coursePortalTeacherBindings').where('teacherId','==',clean(teacherId)).get();
+async function mobileTeacherRead(teacherId,method,payload={}) {return mobilePortalRead('teacher',teacherId,method,payload);}
+async function mobilePortalRead(role,targetId,method,payload={}) {
+  if(!['teacher','renter'].includes(role))throw new HttpsError('permission-denied','不支援此檢視身分。');
+  const bindings=await db.collection(role==='teacher'?'coursePortalTeacherBindings':'coursePortalRenterBindings').where(role==='teacher'?'teacherId':'renterId','==',clean(targetId)).get();
   const binding=bindings.docs.map(d=>d.data()).find(r=>r.status==='active'&&(r.authAccountId||r.lineUserId));
   if(!binding)throw new HttpsError('permission-denied','這位老師尚無有效登入綁定。');
-  const session={role:'teacher',teacherId:clean(teacherId),authAccountId:clean(binding.authAccountId),lineUserId:clean(binding.lineUserId),authMethod:binding.lineUserId?'line':'email'};
+  const session={role,[role==='teacher'?'teacherId':'renterId']:clean(targetId),authAccountId:clean(binding.authAccountId),lineUserId:clean(binding.lineUserId),authMethod:binding.lineUserId?'line':'email'};
   const handlers={coursePortalTeacherData:teacherPortalData,coursePortalTeacherUtilitySession:teacherUtilitySession,coursePortalTeacherContractSession:teacherContractSession,coursePortalTeacherAvailability:teacherAvailability,coursePortalTeacherSlotOptions:teacherSlotOptions,coursePortalTeacherAttendanceCorrectionOptions:teacherAttendanceCorrectionOptions,coursePortalLessonHistory:courseLessonHistory,coursePortalRentalDayBoard:rentalDayBoard,coursePortalRentalWeekBoard:rentalWeekBoard,coursePortalRentalAvailability:rentalAvailability,coursePortalRentalMyBookings:rentalMyBookings,coursePortalRentalUseSettings:publicRentalSettings};
   method=clean(method).replace(/Taiwan$/,'');
   if(payload.save===true)throw new HttpsError('permission-denied','唯讀檢視不允許儲存。');
+  if(role==='renter'&&!['coursePortalRentalDayBoard','coursePortalRentalWeekBoard','coursePortalRentalAvailability','coursePortalRentalMyBookings','coursePortalRentalUseSettings','coursePortalClassClosures'].includes(method))throw new HttpsError('permission-denied','此身分僅可檢視租用功能。');
   return mobilePreviewContext.run(session,withPortalReads(async()=>{
     if(method==='externalTeacherWork'){
       const resolved=await resolveTeacherUtilityEmployee(session);

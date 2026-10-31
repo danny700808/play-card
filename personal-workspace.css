@@ -5,3 +5,5 @@
 #notificationV2FinalFab,#manualNotifyTabsBtn,#notificationV2Fab{display:none!important}
 
 .personal-month{display:flex;align-items:center;gap:10px;margin-bottom:14px}.personal-month input,#paymentMethod{min-height:42px;padding:8px 10px;border:1px solid var(--pm-line);border-radius:8px;background:#fff;color:var(--pm-ink);font:inherit}.personal-month input{flex:1;min-width:0}.personal-select-label{display:block;margin-bottom:6px}#paymentMethod{width:100%}.personal-preview-frame{display:block;width:100%;height:780px;border:0;background:#fff}.personal-frame-head{padding:8px 0}.personal-frame-head [role=status]{font-size:14px;color:var(--pm-muted)}
+
+.personal-preview-frame{height:clamp(500px,calc(100dvh - 260px),780px)}.is-preview .personal-body:has(.personal-preview-frame){min-height:0;padding:6px}

@@ -56,6 +56,13 @@ test('teacher preview requires a manager and forwards only the chosen teacher id
  await assert.rejects(f.service.handle(input,request));assert.equal(calls.length,0);
  await f.service.handle(input,{auth:{token:{employee:true,manager:true,employeeId:'m1',email:'manager@example.test'}}});assert.equal(calls[0][0],'t1');assert.equal(f.minted(),0);
 });
+test('employee rental preview resolves its existing binding and ignores a supplied target',async()=>{
+ const calls=[];const f=fixture({'admins/m1':{employeeId:'m1',email:'manager@example.test',role:'admin',accountStatus:'active'}},{findPortalAccount:async(role,email)=>role==='renter'&&email===user.email?{targetId:'r1'}:null,portalRoleRead:async(...args)=>{calls.push(args);return {ok:true};}});
+ const input={action:'preview-role-read',employeeDocId:'e1',role:'renter',targetId:'wrong',method:'coursePortalRentalMyBookings',payload:{renterId:'wrong'}};
+ await assert.rejects(f.service.handle(input,request));
+ await f.service.handle(input,{auth:{token:{employee:true,manager:true,employeeId:'m1',email:'manager@example.test'}}});
+ assert.deepEqual(calls[0].slice(0,2),['renter','r1']);assert.equal(f.minted(),0);
+});
 test('manager employee preview is read-only, rejects employee impersonation and uses the selected canonical person',async()=>{
  const f=fixture({'admins/m1':{employeeId:'m1',email:'manager@example.test',name:'Manager',role:'admin',accountStatus:'active'},'employees/e2':{...user,employeeId:'e2',email:'two@example.test',name:'Other',identityType:'staff'}});
  const manager={auth:{token:{employee:true,manager:true,employeeId:'m1',email:'manager@example.test'}}};

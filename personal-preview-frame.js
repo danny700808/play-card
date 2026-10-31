@@ -40,7 +40,7 @@
   const srcDescriptor=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'src');
   Object.defineProperty(HTMLIFrameElement.prototype,'src',{get:srcDescriptor.get,set(value){if(value&&value!=='about:blank'){send('navigate',{href:value});return;}srcDescriptor.set.call(this,value);}});
  }
- async function open({container,page,user,read}){
+ async function open({container,page,user,read,role='teacher'}){
   close();const channel=crypto.randomUUID();const frame=document.createElement('iframe');frame.className='personal-preview-frame';frame.title='人員實際手機畫面';frame.setAttribute('sandbox','allow-scripts');frame.setAttribute('referrerpolicy','no-referrer');
   container.replaceChildren();const toolbar=document.createElement('div');toolbar.className='personal-frame-head';const back=document.createElement('button');back.className='personal-btn';back.textContent='← 返回';toolbar.append(back);const status=document.createElement('span');status.setAttribute('role','status');toolbar.append(status);container.append(toolbar,frame);
   const history=[];let currentPage='',navigation=0;
@@ -60,7 +60,7 @@
    const base=doc.createElement('base');base.href=url.href;doc.head.prepend(base);
    const policy=doc.createElement('meta');policy.httpEquiv='Content-Security-Policy';policy.content="default-src 'none'; script-src 'unsafe-inline' https://danny700808.github.io https://cdn.jsdelivr.net; style-src 'unsafe-inline' https:; img-src https: data: blob:; font-src https: data:; media-src https: data: blob:; connect-src 'none'; form-action 'none'; frame-src 'none'";doc.head.prepend(policy);
    let fingerprint=2166136261;for(const char of 'readonly-preview')fingerprint=Math.imul(fingerprint^char.charCodeAt(0),16777619);
-   const storage={employeeUser:JSON.stringify(user),employeeUserId:user.id,employeeSecureAuthVersion:'1','youzi.coursePortal.teacher.session.v1':'readonly-preview','youzi.coursePortal.lastRole.v2':'teacher','youzi.coursePortal.authStateMigration.20260805.v1':'done','youzi.teacherMore.authorization.v4':JSON.stringify({employeeId:user.employeeId||user.id,tokenFingerprint:(fingerprint>>>0).toString(16).padStart(8,'0'),validatedAt:Date.now()})};
+   const storage={employeeUser:JSON.stringify(user),employeeUserId:user.id,employeeSecureAuthVersion:'1',['youzi.coursePortal.'+role+'.session.v1']:'readonly-preview','youzi.coursePortal.lastRole.v2':role,'youzi.coursePortal.authStateMigration.20260805.v1':'done','youzi.teacherMore.authorization.v4':JSON.stringify({employeeId:user.employeeId||user.id,tokenFingerprint:(fingerprint>>>0).toString(16).padStart(8,'0'),validatedAt:Date.now()})};
    const script=doc.createElement('script');script.textContent='('+childBootstrap.toString()+')('+JSON.stringify({channel,storage,page:url.href}).replace(/</g,'\\u003c')+');';doc.head.insertBefore(script,base.nextSibling);
    frame.srcdoc='<!doctype html>'+doc.documentElement.outerHTML;status.textContent='唯讀';
   }

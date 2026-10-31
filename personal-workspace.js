@@ -43,7 +43,7 @@
  async function selectTab(next){
   if(!model.tabs(state.capabilities).some(([key])=>key===next))return;
   if(!preview)try{await verifyIdentity(state.user.id);}catch(e){status(e.message,true);body('<a class="personal-btn full" href="login.html?next=dashboard.html">重新登入</a>');return;}
-  tab=next;generation++;status('');nav();if(!preview)saveUser(state.user);
+  window.PersonalPreviewFrame?.close();tab=next;generation++;status('');nav();if(!preview)saveUser(state.user);
   if(tab==='attendance')return attendance();if(tab==='salary')return salary();if(tab==='more')return more();
   if(tab==='schedule'||tab==='rental')return rolePanel(tab==='schedule'?'teacher':'renter');
  }
@@ -101,7 +101,7 @@
   body(card(features[key]?.[0]||'功能預覽','唯讀檢視'));
  }
  async function rolePanel(role){
-  if(realPreview){body(card(role==='teacher'?'課表':'租用','已連結此身分。請從營運中心查看詳細紀錄。'));return;}
+  if(realPreview){const employeeDocId=$('previewPerson').value;body('');try{await PersonalPreviewFrame.open({container:$('personalBody'),page:role==='teacher'?'teacher-course-portal.html':'room-booking.html?from=renter',user:state.user,role,read:(method,payload)=>managerRead('preview-role-read',{employeeDocId,role,method,payload})});}catch(e){status(e.message,true);}return;}
 
   body(card(role==='teacher'?'我的課表':'我的租用','正在開啟…'));const version=generation;
   try{const result=await call('open-role',{role});if(version!==generation)return;localStorage.setItem('youzi.coursePortal.'+role+'.session.v1',result.sessionToken);showFrame(role==='teacher'?'課表':'租用',role==='teacher'?'teacher-course-portal.html':'room-booking.html?from=employee');}catch(e){status(e.message,true);body(button('重新載入','retry-role','full'));}

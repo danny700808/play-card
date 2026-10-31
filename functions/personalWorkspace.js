@@ -18,7 +18,7 @@ function reviewedProfilePatch(requestRow,current,docId){
  }
  return patch;
 }
-function createPersonalWorkspace({db,auth,FieldValue,findPortalAccount,issuePortalSession,requirePortalSession,teacherRoster,teacherRead}){
+function createPersonalWorkspace({db,auth,FieldValue,findPortalAccount,issuePortalSession,requirePortalSession,teacherRoster,teacherRead,portalRoleRead}){
  async function employee(request){
   const token=request?.auth?.token;
   if(token?.employee!==true)throw new HttpsError('unauthenticated','請先登入。');
@@ -60,7 +60,7 @@ function createPersonalWorkspace({db,auth,FieldValue,findPortalAccount,issuePort
   }
   let {account,user}=await employee(request);
   if(clean(data.expectedEmployeeId)&&clean(data.expectedEmployeeId)!==user.employeeId)throw new HttpsError('permission-denied','帳號已切換，請重新開啟工作台。');
-  if(['preview-roster','preview','preview-month','teacher-read'].includes(action)){
+  if(['preview-roster','preview','preview-month','teacher-read','preview-role-read'].includes(action)){
    if(request.auth.token.manager!==true||!user.isManagerAccount)throw new HttpsError('permission-denied','僅管理者可檢視員工畫面。');
    if(action==='preview-roster'){
     const snapshot=await db.collection('employees').get();
@@ -73,6 +73,11 @@ function createPersonalWorkspace({db,auth,FieldValue,findPortalAccount,issuePort
    const doc=await db.collection('employees').doc(id).get();if(!doc.exists||!active(doc.data()))throw new HttpsError('not-found','找不到已啟用的人員資料。');
    account={collection:'employees',id:doc.id,ref:doc.ref,data:doc.data()};user=normalizeUser(account);
    if(user.isManagerAccount||!['staff','parttime'].includes(user.identityType))throw new HttpsError('permission-denied','請選擇工讀生或專職人員。');
+  }
+  if(action==='preview-role-read'){
+   const role=clean(data.role);if(!['teacher','renter'].includes(role))throw new HttpsError('permission-denied','不支援此身分。');
+   const linked=await findPortalAccount(role,user.email);if(!linked)throw new HttpsError('permission-denied','尚未連結此身分。');
+   return portalRoleRead(role,linked.targetId,clean(data.method),data.payload||{});
   }
   if(action==='payroll-month'||action==='preview-month')return require('./personalPayroll').monthData(db,account,user,clean(data.month));
   if(action==='open-role'){
