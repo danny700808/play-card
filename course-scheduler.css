@@ -430,3 +430,5 @@ body.embedded-in-operations .data-mode{margin-top:0}
 .course-inline-body #calendarPage .event.cancelled,.course-inline-body #calendarPage .week-event.cancelled,.event.cancelled,.week-event.cancelled{background:#edf0ef;color:#87958e;filter:none;opacity:1;box-shadow:inset 0 0 0 1px #dce2df}
 
 .event-title-row,.event-student-edit-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.event-title-row{margin-top:6px}.event-student-edit-actions .btn{white-space:nowrap}
+
+.event-student-contact{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap}.event-student-phone{font-size:16px;font-weight:700;color:var(--green);overflow-wrap:anywhere}.event-student-phone[href]{text-decoration:underline;text-underline-offset:3px}

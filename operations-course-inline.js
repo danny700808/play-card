@@ -4,9 +4,9 @@
   if (global.YouziOperationsCourseInline) return;
 
   var VERSION = '20260917-room-subject-v1';
-  var TEMPLATE_URL = 'operations-course-inline-template.html?v=20261031-student-profile-v1';
-  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20261031-student-profile-v1';
-  var STYLE_URL = 'course-scheduler.css?v=20261031-student-profile-v1';
+  var TEMPLATE_URL = 'operations-course-inline-template.html?v=20261031-student-phone-v2';
+  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20261031-student-phone-v2';
+  var STYLE_URL = 'course-scheduler.css?v=20261031-student-phone-v2';
   var DB_NAME = 'youzi-course-scheduler';
   var STORE_NAME = 'formalSnapshots';
   var WORKSPACE_KEY = 'workspace';

@@ -1021,7 +1021,7 @@
 
   function renderEventStudentEditActions(event){
     var students=(event.studentIds||[]).map(studentById).filter(function(row){return !!row.id;});
-    $('eventStudentEditActions').innerHTML=isReadOnly()||event.type==='rental'||event.type==='trial'?'':students.map(function(row){return '<button type="button" class="btn small outline" data-event-edit-student="'+esc(row.id)+'">編輯基本資料'+(students.length>1?'・'+esc(row.name):'')+'</button>';}).join('');
+    $('eventStudentEditActions').innerHTML=isReadOnly()||event.type==='rental'||event.type==='trial'?'':students.map(function(row){var phone=clean(row.phone),dial=phone.replace(/[^+0-9]/g,'');return '<span class="event-student-contact">'+(students.length>1?'<span>'+esc(row.name)+'</span>':'')+(phone&&dial?'<a class="event-student-phone" href="tel:'+esc(dial)+'" aria-label="聯絡'+esc(row.name)+'：'+esc(phone)+'">'+esc(phone)+'</a>':'<span class="event-student-phone">'+esc(phone||'未填電話')+'</span>')+'<button type="button" class="btn small outline" data-event-edit-student="'+esc(row.id)+'">編輯基本資料'+(students.length>1?'・'+esc(row.name):'')+'</button></span>';}).join('');
   }
   function eventDetails(event){
     $('eventStudentEditActions').innerHTML='';
