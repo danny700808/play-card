@@ -1,0 +1,29 @@
+/* Compact shared personnel workspace; existing forms and amounts are unchanged. */
+body.hr-workspace{background:#f3f6fa!important;color:#23364b;}
+body.hr-workspace .hr-workspace-nav{display:flex;align-items:center;flex-wrap:wrap;gap:4px;max-width:1240px;margin:0 auto;padding:10px 16px;border-bottom:1px solid #dde5ee;background:#f3f6fa;}
+body.hr-workspace .hr-workspace-nav a,body.hr-workspace .hr-workspace-nav button{display:inline-flex;align-items:center;width:auto;min-height:34px;margin:0;padding:6px 11px;border:0;border-radius:8px;background:transparent!important;color:#45566d!important;font-size:14px;font-weight:600;text-decoration:none;box-shadow:none;cursor:pointer;}
+body.hr-workspace .hr-workspace-nav a[aria-current=page]{background:#e2eaf3!important;color:#183b60!important;}
+body.hr-workspace .hr-workspace-nav button{margin-left:auto;color:#66758a!important;}
+body.hr-workspace .title{font-size:25px!important;color:#213c58!important;margin:8px 0!important;}
+body.hr-workspace .welcome{font-size:13px;color:#728096;}
+body.hr-workspace .card,body.hr-workspace .panel{border-radius:12px!important;padding:16px!important;box-shadow:0 2px 7px #17304906!important;margin-top:12px;margin-bottom:12px;}
+body.hr-workspace .settings-section{padding:14px!important;margin-top:12px!important;border-radius:10px!important;}
+body.hr-workspace .settings-section-title,body.hr-workspace .section-title,body.hr-workspace .layer-title{font-size:18px!important;margin-bottom:10px!important;}
+body.hr-workspace .form-grid{gap:10px 14px!important;}
+body.hr-workspace .field label{font-size:13px!important;margin-bottom:4px!important;}
+body.hr-workspace .field input,body.hr-workspace .field select{min-height:36px!important;padding:7px 10px!important;font-size:14px!important;border-radius:7px!important;}
+body.hr-workspace .hr-help{font-size:13px;line-height:1.7;color:#617186;margin:8px 0;}
+body.hr-workspace .hr-type-tabs{display:flex;gap:6px;margin:10px 0;}
+body.hr-workspace .hr-type-tabs button{width:auto;flex:1;border:1px solid #d4dfea;border-radius:8px;padding:8px;background:#f3f6fa;color:#31465e;font-size:14px;cursor:pointer;}
+body.hr-workspace .hr-type-tabs button[aria-pressed=true]{background:#254864;color:white;border-color:#254864;}
+body.hr-workspace .category-grid{gap:10px;}
+body.hr-workspace .category-card{border-radius:12px;padding:14px;min-height:110px;}
+body.hr-workspace .cat-title{font-size:22px;}
+body.hr-workspace .cat-count{font-size:26px;margin-top:8px;}
+body.hr-workspace .hub-card{padding:16px;border-radius:12px;box-shadow:none;}
+body.hr-workspace .hub-card .h{font-size:20px;}
+body.hr-workspace .hub-card .d{font-size:13px;font-weight:500;}
+body.hr-workspace .grid{gap:12px;margin-top:14px;}
+body.hr-workspace .chip-row{display:none;}
+body.hr-workspace .compact-note{padding:9px 12px;font-size:13px;}
+@media(max-width:600px){body.hr-workspace .hr-workspace-nav{padding:8px;gap:2px;}body.hr-workspace .hr-workspace-nav a{font-size:13px;padding:6px 8px;}body.hr-workspace .category-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}

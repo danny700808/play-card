@@ -57,12 +57,15 @@
     }
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <link rel="stylesheet" href="hr-workspace.css?v=20261031-1">
+  <script src="operations-manager-auth.js?v=20261024-session-stability-v1"></script>
+  <script src="hr-session.js?v=20261031-1"></script>
 </head>
 <body onload="init()" class="admin-wide-page">
-  <div class="yz-global-nav" data-yz-global-nav>
-    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
-    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
-  </div>
+  <nav class="hr-workspace-nav" data-yz-global-nav aria-label="人事工作區">
+    <a href="portal.html#overview">營運中心</a><a href="hr-payroll-settings-hub.html">人事總覽</a><a href="employee-admin.html">人員</a><a href="salary-admin.html">薪資與投保</a><a href="data-center.html?module=parttime">工讀結算</a><a href="leave-policy-admin.html">假勤制度</a>
+    <button type="button" data-yz-nav-logout>登出</button>
+  </nav>
 
   <div class="container">
     <div class="card">
@@ -70,12 +73,16 @@
         <h1 class="title">薪資與投保設定</h1>
         <div class="welcome">歡迎 <span data-user-name></span></div>
       </div>
+      <p class="hr-help">① 選擇人員 → ② 設定薪資、勞健保與勞退 → ③ 填生效日期並儲存。<a href="leave-policy-admin.html">婚假、喪假與請假規則</a></p>
       <div id="pageMsg" class="message"></div>
     </div>
 
     <div class="admin-grid">
       <div class="card">
         <div class="section-title">員工清單</div>
+        <div class="hr-type-tabs" role="group" aria-label="員工類型"><button type="button" data-hr-type="parttime">工讀生</button><button type="button" data-hr-type="staff">專職</button></div>
+        <p class="hr-help" id="typeHelp"></p>
+        <a class="hr-help" href="employee-admin.html">新增人員／查看停用與舊資料</a>
         <div class="employee-search">
           <input id="keyword" aria-label="搜尋員工" placeholder="搜尋姓名或 Email">
         </div>
@@ -295,6 +302,7 @@
   <script src="app.js?v=20260802-security-phase1"></script>
   <script src="onboarding-workflow.js?v=20260624insurance1"></script>
   <script>
+    let employeeType = new URLSearchParams(location.search).get('type') === 'staff' ? 'staff' : 'parttime';
     let setup = null;
     let selectedId = '';
     let selectedMap = {};
@@ -597,8 +605,16 @@
       });
     }
     function renderEmployeeList(){
+      qsa('[data-hr-type]').forEach(function(button){
+        const type=button.dataset.hrType;
+        const count=((setup&&setup.employees)||[]).filter(row=>row.identityType===type).length;
+        button.textContent=(type==='staff'?'專職':'工讀生')+'（'+count+'）';
+        button.setAttribute('aria-pressed',String(type===employeeType));
+      });
+      qs('#typeHelp').textContent=employeeType==='staff'?'專職：月薪、津貼、勞健保與勞退。':'工讀生：時薪、投保與勞退；結算依出勤紀錄計算。';
       const keyword = (qs('#keyword').value || '').trim().toLowerCase();
       const rows = ((setup && setup.employees) || []).filter(function(row){
+        if(row.identityType !== employeeType) return false;
         if(!keyword) return true;
         return String(row.name || '').toLowerCase().includes(keyword) || String(row.email || '').toLowerCase().includes(keyword);
       });
@@ -607,7 +623,7 @@
           '<div class="employee-name">' + escapeHtml(row.name || '未命名') + '</div>' +
           '<div class="employee-email">' + escapeHtml(row.email || '未填寫 Email') + '</div>' +
         '</div>';
-      }).join('') || '<div class="empty-box">沒有符合的員工</div>';
+      }).join('') || '<div class="empty-box">目前此類別沒有符合的在職人員。可至人員頁查看舊資料，或建立人員後再設定薪資。</div>';
       qsa('#employeeList [data-id]').forEach(function(el){ el.onclick = function(){ selectEmployee(el.dataset.id); }; });
     }
     function clearValidation(){ qsa('.field.has-error').forEach(function(el){ el.classList.remove('has-error'); }); }
@@ -623,7 +639,8 @@
       const cfg = currentConfig();
       qs('#formWrap').classList.toggle('hidden', !emp);
       qs('#selectedHint').classList.toggle('hidden', !!emp);
-      if(!emp){ renderEmployeeList(); return; }
+      if(!emp){ qs('#selectedHint').textContent='請先選擇人員；若清單為空，請至人員頁確認身分與在職狀態。'; renderEmployeeList(); return; }
+      employeeType=emp.identityType;
       clearValidation();
       setMsg(qs('#pageMsg'), '');
       qs('#employeeNameText').textContent = emp.name || '-';
@@ -810,6 +827,7 @@
       const user = requireLogin();
       if(!user) return;
       try{
+        await ensureHrSession(user);
         const res = await api('getSalarySetupOptions', { userId:user.id });
         if(!res || res.ok === false) throw new Error((res && res.message) || '讀取失敗');
         const employees = (res.employees || []).filter(function(row){ return ['staff','parttime'].includes(String(row.identityType || '')); });
@@ -826,8 +844,7 @@
         renderEmployeeList();
         if(requestedEmployeeId && selectedMap[requestedEmployeeId]) selectEmployee(requestedEmployeeId);
         else if(selectedId && selectedMap[selectedId]) selectEmployee(selectedId);
-        else if(employees.length) selectEmployee(employees[0].id);
-        else qs('#selectedHint').textContent = '目前沒有可設定的員工。';
+        else selectEmployee((employees.find(row=>row.identityType===employeeType)||{}).id || '');
       }catch(err){
         qs('#employeeList').innerHTML = '<div class="empty-box">讀取失敗</div>';
         setMsg(qs('#pageMsg'), err && err.message ? err.message : String(err), true);
@@ -852,6 +869,10 @@
       const user = requireLogin();
       if(!user) return;
       if(!isManager(user)){ location.href = 'dashboard.html'; return; }
+      qsa('[data-hr-type]').forEach(function(button){button.onclick=function(){
+        employeeType=button.dataset.hrType; qs('#keyword').value='';
+        selectEmployee((((setup&&setup.employees)||[]).find(row=>row.identityType===employeeType)||{}).id || '');
+      };});
       qs('#keyword').addEventListener('input', renderEmployeeList);
       qs('#saveBottomBtn').onclick = saveConfig;
       qs('#addJobAllowanceBtn').onclick = addJobAllowance;
@@ -881,5 +902,6 @@
   </script>
   <script src="global-nav.js?v=20260801-teacher-session-v2"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
+  <script src="hr-workspace.js?v=20261031-1"></script>
 </body>
 </html>

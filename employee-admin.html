@@ -137,12 +137,15 @@
     }
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <link rel="stylesheet" href="hr-workspace.css?v=20261031-1">
+  <script src="operations-manager-auth.js?v=20261024-session-stability-v1"></script>
+  <script src="hr-session.js?v=20261031-1"></script>
 </head>
 <body>
-  <div class="yz-global-nav" data-yz-global-nav>
-    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
-    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
-  </div>
+  <nav class="hr-workspace-nav" data-yz-global-nav aria-label="人事工作區">
+    <a href="portal.html#overview">營運中心</a><a href="hr-payroll-settings-hub.html">人事總覽</a><a href="employee-admin.html">人員</a><a href="salary-admin.html">薪資與投保</a><a href="data-center.html?module=parttime">工讀結算</a><a href="leave-policy-admin.html">假勤制度</a>
+    <button type="button" data-yz-nav-logout>登出</button>
+  </nav>
 
   <div class="wrap">
     <h1 class="title">員工管理</h1>
@@ -614,9 +617,20 @@
       currentUser = requireLogin();
       if(!currentUser) return;
       if(!hasSettingsZoneAccess(currentUser)){ location.href = 'dashboard.html'; return; }
-      await loadVisibilitySettings();
-      await loadEmployees();
-      showLayer(1);
+      try{
+        await ensureHrSession(currentUser);
+        await loadVisibilitySettings();
+        await loadEmployees();
+        showLayer(1);
+        const type = new URLSearchParams(location.search).get('type');
+        if(type === 'staff' || type === 'parttime') openCategory(type);
+      }catch(err){
+        const box = $('#categoryCards');
+        box.textContent = '人員資料讀取失敗：' + (err.message || String(err));
+        const retry = document.createElement('button');
+        retry.type='button'; retry.textContent='重新讀取'; retry.onclick=init;
+        box.appendChild(retry);
+      }
     }
 
     async function loadEmployees(){
@@ -1147,5 +1161,6 @@
   <script src="external-teacher-admin-route-v1.js?v=20260806-external-teacher-canonical-v1"></script>
   <script src="global-nav.js?v=20260801-teacher-session-v2"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
+  <script src="hr-workspace.js?v=20261031-1"></script>
 </body>
 </html>

@@ -62,12 +62,15 @@
     }
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
+  <link rel="stylesheet" href="hr-workspace.css?v=20261031-1">
+  <script src="operations-manager-auth.js?v=20261024-session-stability-v1"></script>
+  <script src="hr-session.js?v=20261031-1"></script>
 </head>
 <body onload="init()" class="admin-wide-page admin-policy-page">
-  <div class="yz-global-nav" data-yz-global-nav>
-    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
-    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
-  </div>
+  <nav class="hr-workspace-nav" data-yz-global-nav aria-label="人事工作區">
+    <a href="portal.html#overview">營運中心</a><a href="hr-payroll-settings-hub.html">人事總覽</a><a href="employee-admin.html">人員</a><a href="salary-admin.html">薪資與投保</a><a href="data-center.html?module=parttime">工讀結算</a><a href="leave-policy-admin.html">假勤制度</a>
+    <button type="button" data-yz-nav-logout>登出</button>
+  </nav>
 
   <div class="container leave-policy-wide">
     
@@ -84,7 +87,7 @@
       </div>
 
       <div class="compact-note">
-        本頁直接讀寫 Firebase 的假勤制度設定；假別、特休、喪假、請假申請規則與全域備註都維持原設定欄位，只調整成較緊湊的管理畫面。
+        工讀生與專職共用此制度入口；請在規則的「適用身分」指定對象。婚假在「假別規則」，喪假天數在「喪假關係」，申請時間在「請假申請規則」。
       </div>
       <div id="pageMsg" class="message local-message"></div>
 
@@ -305,7 +308,8 @@
 
     async function loadBundle(seedIfNeeded){
       setPageMsg('');
-      const action=seedIfNeeded?'initLeavePolicySettings':'getLeavePolicySettingsAdmin';
+      await ensureHrSession(currentUser);
+      const action='getLeavePolicySettingsAdmin';
       const r=await api(action,{userId:currentUser.id});
       if(!r.ok) throw new Error(r.message||'讀取制度設定失敗');
       currentBundle=r.bundle||{};
@@ -321,12 +325,7 @@
       try{
         await loadBundle(false);
       }catch(err){
-        try{
-          await loadBundle(true);
-          setPageMsg('已自動建立制度表，現在可直接開始維護新版假勤資料。');
-        }catch(e2){
-          setPageMsg(e2.message||String(e2), true);
-        }
+        setPageMsg('讀取失敗，原制度未變更。請按重新讀取。' + (err.message||String(err)), true);
       }
       qs('#reloadBtn').onclick=async()=>{
         try{ await loadBundle(false); setPageMsg('已重新讀取最新設定'); }catch(err){ setPageMsg(err.message||String(err), true); }
@@ -334,6 +333,7 @@
       qs('#saveBtn').onclick=async()=>{
         const btn=qs('#saveBtn');
         try{
+          if(!Object.keys(currentBundle).length) throw new Error('請先成功讀取既有制度，再儲存。');
           collectBundleFromDom();
           validateBundle(currentBundle);
           btn.disabled=true; btn.textContent='儲存中';
@@ -354,5 +354,6 @@
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
+  <script src="hr-workspace.js?v=20261031-1"></script>
 </body>
 </html>
