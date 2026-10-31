@@ -6,7 +6,7 @@
  function childBootstrap(config){
   const pending=new Map();let next=0;
   const storageMap=new Map(Object.entries(config.storage));
-  const storage={getItem:k=>storageMap.get(k)??null,setItem:(k,v)=>storageMap.set(k,String(v)),removeItem:k=>storageMap.delete(k),clear:()=>storageMap.clear(),key:i=>[...storageMap.keys()][i]??null,get length(){return storageMap.size;}};
+  const storage={getItem:k=>storageMap.get(k)??null,setItem:(k,v)=>{storageMap.set(k,String(v));send('storage',{key:k,value:String(v)});},removeItem:k=>{storageMap.delete(k);send('storage',{key:k,value:null});},clear:()=>{storageMap.clear();send('storage',{clear:true});},key:i=>[...storageMap.keys()][i]??null,get length(){return storageMap.size;}};
   Object.defineProperty(window,'localStorage',{value:storage});Object.defineProperty(window,'sessionStorage',{value:storage});
   const send=(kind,data)=>parent.postMessage({previewChannel:config.channel,kind,...data},'*');
   const pageUrl=new URL(config.page);
@@ -44,7 +44,7 @@
  async function open({container,page,user,read,role='teacher'}){
   close();const channel=crypto.randomUUID();const frame=document.createElement('iframe');frame.className='personal-preview-frame';frame.title='人員實際手機畫面';frame.setAttribute('sandbox','allow-scripts');frame.setAttribute('referrerpolicy','no-referrer');
   container.replaceChildren();const toolbar=document.createElement('div');toolbar.className='personal-frame-head';const back=document.createElement('button');back.className='personal-btn';back.textContent='← 返回';toolbar.append(back);const status=document.createElement('span');status.setAttribute('role','status');toolbar.append(status);container.append(toolbar,frame);
-  const history=[];let currentPage='',navigation=0;
+  const history=[];let currentPage='',navigation=0,memoryStorage=null;
   async function navigate(href,remember=true){
    const url=new URL(href,location.href),name=url.pathname.split('/').pop();if(url.origin!==location.origin||!pages.has(name)){status.textContent='此連結不在唯讀檢視範圍';return;}
    if(remember&&currentPage)history.push(currentPage);currentPage=url.href;const version=++navigation;status.textContent='讀取中…';
@@ -63,11 +63,13 @@
    let fingerprint=2166136261;for(const char of 'readonly-preview')fingerprint=Math.imul(fingerprint^char.charCodeAt(0),16777619);
    const storage={employeeUser:JSON.stringify(user),employeeUserId:user.id,employeeSecureAuthVersion:'1',['youzi.coursePortal.'+role+'.session.v1']:'readonly-preview','youzi.coursePortal.lastRole.v2':role,'youzi.coursePortal.authStateMigration.20260805.v1':'done','youzi.teacherMore.authorization.v4':JSON.stringify({employeeId:user.employeeId||user.id,tokenFingerprint:(fingerprint>>>0).toString(16).padStart(8,'0'),validatedAt:Date.now()})};
    if(role==='employee'){const style=doc.createElement('link');style.rel='stylesheet';style.href='personal-embedded.css?v=20261031-mobile3';doc.head.append(style);doc.body.classList.add('personal-embedded');}
-   const script=doc.createElement('script');script.textContent='('+childBootstrap.toString()+')('+JSON.stringify({channel,storage,page:url.href,role,user}).replace(/</g,'\\u003c')+');';doc.head.insertBefore(script,base.nextSibling);
+   if(!memoryStorage)memoryStorage=new Map(Object.entries(storage));
+   const script=doc.createElement('script');script.textContent='('+childBootstrap.toString()+')('+JSON.stringify({channel,storage:Object.fromEntries(memoryStorage),page:url.href,role,user}).replace(/</g,'\\u003c')+');';doc.head.insertBefore(script,base.nextSibling);
    frame.srcdoc='<!doctype html>'+doc.documentElement.outerHTML;status.textContent='唯讀';
   }
   const listener=async event=>{
    if(event.source!==frame.contentWindow||event.data?.previewChannel!==channel)return;const message=event.data;
+   if(message.kind==='storage'){if(message.clear)memoryStorage.clear();else if(message.value===null)memoryStorage.delete(message.key);else memoryStorage.set(message.key,String(message.value));return;}
    if(message.kind==='navigate'){navigate(message.href).catch(e=>status.textContent=e.message);return;}
    if(message.kind==='notice'){status.textContent=message.message;return;}
    if(message.kind!=='read')return;
