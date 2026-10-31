@@ -47,12 +47,27 @@ body.internal-workspace .internal-home-links .badge:empty{display:none!important
 /* The operating sidebar opens the same workspace, without an oversized return button. */
 .ops-body .ops-sidebar-footer .ops-back-admin{display:flex;justify-content:space-between;align-items:center;background:#e7eef4;color:#2a4b65;border:1px solid #ccdae5;padding:10px 12px;border-radius:8px;font-size:13px;font-weight:650;box-shadow:none;}
 .ops-body .ops-sidebar-footer .ops-back-admin:hover{background:#dce8f0;color:#193b54;}
+body.internal-workspace .internal-description,body.internal-workspace .welcome{display:none!important;}
+body.internal-workspace .internal-help{margin:16px 0;padding:10px 12px;border:1px solid #dce5ed;border-radius:8px;background:#fff;color:#526b7f;font-size:14px;}
+body.internal-workspace .internal-help summary{cursor:pointer;font-weight:600;}
+body.internal-workspace .internal-help-item{display:block;margin:9px 0!important;font-size:14px!important;line-height:1.65!important;color:#536b7d!important;}
+body.internal-workspace .internal-home-links .tile{grid-template-columns:1fr;min-height:48px!important;padding:11px 6px!important;}
+body.internal-workspace .internal-home-group>header{padding:11px 16px;}
+body.internal-workspace .hero,body.internal-workspace .app-home-card,body.internal-workspace .top-card,body.internal-workspace .table-card,body.internal-workspace .detail-card,body.internal-workspace .section{padding:16px!important;border:1px solid #dce5ed!important;border-radius:12px!important;background:#fff!important;box-shadow:none!important;}
+body.internal-workspace .hero-mark{width:38px;height:38px;font-size:18px;border-radius:8px;background:#e3efed;color:#256d65;}
+body.internal-workspace .manage-card,body.internal-workspace .entry-card{min-height:70px!important;padding:13px!important;border-radius:10px!important;box-shadow:none!important;}
+body.internal-workspace .manage-card b,body.internal-workspace .entry-card strong{font-size:17px!important;color:#254c64!important;}
+body.internal-workspace .manage-card .icon{display:none;}
+body.internal-workspace .summary-card{border-radius:10px!important;padding:12px!important;}
+body.internal-workspace .summary-card b{font-size:24px!important;}
+body.internal-workspace .section-head h2{font-size:19px!important;}
+body.internal-workspace .top-return-btn,body.internal-workspace .return-home-btn,body.internal-workspace .page-return-btn{width:auto!important;min-width:0!important;min-height:34px!important;padding:7px 12px!important;font-size:14px!important;background:#e8eff4!important;border:1px solid #d3e0e9!important;color:#31536d!important;-webkit-text-fill-color:#31536d!important;border-radius:7px!important;}
 @media(max-width:760px){
  body.internal-workspace .internal-nav{padding:7px 10px;margin-bottom:8px;}
  body.internal-workspace .internal-nav-primary,body.internal-workspace .internal-nav-secondary{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;}
  body.internal-workspace .internal-nav a,body.internal-workspace .internal-nav button{flex-shrink:0;font-size:13px;padding:7px 9px;min-height:36px;}
  body.internal-workspace .internal-home-sections{grid-template-columns:1fr;gap:10px;}
- body.internal-workspace .internal-home-links .tile{grid-template-columns:minmax(120px,.8fr) minmax(0,1.2fr);gap:8px;}
+ body.internal-workspace .internal-home-links .tile{grid-template-columns:1fr;gap:8px;}
  body.internal-workspace .internal-home-links .tile strong{font-size:14px!important;}
  body.internal-workspace .card,body.internal-workspace .panel{padding:12px!important;}
  body.internal-workspace h1,body.internal-workspace .title{font-size:22px!important;}

@@ -33,6 +33,24 @@
    });shell.append(secondary);
   }
   if(nav)nav.replaceWith(shell);else document.body.prepend(shell);
+  // Fold static explanations only; live status, totals, form controls, and warnings stay visible.
+  const noteSelectors=['.internal-home-intro','.internal-home-group header p','.tile > span:not(.badge)', '.hub-card .d','.home-tile .tile-desc','.manage-card > span','.hero > div > p','.section-head p','.compact-note','.hr-help','.rule','.sheet-desc','.subtitle','.sub'];
+  const notes=Array.from(document.querySelectorAll(noteSelectors.join(','))).filter(node=>
+    !node.id && !node.querySelector('[id],input,select,textarea,button,[role="alert"],[aria-live]') && node.textContent.trim() && !node.closest('[role="dialog"],.modal,.dialog')
+  );
+  if(notes.length){
+   const details=document.createElement('details');details.className='internal-help';
+   const summary=document.createElement('summary');summary.textContent='操作說明';details.append(summary);
+   notes.forEach(node=>{
+    if(node.closest('.internal-description'))return;
+    const copy=node.cloneNode(true);copy.removeAttribute('class');copy.className='internal-help-item';
+    const parentLink=node.closest('a');
+    if(parentLink){const label=parentLink.querySelector('strong,b,.h,.tile-title');if(label){const heading=document.createElement('strong');heading.textContent=label.textContent+'：';copy.prepend(heading);}}
+    details.append(copy);node.classList.add('internal-description');
+   });
+   const content=document.querySelector('.internal-home-sections')?.parentElement || document.querySelector('body > .container,body > main,body > .wrap');
+   (content||document.body).append(details);
+  }
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();

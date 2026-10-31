@@ -32,7 +32,7 @@ function render(user,file,search=''){
   setAttribute(k,v){this.attrs[k]=v;}
  }
  const body=new Element('body');
- const context={URL,URLSearchParams,location:{pathname:'/play-card/'+file,search,href:'https://example.test/play-card/'+file+search},localStorage:{getItem:()=>JSON.stringify(user)},document:{body,readyState:'complete',querySelector:()=>null,createElement:tag=>new Element(tag)},InternalWorkspaceRoutes:routes};
+ const context={URL,URLSearchParams,location:{pathname:'/play-card/'+file,search,href:'https://example.test/play-card/'+file+search},localStorage:{getItem:()=>JSON.stringify(user)},document:{body,readyState:'complete',querySelector:()=>null,querySelectorAll:()=>[],createElement:tag=>new Element(tag)},InternalWorkspaceRoutes:routes};
  context.window=context;vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(root,'internal-workspace.js'),'utf8'),context);
  return body.children;
 }
