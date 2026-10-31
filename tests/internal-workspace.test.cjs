@@ -45,9 +45,11 @@ test('ordinary employees do not get management links and teacher sessions are un
  assert.deepEqual(render({id:'teacher',identityType:'external',portalSessionBridge:true},'dashboard.html'),[]);
  assert.deepEqual(render(null,'dashboard.html'),[]);
 });
-test('managers receive group navigation without changing any business forms',()=>{
+test('managers receive a personnel breadcrumb instead of a flat menu',()=>{
  const result=render({id:'manager',role:'admin'},'salary-admin.html','?type=staff');
  assert.ok(links(result).includes('settings.html'));
- assert.ok(links(result).includes('leave-policy-admin.html'));
- assert.ok(links(result).includes('salary-admin.html'));
+ assert.ok(links(result).includes('settings.html#people'));
+ assert.ok(links(result).includes('settings.html#staff'));
+ assert.ok(links(result).includes('salary-admin.html?type=staff&nav=staff-salary'));
+ assert.ok(!links(result).includes('salary-admin.html?type=parttime&nav=parttime-salary'));
 });

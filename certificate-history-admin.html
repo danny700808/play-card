@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>證明歷史紀錄</title><link rel="stylesheet" href="style.css?v=cert-history-20260602"><style>
 body{background:#f5f7fb}.wrap{max-width:1400px;margin:0 auto;padding:18px}.page-card{background:#eff6ff;border:1px solid #bfdbfe;border-radius:24px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,.06)}.list{display:grid;gap:10px;margin-top:14px}.item{background:#fff;border:1px solid #dbeafe;border-radius:16px;padding:14px;display:grid;grid-template-columns:1fr auto;gap:12px}.title{font-weight:950;color:#17324d}.meta{font-size:13px;color:#64748b;line-height:1.8}.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.actions .btn{width:auto;padding:9px 12px}.filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.filters .btn{width:auto}.muted-tip{font-size:13px;color:#64748b;line-height:1.8}@media(max-width:760px){.item{grid-template-columns:1fr}.actions{justify-content:flex-start}}</style>  <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-3">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-tree1">
 <link rel="stylesheet" href="forms-workspace.css?v=20261031-2"></head>
 <body onload="initPage()" class="admin-wide-page">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -20,6 +20,6 @@ function closeModal(){document.getElementById('certModal').classList.remove('sho
 async function initPage(){fillHeader(); adminUser=requireLogin(); if(!adminUser)return; if(!hasSettingsZoneAccess(adminUser)){location.href='dashboard.html';return;} setPortalMode('settings'); YZ_CERT.injectCertificateStyles(); CertificateWorkspace.mount(renderRows,false); document.getElementById('pageTitle').textContent=label()+'｜歷史紀錄'; const oldBackLink=document.getElementById('backLink'); if(oldBackLink){oldBackLink.href=CERT_TYPE==='teaching'?'teaching-certificate-hub.html':'employment-certificate-hub.html'; oldBackLink.textContent='返回'+label();} await loadRows();}
 </script>  <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-2"></script>
-  <script src="internal-workspace.js?v=20261031-3"></script>
+  <script src="internal-workspace-routes.js?v=20261031-tree1"></script>
+  <script src="internal-workspace.js?v=20261031-tree1"></script>
 </body></html>

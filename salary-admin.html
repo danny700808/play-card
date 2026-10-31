@@ -60,7 +60,7 @@
   <link rel="stylesheet" href="hr-workspace.css?v=20261031-1">
   <script src="operations-manager-auth.js?v=20261024-session-stability-v1"></script>
   <script src="hr-session.js?v=20261031-1"></script>
-  <link rel="stylesheet" href="internal-workspace.css?v=20261031-3">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-tree1">
 </head>
 <body onload="init()" class="admin-wide-page">
   <nav class="hr-workspace-nav" data-yz-global-nav aria-label="人事工作區">
@@ -642,6 +642,7 @@
       qs('#selectedHint').classList.toggle('hidden', !!emp);
       if(!emp){ qs('#selectedHint').textContent='請先選擇人員；若清單為空，請至人員頁確認身分與在職狀態。'; renderEmployeeList(); return; }
       employeeType=emp.identityType;
+      window.InternalWorkspaceNavigation?.setPersonnelType(employeeType);
       clearValidation();
       setMsg(qs('#pageMsg'), '');
       qs('#employeeNameText').textContent = emp.name || '-';
@@ -872,6 +873,7 @@
       if(!isManager(user)){ location.href = 'dashboard.html'; return; }
       qsa('[data-hr-type]').forEach(function(button){button.onclick=function(){
         employeeType=button.dataset.hrType; qs('#keyword').value='';
+        window.InternalWorkspaceNavigation?.setPersonnelType(employeeType);
         selectEmployee((((setup&&setup.employees)||[]).find(row=>row.identityType===employeeType)||{}).id || '');
       };});
       qs('#keyword').addEventListener('input', renderEmployeeList);
@@ -904,7 +906,7 @@
   <script src="global-nav.js?v=20260801-teacher-session-v2"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
   <script src="hr-workspace.js?v=20261031-1"></script>
-  <script src="internal-workspace-routes.js?v=20261031-2"></script>
-  <script src="internal-workspace.js?v=20261031-3"></script>
+  <script src="internal-workspace-routes.js?v=20261031-tree1"></script>
+  <script src="internal-workspace.js?v=20261031-tree1"></script>
 </body>
 </html>

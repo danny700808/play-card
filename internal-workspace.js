@@ -19,12 +19,38 @@
    if(active)a.setAttribute('aria-current','page');return a;
   }
   if(manager){
-   primary.append(link('營運中心','portal.html#overview',false),link('管理工作區','settings.html',file==='settings.html'));
-   ['hr','approval','work','teachers','rental','forms'].forEach(key=>{const g=routes.groups[key];const a=link(g.label,g.home,groupKey===key);if(groupKey===key)a.setAttribute('aria-current','true');primary.append(a);});
+   primary.append(link('營運中心','portal.html#overview',false),link('管理樹狀圖','settings.html',file==='settings.html'));
+   const approvals=link('待簽核','approval-hub.html',groupKey==='approval');
+   const badge=document.createElement('span');badge.id='badge-approval';badge.className='internal-nav-badge';approvals.append(badge);primary.append(approvals);
   }else primary.append(link('員工服務','dashboard.html',file==='dashboard.html'));
   const logout=document.createElement('button');logout.type='button';logout.textContent='登出';logout.className='internal-logout';
   logout.onclick=function(){if(typeof window.yzGlobalLogout==='function')window.yzGlobalLogout();};primary.append(logout);shell.append(primary);
-  if(groupKey){
+  if(manager&&file!=='settings.html'&&file!=='hr-payroll-settings-hub.html'){
+   const crumbs=document.createElement('div');crumbs.className='internal-breadcrumbs';crumbs.setAttribute('aria-label','目前位置');
+   function renderCrumbs(){
+   if(crumbs.replaceChildren)crumbs.replaceChildren();
+   const path=routes.pageContext(location.pathname,location.search,location.hash);
+   path.forEach((node,index)=>{
+    if(index){const sep=document.createElement('span');sep.textContent='›';sep.setAttribute('aria-hidden','true');crumbs.append(sep);}
+    const isCurrent=index===path.length-1&&!node.children&&new URL(node.href,location.href).pathname===location.pathname;
+    crumbs.append(link(node.label,routes.treeLink(node),isCurrent));
+   });
+   const last=path[path.length-1];
+   if(last?.children||last?.href&&new URL(last.href,location.href).pathname!==location.pathname){const title=document.createElement('span');title.className='internal-current-page';title.textContent='› '+(document.title||routes.groups[groupKey]?.label||'目前頁面');crumbs.append(title);}
+   const parent=[...path].reverse().find(node=>node.children);
+   if(parent){const back=link('返回'+parent.label,routes.treeLink(parent),false);back.className='internal-parent-link';crumbs.append(back);}
+   }
+   renderCrumbs();
+   window.InternalWorkspaceNavigation={setPersonnelType(type){
+    if(!['employee-admin.html','salary-admin.html'].includes(file))return;
+    const u=new URL(location.href);u.searchParams.delete('nav');
+    if(['staff','parttime','external'].includes(type))u.searchParams.set('type',type);else u.searchParams.delete('type');
+    if(type==='external')u.searchParams.set('source','teacher-hub');
+    if(type!=='external'&&u.searchParams.get('source')==='teacher-hub')u.searchParams.delete('source');
+    history.replaceState(null,'',u.pathname+u.search+u.hash);renderCrumbs();
+   }};
+   shell.append(crumbs);
+  }else if(!manager&&groupKey){
    const group=routes.groups[groupKey];const secondary=document.createElement('div');secondary.className='internal-nav-secondary';secondary.setAttribute('aria-label',group.label+'功能');
    group.links.forEach(([label,href])=>{
     const u=new URL(href,location.href);const current=new URL(location.href);

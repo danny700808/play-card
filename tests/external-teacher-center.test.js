@@ -65,7 +65,10 @@ assert(forms.includes('在職證明'));
 assert(forms.includes('教學證明'));
 
 const settings = read('settings.html');
-assert(settings.includes('名單、資料、合約、公告、協助事項、拿貨與表格'));
+assert(settings.includes('data-management-tree="root"'));
+const managementRoutes=require('../internal-workspace-routes.js');
+assert.deepEqual(managementRoutes.treePath('external').map(node=>node.id),['root','people','external']);
+assert(managementRoutes.treeNode('external').children.some(node=>node.id==='external-contract'));
 
 const contractPage = read('contract.html');
 const contractRuntime = read('teacher-contract.js');
