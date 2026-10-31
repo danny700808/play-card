@@ -10,8 +10,9 @@
     body{background:#eef3f7}.wrap{max-width:1180px;margin:0 auto;padding:18px 14px 56px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:22px;box-shadow:0 10px 28px rgba(15,23,42,.05)}.title{font-size:30px;font-weight:950;margin:0 0 8px;color:#18314a}.sub{color:#64748b;line-height:1.8;font-weight:800}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:18px}.hub-card{display:block;text-decoration:none;color:#0f172a;background:#fff;border:1px solid #dbe5ef;border-radius:22px;padding:22px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.hub-card:hover{transform:translateY(-1px);border-color:#94a3b8}.mark{font-size:13px;color:#0f766e;font-weight:900;margin-bottom:8px}.h{font-size:24px;font-weight:950;margin-bottom:8px;color:#18314a}.d{font-size:14px;line-height:1.8;color:#475569;font-weight:800}@media(max-width:900px){.grid{grid-template-columns:1fr}.wrap{padding:12px 8px}.title{font-size:26px}}
   </style>
   <link rel="stylesheet" href="hr-workspace.css?v=20261031-1">
+  <link rel="stylesheet" href="internal-workspace.css?v=20261031-1">
 </head>
-<body onload="initPage()" class="admin-wide-page">
+<body data-internal-hub="true" onload="initPage()" class="admin-wide-page">
   <nav class="hr-workspace-nav" data-yz-global-nav aria-label="人事工作區">
     <a href="portal.html#overview">營運中心</a><a href="hr-payroll-settings-hub.html">人事總覽</a><a href="employee-admin.html">人員</a><a href="salary-admin.html">薪資與投保</a><a href="data-center.html?module=parttime">工讀結算</a><a href="leave-policy-admin.html">假勤制度</a>
     <button type="button" data-yz-nav-logout>登出</button>
@@ -43,5 +44,7 @@
   <script src="global-nav.js?v=20260624unified-top-nav"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
   <script src="hr-workspace.js?v=20261031-1"></script>
+  <script src="internal-workspace-routes.js?v=20261031-1"></script>
+  <script src="internal-workspace.js?v=20261031-1"></script>
 </body>
 </html>
