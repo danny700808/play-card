@@ -1,0 +1,38 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs');
+const {database}=require('./helpers/security-fixtures.cjs');
+const {createPersonalWorkspace}=require('../functions/personalWorkspace');
+const user={employeeId:'e1',email:'one@example.test',name:'Employee',identityType:'parttime',accountStatus:'active'},request={auth:{uid:'u1',token:{employee:true,employeeId:'e1',email:user.email}}};
+function fixture(extra={},options={}){const f=database({'employees/e1':user,...extra});let minted=0;const service=createPersonalWorkspace({...f,auth:{getUserByEmail:async()=>({uid:'u1',customClaims:{employee:true,employeeId:'e1'}}),createCustomToken:async()=>{minted++;return 'token';}},findPortalAccount:async()=>null,issuePortalSession:async()=>({sessionToken:'session'}),requirePortalSession:async()=>({role:'teacher',teacherId:'t1',authAccountId:'a1'}),...options});return {...f,service,minted:()=>minted};}
+test('personal overview verifies employee identity and returns only their confirmed payments',async()=>{
+ const f=fixture({'employeeSalaryPayments/p1':{employeeId:'e1',status:'paid',paidDate:'2026-10-05',month:'2026-09',amount:500},'employeeSalaryPayments/p2':{employeeId:'e2',status:'paid',amount:90000,paidDate:'2026-10-05'},'employeeSalaryPayments/p3':{employeeId:'e1',status:'draft',paidDate:'2026-10-05',amount:800}});
+ await assert.rejects(f.service.handle({},{}));await assert.rejects(f.service.handle({}, {auth:{token:{...request.auth.token,employeeId:'e2'}}}));
+ const r=await f.service.handle({employeeId:'e2'},request);assert.equal(r.user.employeeId,'e1');assert.deepEqual(r.payments.map(p=>p.amount),[500]);assert.deepEqual(r.capabilities,{attendance:true,teacher:false,renter:false});assert.equal(r.profile.password,undefined);assert.equal(r.user.passwordHash,undefined);
+ f.rows.get('employees/e1').accountStatus='disabled';await assert.rejects(f.service.handle({},request));
+});
+test('capabilities require existing verified portal accounts; caller cannot invent a role',async()=>{
+ const f=fixture();await assert.rejects(f.service.handle({action:'open-role',role:'teacher'},request));await assert.rejects(f.service.handle({action:'open-role',role:'admin'},request));
+ const linked=fixture({}, {findPortalAccount:async(role,email)=>role==='teacher'&&email===user.email?{type:'teacher',targetId:'t1',authAccountId:'a1'}:null});
+ assert.equal((await linked.service.handle({},request)).capabilities.teacher,true);assert.equal((await linked.service.handle({action:'open-role',role:'teacher',targetId:'someone-else'},request)).sessionToken,'session');
+});
+test('teacher to staff entry needs verified session-owned binding and existing non-manager claims',async()=>{
+ const f=fixture({'coursePortalTeacherBindings/b':{teacherId:'other',authAccountId:'a1',status:'active',emailVerified:true,emailNormalized:user.email}});
+ assert.equal((await f.service.handle({action:'portal-capabilities'},{})).employee,null);
+ f.rows.get('coursePortalTeacherBindings/b').teacherId='t1';f.rows.get('coursePortalTeacherBindings/b').emailVerified=false;assert.equal((await f.service.handle({action:'portal-capabilities'},{})).employee,null);
+ f.rows.get('coursePortalTeacherBindings/b').emailVerified=true;assert.equal((await f.service.handle({action:'portal-capabilities'},{})).employee.identityType,'parttime');assert.equal(f.minted(),0);
+ await f.service.handle({action:'employee-entry'},{});assert.equal(f.minted(),1);
+ const denied=fixture({'coursePortalTeacherBindings/b':{teacherId:'t1',authAccountId:'a1',status:'active',emailVerified:true,emailNormalized:user.email}},{auth:{getUserByEmail:async()=>({uid:'u1',customClaims:{employee:true,employeeId:'e1',manager:true}})}});await assert.rejects(denied.service.handle({action:'employee-entry'},{}));
+});
+test('profile supplement queues a review without changing identity, payroll or canonical values; duplicate submits keep history',async()=>{
+ const f=fixture();const payload={action:'profile-submit',employeeId:'e2',profile:{mobilePhone:'0912345678',bankAccount:'01234567890123',role:'admin',identityType:'staff',employeeId:'e2',email:'attacker@example.test',salary:999999}};
+ const results=await Promise.allSettled([f.service.handle(payload,request),f.service.handle(payload,request)]);assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.deepEqual(f.rows.get('employees/e1'),user);
+ const rows=[...f.rows].filter(([k])=>k.startsWith('profileChangeRequests/'));assert.equal(rows.length,1);const [key,r]=rows[0];assert.equal(r.employeeId,'e1');assert.equal(r.identityType,'parttime');assert.equal(r.email,undefined);assert.equal(r.salary,undefined);assert.equal(r.bankAccount,'01234567890123');
+ f.rows.set(key,{...r,status:'已核准',approvalStatus:'approved'});await f.service.handle({...payload,profile:{address:'新地址'}},request);assert.equal([...f.rows.keys()].filter(k=>k.startsWith('profileChangeRequests/')).length,2);assert.equal(f.rows.get(key).approvalStatus,'approved');
+});
+test('manager approval of a mobile supplement refuses stale or cross-person changes',()=>{
+ const {reviewedProfilePatch}=require('../functions/personalWorkspace');const row={employeeId:'e1',changes:[{key:'address',before:'原地址',after:'新地址'}]};
+ assert.deepEqual(reviewedProfilePatch(row,{employeeId:'e1',address:'原地址'},'e1'),{address:'新地址',contactAddress:'新地址'});
+ assert.throws(()=>reviewedProfilePatch(row,{employeeId:'e2',address:'原地址'},'e2'));
+ assert.throws(()=>reviewedProfilePatch(row,{employeeId:'e1',address:'主管已更新'},'e1'));
+ assert.throws(()=>reviewedProfilePatch({employeeId:'e1',changes:[{key:'role',before:'staff',after:'admin'}]},user,'e1'));
+});

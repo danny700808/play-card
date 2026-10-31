@@ -1162,10 +1162,14 @@ async function personDataProfileChangeAction(data, request) {
       if (!pendingProfileChange(requestRow)) throw new HttpsError('failed-precondition', '這筆申請已經處理過。');
       const employeeId = clean(requestRow.employeeId || requestRow.userId || requestRow.applicantId);
       if (action === 'approve' && employeeId) {
-        const employeeRef = db.collection('employees').doc(employeeId);
+        const mobile=requestRow.source==='employee-mobile';
+        const employeeRef = db.collection('employees').doc(mobile?clean(requestRow.employeeDocId)||employeeId:employeeId);
         const employeeSnapshot = await transaction.get(employeeRef);
         if (!employeeSnapshot.exists) throw new HttpsError('not-found', '找不到這筆申請對應的人員主檔。');
         const patch = { updatedAt: FV.serverTimestamp(), source: 'profile-change-approved' };
+        if(mobile){
+          Object.assign(patch,require('./personalWorkspace').reviewedProfilePatch(requestRow,employeeSnapshot.data(),employeeSnapshot.id));
+        }else{
         [
           ['mobilePhone', 'mobilePhone'], ['address', 'address'], ['email', 'email'],
           ['emergencyContact', 'emergencyContact'], ['emergencyPhone', 'emergencyPhone']
@@ -1173,6 +1177,7 @@ async function personDataProfileChangeAction(data, request) {
           const value = clean(requestRow[sourceKey]);
           if (value) patch[targetKey] = sourceKey === 'email' ? lower(value) : value;
         });
+        }
         transaction.set(employeeRef, patch, { merge: true });
       }
       transaction.set(requestRef, reviewedRequestPatch(action, request, reason), { merge: true });
