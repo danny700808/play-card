@@ -110,7 +110,7 @@
  }
  async function open(key){
   if(!preview)try{await verifyIdentity(state.user.id);}catch(e){status(e.message,true);return;}
-  status('');if(key==='frame-back')return selectTab(tab);if(key==='profile')return profile();
+  generation++;status('');if(key==='frame-back')return selectTab(tab);if(key==='profile')return profile();
   if(key==='demo-send'){status('預覽：已完成操作，沒有正式送出。');return;}
   if(key==='retry-role')return selectTab(tab);
   if(key==='logout'){if(typeof logout==='function')logout();return;}
