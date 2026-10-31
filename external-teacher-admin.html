@@ -8,7 +8,7 @@
 @media(max-width:760px){
   .contract-frame{height:calc(100vh - 74px)!important;}
 }
-</style>  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact5">
+</style>  <link rel="stylesheet" href="internal-workspace.css?v=20261031-compact6">
 </head>
 <body><div class="yz-global-nav" data-yz-global-nav><button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button><button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button></div>
 <main class="wrap"><h1>外聘老師年度簽約紀錄</h1><div class="toolbar"><a class="btn secondary" href="teacher-hub.html?v=external-bind-v3">回外聘老師管理</a><a class="btn secondary" href="contract-admin.html">年度合約與條文管理</a></div>
@@ -147,6 +147,6 @@ async function confirmContract(id,workflow){if(!confirm('確認此外聘老師�
 async function requestRevision(id,workflow){const reason=prompt('請輸入退回補件原因：','請補正合約後重新送出。');if(reason===null)return;try{setLoading(true);if(workflow==='assignment'){const result=await managerCall('personDataAdminContractAction',{assignmentId:id,action:'return',reason});alert(result.message||'已退回老師重新簽署。');loadList();return;}const ref=db().collection('externalTeacherContracts').doc(id);const snap=await ref.get();if(!snap.exists)throw new Error('not found');const c={id:snap.id,...snap.data()};await ref.set({status:'needs_revision',progressStatus:'退回補件，等待老師修改',revisionReason:reason,updatedAt:new Date().toISOString()},{merge:true});await setProfilePatchForContract(c,{status:'needs_revision',profileStatus:'needs_revision',contractStatus:'needs_revision',revisionReason:reason,updatedAt:new Date().toISOString()});alert('已退回補件，尚未同步員工管理資料。');loadList();}catch(e){console.error(e);alert('退回失敗，請稍後再試。')}finally{setLoading(false)}}
 init();
 </script><script src="global-nav.js?v=external-bind-v3"></script>  <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-compact5"></script>
-  <script src="internal-workspace.js?v=20261031-compact5"></script>
+  <script src="internal-workspace-routes.js?v=20261031-compact6"></script>
+  <script src="internal-workspace.js?v=20261031-compact6"></script>
 </body></html>

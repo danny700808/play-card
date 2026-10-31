@@ -19,8 +19,8 @@
    if(active)a.setAttribute('aria-current','page');return a;
   }
   if(manager){
-   primary.append(link('營運中心','portal.html#overview',false),link('管理樹狀圖','settings.html',file==='settings.html'));
-   const approvals=link('人事','settings.html#people',false);
+   primary.append(link('營運中心','portal.html#overview',false),link('管理樹狀圖',routes.treeLink(routes.tree),file==='settings.html'));
+   const approvals=link('人事',routes.treeLink(routes.treeNode('people')),false);
    const badge=document.createElement('span');badge.id='badge-approval';badge.className='internal-nav-badge';approvals.append(badge);primary.append(approvals);
   }else primary.append(link('員工服務','dashboard.html',file==='dashboard.html'));
   const logout=document.createElement('button');logout.type='button';logout.textContent='登出';logout.className='internal-logout';

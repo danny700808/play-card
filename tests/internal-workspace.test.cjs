@@ -47,9 +47,9 @@ test('ordinary employees do not get management links and teacher sessions are un
 });
 test('managers receive a personnel breadcrumb instead of a flat menu',()=>{
  const result=render({id:'manager',role:'admin'},'salary-admin.html','?type=staff');
- assert.ok(links(result).includes('settings.html'));
- assert.ok(links(result).includes('settings.html#people'));
- assert.ok(links(result).includes('settings.html#staff'));
- assert.ok(links(result).includes('salary-admin.html?type=staff&nav=staff-salary'));
- assert.ok(!links(result).includes('salary-admin.html?type=parttime&nav=parttime-salary'));
+ assert.ok(links(result).includes('settings.html?ui=20261031-compact6#root'));
+ assert.ok(links(result).includes('settings.html?ui=20261031-compact6#people'));
+ assert.ok(links(result).includes('settings.html?ui=20261031-compact6#staff'));
+ assert.ok(links(result).includes('salary-admin.html?type=staff&nav=staff-salary&ui=20261031-compact6'));
+ assert.ok(!links(result).includes('salary-admin.html?type=parttime&nav=parttime-salary&ui=20261031-compact6'));
 });

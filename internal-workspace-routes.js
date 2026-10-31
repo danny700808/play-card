@@ -429,8 +429,8 @@
  function treePath(id){return treeIndex.get(id)?.path||[];}
  function treeNode(id){return treeIndex.get(id)?.node||null;}
  function treeLink(node){
-  if(node.children)return 'settings.html#'+node.id;
-  const u=new URL(node.href,'https://workspace.invalid/');u.searchParams.set('nav',node.id);
+  if(node.children)return 'settings.html?ui=20261031-compact6#'+node.id;
+  const u=new URL(node.href,'https://workspace.invalid/');u.searchParams.set('nav',node.id);u.searchParams.set('ui','20261031-compact6');
   return u.pathname.slice(1)+u.search+u.hash;
  }
  function pageContext(path,search,hash){
