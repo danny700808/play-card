@@ -4,6 +4,12 @@ const {database}=require('./helpers/security-fixtures.cjs');
 const {createPersonalWorkspace}=require('../functions/personalWorkspace');
 const user={employeeId:'e1',email:'one@example.test',name:'Employee',identityType:'parttime',accountStatus:'active'},request={auth:{uid:'u1',token:{employee:true,employeeId:'e1',email:user.email}}};
 function fixture(extra={},options={}){const f=database({'employees/e1':user,...extra});let minted=0;const service=createPersonalWorkspace({...f,auth:{getUserByEmail:async()=>({uid:'u1',customClaims:{employee:true,employeeId:'e1'}}),createCustomToken:async()=>{minted++;return 'token';}},findPortalAccount:async()=>null,issuePortalSession:async()=>({sessionToken:'session'}),requirePortalSession:async()=>({role:'teacher',teacherId:'t1',authAccountId:'a1'}),...options});return {...f,service,minted:()=>minted};}
+test('legacy contact fields remain visible and stale review compares the original values',()=>{
+ const {profileOf,reviewedProfilePatch}=require('../functions/personalWorkspace');const row={employeeId:'e1',phone:'0900000000','聯絡地址':'原地址',bankAccountNumber:'01234567890123'};
+ assert.equal(profileOf(row).mobilePhone,row.phone);assert.equal(profileOf(row).address,'原地址');assert.equal(profileOf(row).bankAccount,row.bankAccountNumber);
+ assert.throws(()=>reviewedProfilePatch({employeeId:'e1',changes:[{key:'address',before:'',after:'新地址'}]},row,'e1'));
+ assert.equal(profileOf({...row,mobilePhone:'0911111111'}).mobilePhone,'0911111111');
+});
 test('personal overview verifies employee identity and returns only their confirmed payments',async()=>{
  const f=fixture({'employeeSalaryPayments/p1':{employeeId:'e1',status:'paid',paidDate:'2026-10-05',month:'2026-09',amount:500},'employeeSalaryPayments/p2':{employeeId:'e2',status:'paid',amount:90000,paidDate:'2026-10-05'},'employeeSalaryPayments/p3':{employeeId:'e1',status:'draft',paidDate:'2026-10-05',amount:800}});
  await assert.rejects(f.service.handle({},{}));await assert.rejects(f.service.handle({}, {auth:{token:{...request.auth.token,employeeId:'e2'}}}));

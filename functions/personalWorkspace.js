@@ -4,7 +4,8 @@ const {findAccount,accountStatus,normalizeUser}=require('./employeeAuth');
 const clean=v=>String(v??'').trim();
 const active=row=>['active','enabled','啟用','是'].includes(accountStatus(row));
 const PROFILE_FIELDS={mobilePhone:'手機',birthDate:'生日',idNumber:'證件號碼',address:'聯絡地址',householdAddress:'戶籍地址',emergencyContact:'緊急聯絡人',emergencyPhone:'緊急聯絡電話',bankCode:'銀行代碼',bankName:'銀行名稱',bankAccount:'薪資帳號',accountName:'戶名'};
-function profileOf(row){return Object.fromEntries(Object.keys(PROFILE_FIELDS).map(key=>[key,clean(row[key]||(key==='address'?row.contactAddress:''))]));}
+const PROFILE_ALIASES={mobilePhone:['phone','mobile','行動電話'],birthDate:['birthday','出生年月日'],idNumber:['身分證字號'],address:['contactAddress','聯絡地址'],householdAddress:['戶籍地址'],emergencyContact:['緊急聯絡人'],emergencyPhone:['emergencyContactPhone','緊急聯絡人電話'],bankCode:['銀行代碼'],bankName:['銀行名稱'],bankAccount:['bankAccountNumber','銀行帳號'],accountName:['bankAccountName','戶名']};
+function profileOf(row){return Object.fromEntries(Object.keys(PROFILE_FIELDS).map(key=>[key,[key,...PROFILE_ALIASES[key]].map(k=>clean(row[k])).find(Boolean)||'']));}
 function reviewedProfilePatch(requestRow,current,docId){
  const canonicalId=clean(current.employeeId||current['員工ID']||docId);
  if(canonicalId!==clean(requestRow.employeeId))throw new HttpsError('failed-precondition','人員歸屬不一致。');
