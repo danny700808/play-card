@@ -20,6 +20,7 @@ test('all linked routes exist and every scoped page loads each new asset once',(
   for(const [,url] of g.links)assert.ok(fs.existsSync(path.join(root,url.split('?')[0])),url);
   for(const page of g.pages){
    const html=fs.readFileSync(path.join(root,page),'utf8');
+   if(page==='dashboard.html'){assert.ok(html.includes('personal-workspace.css'));assert.ok(html.includes('personal-workspace.js'));continue;}
    for(const asset of ['internal-workspace.css','internal-workspace.js','internal-workspace-routes.js'])assert.equal(html.split(asset).length-1,1,page+' '+asset);
   }
  }
@@ -47,9 +48,9 @@ test('ordinary employees do not get management links and teacher sessions are un
 });
 test('managers receive a personnel breadcrumb instead of a flat menu',()=>{
  const result=render({id:'manager',role:'admin'},'salary-admin.html','?type=staff');
- assert.ok(links(result).includes('settings.html?ui=20261031-compact6#root'));
- assert.ok(links(result).includes('settings.html?ui=20261031-compact6#people'));
- assert.ok(links(result).includes('settings.html?ui=20261031-compact6#staff'));
- assert.ok(links(result).includes('salary-admin.html?type=staff&nav=staff-salary&ui=20261031-compact6'));
- assert.ok(!links(result).includes('salary-admin.html?type=parttime&nav=parttime-salary&ui=20261031-compact6'));
+ assert.ok(links(result).includes('settings.html?ui=20261031-mobile1#root'));
+ assert.ok(links(result).includes('settings.html?ui=20261031-mobile1#people'));
+ assert.ok(links(result).includes('settings.html?ui=20261031-mobile1#staff'));
+ assert.ok(links(result).includes('salary-admin.html?type=staff&nav=staff-salary&ui=20261031-mobile1'));
+ assert.ok(!links(result).includes('salary-admin.html?type=parttime&nav=parttime-salary&ui=20261031-mobile1'));
 });

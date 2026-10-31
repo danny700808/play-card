@@ -332,6 +332,7 @@
  const tree=branch('root','管理工作區',[
   branch('people','人事',[
    branch('staff','專職人員',[
+    leaf('staff-mobile','手機版預覽','dashboard.html?preview=staff'),
     leaf('staff-people','人員資料','employee-admin.html?type=staff'),
     leaf('staff-salary','薪資與投保','salary-admin.html?type=staff'),
     leaf('staff-schedule','班表','schedule-admin.html'),
@@ -346,6 +347,7 @@
     leaf('staff-certificate','在職證明','employment-certificate-hub.html?identity=staff')
    ]),
    branch('parttime','工讀生',[
+    leaf('parttime-mobile','手機版預覽','dashboard.html?preview=parttime'),
     leaf('parttime-people','人員資料','employee-admin.html?type=parttime'),
     leaf('parttime-salary','薪資與投保','salary-admin.html?type=parttime'),
     leaf('parttime-settlement','薪資結算','data-center.html?module=parttime'),
@@ -391,6 +393,13 @@
    leaf('people-binding','帳號綁定','line-binding-admin.html'),
    branch('approvals','全部簽核',groups.approval.links.filter(([,href])=>href!=='approval-hub.html').map(([label,href],i)=>leaf('approval-'+i,label,href,{preferred:true}))),
    leaf('people-approval-notifications','簽核提醒','approval-notification-settings.html')
+   ,branch('approval-unclassified','待分類簽核',[
+    leaf('unclassified-leave','請假','leave.html?mode=approval&identity=unknown'),
+    leaf('unclassified-clock','打卡','clock-corrections-admin.html?identity=unknown'),
+    leaf('unclassified-temporary','臨時出勤','temporary-attendance-admin.html?identity=unknown'),
+    leaf('unclassified-profile','個資修改','profile-change-admin.html?identity=unknown'),
+    leaf('unclassified-registration','入職建檔','registration-approval.html?identity=unknown')
+   ])
   ]}),
   branch('work','日常工作',[
    leaf('work-announcements','公告','announcement-admin.html'),
@@ -429,8 +438,8 @@
  function treePath(id){return treeIndex.get(id)?.path||[];}
  function treeNode(id){return treeIndex.get(id)?.node||null;}
  function treeLink(node){
-  if(node.children)return 'settings.html?ui=20261031-compact6#'+node.id;
-  const u=new URL(node.href,'https://workspace.invalid/');u.searchParams.set('nav',node.id);u.searchParams.set('ui','20261031-compact6');
+  if(node.children)return 'settings.html?ui=20261031-mobile1#'+node.id;
+  const u=new URL(node.href,'https://workspace.invalid/');u.searchParams.set('nav',node.id);u.searchParams.set('ui','20261031-mobile1');
   return u.pathname.slice(1)+u.search+u.hash;
  }
  function pageContext(path,search,hash){

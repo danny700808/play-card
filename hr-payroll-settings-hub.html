@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>人事｜管理樹狀圖</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="global-nav.css?v=20260603unified1"><link rel="stylesheet" href="internal-workspace.css?v=20261031-compact6"></head>
+<title>人事｜管理樹狀圖</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="global-nav.css?v=20260603unified1"><link rel="stylesheet" href="internal-workspace.css?v=20261031-mobile1"></head>
 <body data-internal-hub="true" onload="initPage()" class="admin-wide-page">
 <nav data-yz-global-nav><button data-yz-nav-back>回到上一頁</button><button data-yz-nav-logout>登出</button></nav>
 <main class="container"><section class="management-tree" data-management-tree="people" aria-label="管理功能樹狀圖"></section></main>
@@ -9,12 +9,13 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=20260919-taiwan-v2"></script>
-  <script src="app.js?v=20260802-security-phase1"></script>
+  <script src="onboarding-workflow.js?v=20260624onboarding1"></script><script src="app.js?v=20260802-security-phase1"></script>
   <script>function initPage(){ if(typeof fillHeader==='function') fillHeader(); const user=typeof requireLogin==='function'?requireLogin():null; if(!user)return; if(typeof hasSettingsZoneAccess==='function'&&!hasSettingsZoneAccess(user)){location.href='dashboard.html';return;} if(typeof setPortalMode==='function') setPortalMode('settings'); }</script>
   <script src="global-nav.js?v=20260624unified-top-nav"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="internal-workspace-routes.js?v=20261031-compact6"></script>
-  <script src="internal-workspace.js?v=20261031-compact6"></script>
-  <script src="management-tree.js?v=20261031-compact6"></script>
+  <script src="internal-workspace-routes.js?v=20261031-mobile1"></script>
+  <script src="internal-workspace.js?v=20261031-mobile1"></script>
+  <script src="management-tree.js?v=20261031-mobile1"></script>
+<script src="operations-manager-auth.js?v=20261012-session-v2"></script><script src="hr-session.js?v=20261031-1"></script><script src="personnel-approval-scope.js?v=20261031-mobile1"></script><script src="management-pending-counts.js?v=20261031-mobile1"></script>
 </body>
 </html>

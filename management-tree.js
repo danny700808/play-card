@@ -10,7 +10,7 @@
  function nodeLink(n,cls){
   const a=element('a',cls);a.href=localLink(n);a.dataset.nodeId=n.id;
   a.append(element('span','management-node-label',n.label));
-  if(n.badge){const b=element('span','management-count');b.id=n.badge;const count=counts[n.badge]||0;b.textContent=count?(count>99?'99+':String(count)):'';a.append(b);}
+  const b=element('span','management-count');b.id=n.badge||'node-count-'+n.id;b.dataset.countNode=n.id;paint(b,counts[b.id]);a.append(b);
   const arrow=element('span','management-node-arrow','›');arrow.setAttribute('aria-hidden','true');a.append(arrow);
   if(n.children)a.setAttribute('aria-label','查看'+n.label);
   return a;
@@ -42,6 +42,8 @@
   document.title=current.id==='root'?'管理樹狀圖':current.label+'｜管理樹狀圖';
   if(previous&&previous!==current.id)document.getElementById('managementCurrentNode')?.focus({preventScroll:true});previous=current.id;
  }
- window.InternalManagementTree={setCount(id,count){counts[id]=Number(count)||0;const b=document.getElementById(id);if(b)b.textContent=counts[id]?(counts[id]>99?'99+':String(counts[id])):'';}};
+ function paint(b,count){b.textContent=count===null?'?':count?String(count):'';b.setAttribute('aria-label',count===null?'待處理數字未能讀取':count?'待處理 '+count+' 件':'沒有待處理事項');b.title=count===null?'讀取失敗，請重新整理':count?'待處理 '+count+' 件':'';}
+ function setCount(id,count){counts[id]=count===null?null:Number(count)||0;const b=document.getElementById(id);if(b)paint(b,counts[id]);}
+ window.InternalManagementTree={setCount,setNodeCount(id,count){const node=routes.treeNode(id);if(node)setCount(node.badge||'node-count-'+id,count);}};
  window.addEventListener('hashchange',render);render();
 })();
