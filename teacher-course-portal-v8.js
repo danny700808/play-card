@@ -368,7 +368,7 @@
     const user = result && result.user || {};
     const employeeId = clean(result && result.employeeId || user.employeeId || user.id);
     const missing = Array.isArray(result && result.missingProfileFields) ? result.missingProfileFields : [];
-    const profileCount = summary.profileCount == null
+    const profileCount = result && result.profileChangePending === true ? 0 : summary.profileCount == null
       ? (result && result.profileComplete === true ? 0 : (missing.length ? 1 : 0))
       : count(summary.profileCount);
     const contractCount = 0; // Temporarily closed.

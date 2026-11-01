@@ -588,3 +588,27 @@ test('daily pending summary includes all-external tasks and clears read or compl
   assert.equal(summary.announcementCount, 1, '已讀的一般公告消失，但尚未回覆的公告仍需提醒');
   assert.equal(summary.taskCount, 1, '全體事項需依每位老師自己的完成紀錄判斷');
 });
+
+test('private identity storage paths count as uploaded without leaking paths into the public profile', () => {
+  const helpers = loadHelpers({});
+  for (const status of ['approved', 'pending_review']) {
+    const result = helpers.__profileBundle({
+      externalProfile: completeProfile({identityUrls:[],status,profileStatus:status}),
+      privateProfile:{identityFiles:[{storagePath:'private/teacher/front.jpg'},{storagePath:'private/teacher/back.jpg'}]}
+    });
+    assert.deepEqual(helpers.__missingFields(result.completenessSource),[]);
+    assert.equal(result.profile.identityFileCount,2);
+    assert.equal(JSON.stringify(result.profile).includes('private/teacher/'),false);
+  }
+  const missing = helpers.__profileBundle({externalProfile:completeProfile({identityUrls:[]}),privateProfile:{identityFiles:[{}]}});
+  assert.deepEqual(helpers.__missingFields(missing.completenessSource).map(r=>r.key),['identityDocument']);
+});
+
+test('a submitted profile change waiting for review does not count as a teacher task', async () => {
+  const helpers=loadHelpers({});
+  const base={employeeId:'E-1',user:{id:'E-1',employeeId:'E-1',legacyTeacherId:'T-1'},profileComplete:false};
+  const pending=await helpers.__pendingSummary({...base,profileChangePending:true},{role:'teacher',teacherId:'T-1'});
+  const unfinished=await helpers.__pendingSummary({...base,profileChangePending:false},{role:'teacher',teacherId:'T-1'});
+  assert.equal(pending.profileCount,0);
+  assert.equal(unfinished.profileCount,1);
+});

@@ -25,6 +25,7 @@ test('mobile payout is compact, preserves details and leaves manager display and
   const before = JSON.stringify(batch);
   const html = view.render(batch,'t',{teacherMobile:true,month:'2026-09'});
   assert.match(html,/本期預計發放時間｜2026-10-12/);
+  assert.match(html,/每月 10 日發放，遇週六、週日順延至下週一。/);
   assert.doesNotMatch(html,/本期應付合計|已確認匯款|尚未確認匯款/);
   assert.match(html,/補簽截止：2026-10-10 00:00（台灣時間）/);
   assert.match(html,/截止後補簽順延下期/);

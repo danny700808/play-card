@@ -2591,6 +2591,7 @@ function teacherUtilityProfileBundle(options) {
   };
   const completenessSource = Object.assign({}, profile, {
     idNumber: rawIdNumber,
+    identityFiles,
     lineUserId: profile.lineUserId
   });
   return { profile, completenessSource };
@@ -3195,7 +3196,7 @@ async function teacherUtilityPendingSummary(resolved, session) {
     'updatedAt', 'updatedAtText', 'createdAt', 'createdAtText', 'status', 'replyStatus',
     'replySummary', 'replyNote', 'replyStock', 'replyTeacherPrice', 'repliedAt'
   ]);
-  const profileCount = resolved && resolved.profileComplete ? 0 : 1;
+  const profileCount = resolved && (resolved.profileComplete || resolved.profileChangePending) ? 0 : 1;
   const summary = {
     profileCount,
     contractCount: contracts.length,
