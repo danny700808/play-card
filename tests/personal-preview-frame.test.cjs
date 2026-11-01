@@ -12,5 +12,8 @@ test('isolated teacher preview keeps original markup, virtualizes navigation and
  const child=new JSDOM(frame.srcdoc,{url:'https://isolated.test/',runScripts:'dangerously'});await new Promise(r=>setTimeout(r,10));
  assert.equal(child.window.pageName,'/play-card/teacher-course-portal.html');assert.equal(JSON.parse(child.window.saved).id,'selected');assert.equal(child.window.document.querySelector('form button').disabled,true);assert.equal(child.window.document.querySelector('button[type=button]').disabled,false);
  assert.equal(child.window.localStorage.getItem('youzi.coursePortal.authStateMigration.20260805.v1'),'done');
+ let navigation;child.window.addEventListener('message',event=>{if(event.data.kind==='navigate')navigation=event.data.href;});
+ child.window.__previewLocation.href='leave.html?mode=retro&date=2026-10-23&startTime=18%3A00';await new Promise(r=>setTimeout(r,10));
+ assert.equal(navigation,'https://danny700808.github.io/play-card/leave.html?mode=retro&date=2026-10-23&startTime=18%3A00');
  w.PersonalPreviewFrame.close();child.window.close();dom.window.close();
 });

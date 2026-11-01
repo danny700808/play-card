@@ -11,7 +11,7 @@
   const send=(kind,data)=>parent.postMessage({previewChannel:config.channel,kind,...data},'*');
   const pageUrl=new URL(config.page);
   const virtualLocation={assign:href=>send('navigate',{href:new URL(href,pageUrl).href}),replace:href=>send('navigate',{href:new URL(href,pageUrl).href}),reload:()=>send('navigate',{href:pageUrl.href})};
-  for(const key of ['href','search','pathname','origin','hash','host','hostname','protocol'])Object.defineProperty(virtualLocation,key,{get:()=>pageUrl[key],set:value=>{const next=new URL(pageUrl);next[key]=value;send('navigate',{href:next.href});}});
+  for(const key of ['href','search','pathname','origin','hash','host','hostname','protocol'])Object.defineProperty(virtualLocation,key,{get:()=>pageUrl[key],set:value=>{const next=key==='href'?new URL(value,pageUrl):new URL(pageUrl);if(key!=='href')next[key]=value;send('navigate',{href:next.href});}});
   window.__previewLocation=virtualLocation;
   const rpc=(method,payload={})=>new Promise((resolve,reject)=>{const id=++next;const timer=setTimeout(()=>{pending.delete(id);reject(Error('讀取逾時，請重新開啟。'));},175000);pending.set(id,{resolve,reject,timer});send('read',{id,method,payload});});
   addEventListener('message',event=>{if(event.source!==parent||event.data?.previewChannel!==config.channel)return;const p=pending.get(event.data.id);if(!p)return;clearTimeout(p.timer);pending.delete(event.data.id);event.data.error?p.reject(Error(event.data.error)):p.resolve(event.data.result);});

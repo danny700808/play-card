@@ -47,6 +47,7 @@ function createEmployeeAttendance({db,FieldValue,now=()=>new Date()}){
     return result;
   }
   async function clock(payload,request,user){
+    if(!active(user))throw new HttpsError('permission-denied','人員目前未啟用，無法打卡。');
     const action=clean(payload.actionName);
     if(!['上班打卡','下班打卡'].includes(action)||clean(payload.clockType||'標準打卡')!=='標準打卡'||payload.isSupplement)throw new HttpsError('invalid-argument','補打卡與特殊打卡請使用主管審核申請。');
     const ip=networkCheck(request,action),at=now(),date=localDateKey(at),clockTime=timeText(at),employeeId=user.employeeId;

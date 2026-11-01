@@ -71,7 +71,7 @@ function createEmployeeDataGateway({db,FieldValue,Filter,queueManager,queueEmail
     }
     const {account,user}=await identity(request,data),action=clean(data.action),input=data.payload||{};
     if(JSON.stringify(input).length>40000)throw new HttpsError('invalid-argument','資料過大。');
-    if(action==='clock')return attendance.clock(input,request,user);
+    if(action==='clock')return attendance.clock(input,request,{...account.data,...user});
     if(action==='goods-inquiry'){
       const id=clean(data.id);if(!/^[A-Za-z0-9_-]{1,150}$/.test(id))throw Error('詢價編號不正確。');
       const row=pick(input,['sourceType','itemId','itemName','imageUrl','quantity','needBy','note','websiteProductId','websiteProductUrl','websiteOriginalPrice','websiteVariantSummary','websiteSource']);

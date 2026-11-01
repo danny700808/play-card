@@ -19,6 +19,7 @@ test('server clock uses authenticated owner/time/schedule, rejects offsite and d
  const key=(await createScheduleComputer({singleDaySchedules:[shift]}).day(employee,shift.date)).schedules[0].scheduleKey;
  const request={rawRequest:{headers:{'x-forwarded-for':'125.229.190.123'}}};
  const payload={actionName:'上班打卡',scheduleKey:key,employeeId:'another',clockTime:'01:00',clientIp:'125.229.190.123'};
+ await assert.rejects(api.clock(payload,request,{...employee,employmentStatus:'resigned'}),/未啟用/);
  await assert.rejects(api.clock(payload,{rawRequest:{headers:{'x-forwarded-for':'203.0.113.2'}}},employee),/公司 Wi-Fi/);
  await assert.rejects(api.clock({...payload,scheduleKey:'fake'},request,employee),/班表/);
  const inResult=await api.clock(payload,request,employee),row=f.rows.get('clockRecords/'+inResult.recordId);
