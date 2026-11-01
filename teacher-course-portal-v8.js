@@ -982,7 +982,7 @@
       return fallback;
     };
     const items = rows.map((row) => ({
-      payoutLabel: window.YouziPayrollPayout.label(row),
+      payoutLabel: window.YouziPayrollPayout.label(row, {teacherMobile:true}),
       kind: 'lesson',
       date: valueOf(row, ['date','courseDate','lessonDate'], payrollMonth),
       name: valueOf(row, ['studentName','subjectName'], '課堂'),
