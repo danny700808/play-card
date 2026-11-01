@@ -67,6 +67,7 @@
 
   function updateTabCounts() {
     countTimer = 0;
+    if (typeof global.updateRentalTabCounts === 'function') { global.updateRentalTabCounts(); return; }
     const rows = rentalRows();
     document.querySelectorAll('.tabs .tab[data-filter]').forEach(function (button) {
       const key = clean(button.dataset.filter);
