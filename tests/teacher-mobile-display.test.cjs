@@ -25,7 +25,12 @@ test('mobile payout is compact, preserves details and leaves manager display and
   const before = JSON.stringify(batch);
   const html = view.render(batch,'t',{teacherMobile:true,month:'2026-09'});
   assert.match(html,/本期預計發放時間｜2026-10-12/);
-  assert.doesNotMatch(html,/本期應付合計|已確認匯款|尚未確認匯款|補簽截止/);
+  assert.doesNotMatch(html,/本期應付合計|已確認匯款|尚未確認匯款/);
+  assert.match(html,/補簽截止：2026-10-10 00:00（台灣時間）/);
+  assert.match(html,/截止後補簽順延下期/);
+  assert.match(html,/補簽行政處理費隨該堂課發放時扣除/);
+  assert.ok(html.indexOf('補簽截止') < html.indexOf('<details>'));
+  assert.match(html,/補簽到｜10\/1 補簽 9\/28 的課/);
   assert.match(html,/<details>/); assert.match(html,/NT\$420/); assert.match(html,/NT\$-50/);
   assert.match(html,/&lt;姓名&gt;/); assert.match(html,/10\/12 發放/);
   assert.match(view.render(batch,'t'),/本期發放明細｜2026-10-10/);
