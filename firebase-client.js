@@ -1293,13 +1293,13 @@
       };
     });
   }
-  async function resolveTodaySchedule(payload){
+  async function resolveTodaySchedule(payload, monthlySources){
     const p = payload || {};
     const employeeId = employeeIdFrom(p);
     const dateKey = dateText(p.date || p.clockDate) || today();
     if(!employeeId) return {ok:false, message:'缺少員工資料，請重新登入。', hasSchedule:false, okToClock:false, allowedClockTypes:[], schedules:[]};
 
-    const [singleRows, assignmentRows, templateRows, leaveBlocks] = await Promise.all([
+    const [singleRows, assignmentRows, templateRows, leaveBlocks] = monthlySources || await Promise.all([
       rowsByEmployee('singleDaySchedules', employeeId).catch(()=>[]),
       rowsByEmployee('employeeSchedules', employeeId).catch(()=>[]),
       all('scheduleTemplates').catch(()=>[]),
@@ -1616,6 +1616,19 @@
     if(a === 'deleteScheduleTemplate') return await deleteScheduleDoc('scheduleTemplates', payload || {}, ['templateId','模板ID','id'], '班表模板已刪除。');
     if(a === 'deleteEmployeeSchedule') return await deleteScheduleDoc('employeeSchedules', payload || {}, ['assignmentId','套用ID','id'], '員工班表已刪除。');
     if(a === 'deleteSingleDaySchedule') return await deleteScheduleDoc('singleDaySchedules', payload || {}, ['recordId','單日ID','id'], '單日班表已刪除。');
+    if(a === 'getMonthlySchedule'){
+      const p=payload||{}, employeeId=employeeIdFrom(p), month=clean(p.month);
+      if(!employeeId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw Error('請選擇年、月。');
+      // Fetch each source once; expand recurring assignments locally for this month.
+      const sources=await Promise.all([rowsByEmployee('singleDaySchedules',employeeId),rowsByEmployee('employeeSchedules',employeeId),all('scheduleTemplates'),Promise.resolve([])]);
+      const [year,mo]=month.split('-').map(Number), days=new Date(Date.UTC(year,mo,0)).getUTCDate(), rows=[];
+      for(let day=1;day<=days;day++){
+        const date=month+'-'+String(day).padStart(2,'0');
+        const info=await resolveTodaySchedule({...p,date},sources);
+        rows.push(...info.schedules);
+      }
+      return {ok:true,month,rows};
+    }
     if(a === 'getTodaySchedule' || a === 'getTodayClockSchedule') return await resolveTodaySchedule(payload || {});
     if(a === 'clock') return await clockWithSchedule(payload || {});
     if(typeof oldHandle === 'function') return await oldHandle(action, payload || {});
@@ -7802,9 +7815,14 @@
     const action=mode==='pending'?'getPendingLeaveApprovals':(mode==='all'?'getAdminLeaveRecords':'getLeaveHistory');
     const base=typeof previousHandle==='function'?await previousHandle(action,payload||{}).catch(()=>null):null;
     const baseRows=Array.isArray(base&&base.rows)?base.rows:[]; const baseMap=new Map(baseRows.map(r=>[clean(r.requestId||r.leaveId||r.__id),r]));
-    const requestRows=(await all('leaveRequests').catch(()=>[])).map(normalizeLeave).filter(l=>(l.requestId||l.employeeId)&&isActiveRow(l.raw));
+    const requestRows=(await (mode==='mine'?rowsByEmployee('leaveRequests',employeeIdFrom(payload)):all('leaveRequests').catch(()=>[]))).map(normalizeLeave).filter(l=>(l.requestId||l.employeeId)&&isActiveRow(l.raw));
     const mergedMap=new Map(); baseRows.map(normalizeLeave).filter(l=>(l.requestId||l.employeeId)&&isActiveRow(l.raw)).forEach(l=>mergedMap.set(l.requestId||`${l.employeeId}|${l.leaveDate}|${l.reason}`,l)); requestRows.forEach(l=>mergedMap.set(l.requestId||`${l.employeeId}|${l.leaveDate}|${l.reason}`,l));
     let rows=Array.from(mergedMap.values()); if(mode==='pending')rows=rows.filter(l=>l.status===PENDING); if(mode==='mine'){ const id=employeeIdFrom(payload); rows=rows.filter(l=>l.employeeId===id); }
+    if(mode==='mine' && payload && payload.month){
+      if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(payload.month))throw Error('請選擇年、月。');
+      const month=payload.month;
+      rows=rows.filter(l=>l.segments.some(s=>s.date.slice(0,7)===month)||(!l.segments.length&&l.startDate.slice(0,7)<=month&&l.endDate.slice(0,7)>=month));
+    }
     rows=rows.map(l=>Object.assign({},baseMap.get(l.requestId)||{},l));
     for(const l of rows){ if(mode==='pending')l.reviewHints=await reviewHints(l); l.canEdit=l.status===PENDING;l.canDelete=l.status===PENDING; }
     rows.sort((a,b)=>(mode==='pending'?clean(a.leaveDate).localeCompare(clean(b.leaveDate)):clean(b.leaveDate).localeCompare(clean(a.leaveDate))));
@@ -7908,6 +7926,7 @@
 
   fb.handleApi=async function(action,payload){
     const a=clean(action);
+    if(a==='getMonthlySchedule'){ const employeeId=employeeIdFrom(payload); if(!await activeEmployeeMaster(employeeId))return{ok:true,rows:[]}; return previousHandle(a,payload); }
     if(a==='getTodaySchedule'||a==='getTodayClockSchedule')return await effectiveScheduleInfo(employeeIdFrom(payload),dateText(payload&&(payload.date||payload.clockDate))||localDateKey(new Date()),{includeClockState:true});
     if(a==='clock')return await clockFlow(payload||{});
     if(['leaveRequest','modifyLeaveRequest','deleteLeaveRequest'].includes(a))return await submitLeaveFlow(a,payload||{});

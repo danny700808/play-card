@@ -90,7 +90,7 @@
  }
 
  async function previewFeature(key){
-  const feature=key==='schedule-own'?['我的班表','clock.html']:key==='correction'?['修正打卡','clock.html']:features[key];if(!feature)return;
+  const feature=key==='schedule-own'?['我的班表','employee-schedule.html']:key==='correction'?['修正打卡','clock.html']:features[key];if(!feature)return;
   const employeeDocId=$('previewPerson').value,returnTab=tab;body('');
   try{await PersonalPreviewFrame.open({container:$('personalBody'),page:feature[1],user:state.user,role:'employee',onBack:()=>selectTab(returnTab),read:(method,payload)=>managerRead('preview-employee-read',{employeeDocId,method,payload})});}catch(e){status(e.message,true);}
  }
@@ -120,7 +120,7 @@
   if(key==='retry-role')return selectTab(tab);
   if(key==='logout'){if(typeof logout==='function')logout();return;}
   if(preview)return previewFeature(key);
-  if(key==='schedule-own')return showFrame('我的班表','clock.html');
+  if(key==='schedule-own')return showFrame('我的班表','employee-schedule.html');
   const feature=features[key];if(feature)showFrame(...feature);
  }
  async function changePerson(){

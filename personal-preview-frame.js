@@ -1,6 +1,6 @@
 (function(global){
  'use strict';
- const pages=new Set(['teacher-course-portal.html','teacher-profile.html','room-booking.html','announcements.html','task.html','teacher-goods.html','forms-hub.html','contract.html','gift-point-card.html','employment-certificate.html','teaching-certificate.html','clock.html','parttime.html','leave.html','temporary-attendance.html','training.html','routine.html','profile.html']);
+ const pages=new Set(['teacher-course-portal.html','teacher-profile.html','room-booking.html','announcements.html','task.html','teacher-goods.html','forms-hub.html','contract.html','gift-point-card.html','employment-certificate.html','teaching-certificate.html','clock.html','employee-schedule.html','parttime.html','leave.html','temporary-attendance.html','training.html','routine.html','profile.html']);
  let active=null;
  function close(){if(active){window.removeEventListener('message',active.listener);active.frame.remove();active=null;}}
  function childBootstrap(config){

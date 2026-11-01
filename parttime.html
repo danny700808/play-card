@@ -235,6 +235,8 @@
 </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="internal-workspace.css?v=20261031-mobile1">
+<link rel="stylesheet" href="employee-month-view.css?v=20261101-month-view-v1">
+<script src="employee-month-view.js?v=20261101-month-view-v1"></script>
 </head>
 <body onload="init()">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -318,37 +320,9 @@
     </div>
 
     <div class="card">
-      <div class="topbar" style="margin-bottom:10px">
-        <div>
-          <h2 class="title" style="font-size:20px;margin:0">本月時數紀錄</h2>
-          <div class="internal-explanation muted">只顯示當月資料，月份切換後前台不再顯示舊月份。</div>
-        </div>
-        <span id="monthBadge" class="month-badge"></span>
-      </div>
-      <div id="list" class="list"></div>
-      <div class="summary-box">
-        <div class="muted">這個月總計</div>
-        <div id="monthTotal" class="summary-value">0 小時</div>
-      </div>
-    </div>
-
-    <div class="card">
       <details class="history-search-panel">
-        <summary>歷史紀錄搜尋</summary>
-        <div class="internal-explanation muted inline-note">一次最多查詢 60 天。</div>
-        <div class="history-grid">
-          <div class="field">
-            <label for="historyStart">開始日期</label>
-            <input id="historyStart" type="date">
-          </div>
-          <div class="field">
-            <label for="historyEnd">結束日期</label>
-            <input id="historyEnd" type="date">
-          </div>
-        </div>
-        <div class="history-actions">
-          <button type="button" class="btn" id="historySearchBtn">搜尋紀錄</button>
-        </div>
+        <summary>歷史工時紀錄</summary>
+        <div id="parttimeHistoryMonth"></div>
         <div id="historySearchMsg" class="message" style="display:none"></div>
         <div id="historySearchResult" class="history-result"></div>
       </details>
@@ -378,9 +352,9 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20261018-double-pay"></script>
+  <script src="firebase-client.js?v=20261101-month-view-v1"></script>
 
-  <script src="app.js?v=20260802-security-phase1"></script>
+  <script src="app.js?v=20261101-month-view-v1"></script>
   <script>
     function localDateInputValue(){
       const now = new Date();
@@ -444,40 +418,20 @@
     async function searchHistoryRange(){
       const user = requireLogin();
       if(!user) return;
-      const start = qs('#historyStart').value;
-      const end = qs('#historyEnd').value;
-      const msg = qs('#historySearchMsg');
-      const result = qs('#historySearchResult');
-      if(msg){ msg.style.display='none'; msg.textContent=''; msg.classList.remove('error'); }
-      if(result) result.innerHTML = '';
-      if(!start || !end){
-        if(msg){ msg.style.display=''; setMsg(msg, '請先選擇開始日期與結束日期。', true); }
-        return;
-      }
-      const days = daysBetweenInclusive(start, end);
-      if(!Number.isFinite(days) || days <= 0){
-        if(msg){ msg.style.display=''; setMsg(msg, '結束日期不可早於開始日期。', true); }
-        return;
-      }
-      if(days > 60){
-        if(msg){ msg.style.display=''; setMsg(msg, '一次最多只能搜尋 60 天，請縮短日期區間。', true); }
-        return;
-      }
-      const btn = qs('#historySearchBtn');
-      const oldText = btn ? btn.textContent : '';
-      if(btn){ btn.disabled = true; btn.textContent = '搜尋中...'; }
+      const {startDate:start,endDate:end}=parttimeMonthControl.get();
+      const msg=qs('#historySearchMsg'),result=qs('#historySearchResult');
+      msg.style.display='';setMsg(msg,'查詢中…',false);result.innerHTML='';
       try{
         const r = await api('getParttimeHistoryRange', {userId:user.id, startDate:start, endDate:end});
+        if(r.ok===false)throw Error(r.message||'查詢失敗');
         const rows = r.rows || [];
         const total = Number(r.totalHours || 0);
         if(msg){ msg.style.display=''; setMsg(msg, `查詢完成，共 ${rows.length} 筆，合計 ${formatHoursLabel(total)}。`, false); }
         if(result){
-          result.innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">${formatHoursLabel(x.totalHours)}${x.doublePayHours>0?`｜雙倍計薪 ${formatHoursLabel(x.doublePayHours)}`:x.payMultiplier===2?'｜雙倍計薪':''}</span></div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('') || '<div class="muted">這段期間沒有紀錄</div>';
+          result.innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">${formatHoursLabel(x.totalHours)}${x.doublePayHours>0?`｜雙倍計薪 ${formatHoursLabel(x.doublePayHours)}`:x.payMultiplier===2?'｜雙倍計薪':''}</span></div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('') || '<div class="muted">尚無資料</div>';
         }
       }catch(e){
         if(msg){ msg.style.display=''; setMsg(msg, '搜尋失敗，請稍後再試。', true); }
-      }finally{
-        if(btn){ btn.disabled = false; btn.textContent = oldText || '搜尋紀錄'; }
       }
     }
     function monthLabel(ym){
@@ -518,16 +472,9 @@
         main.textContent = ctx.canRegister ? `${ctx.statusLabel || '今日有排班'}｜${ctx.scheduleLabel || ''}${hoursText}` : '今天沒有排班，不能登記工讀時數。';
         main.className = 'date-status-main ' + (ctx.canRegister ? 'ok' : 'bad');
       }
-      if(note){
-        if(ctx.canRegister){
-          const directHours = Number(ctx.remainingRegularHours || ctx.maxDirectHours || ctx.scheduledHours || 0) || 0;
-          const usedText = Number(ctx.registeredHours || 0) > 0 ? `已登記 ${formatHoursLabel(ctx.registeredHours)}。` : '';
-          const paidLeaveText = Number(ctx.paidLeaveHours || 0) > 0 ? `<div class="excess-note">另有核准支薪假 ${formatHoursLabel(ctx.paidLeaveHours)}，會以獨立薪資紀錄計入，不要當作實際工讀時數重複登記。</div>` : '';
-          note.innerHTML = (ctx.helperText || '今天有有效出勤班段，可以登記排班內時數。') + (ctx.scheduledHours ? `<div class="excess-note">核准請假扣除後的有效班段共 ${formatHoursLabel(ctx.scheduledHours)}。${usedText}若實際出勤超出可直接登記時數，請先至「打卡 / 補打卡」或「臨時出勤申請」送出超出時段；主管核准後系統會自動計入工讀薪資時數，不需要再回本頁重複登記。</div>` : '') + paidLeaveText;
-        }else{
-          note.textContent = '今天沒有排班，不能直接登記工讀時數；如為臨時出勤，請先使用「臨時出勤申請」，主管核准後系統會自動計入薪資時數。';
-        }
-      }
+      if(note){ note.textContent=''; note.hidden=true; }
+      const doubleBtn=qs('#doublePayBtn');
+      if(doubleBtn){doubleBtn.hidden=!ctx.canRegister;if(!ctx.canRegister){doubleBtn.setAttribute('aria-pressed','false');doubleBtn.classList.remove('active');doubleBtn.textContent='☐ 雙倍計薪';}}
       if(btn) btn.disabled = !!(ctx && !ctx.canRegister);
     }
     async function loadDateContext(){
@@ -573,15 +520,6 @@
         return false;
       }
       return true;
-    }
-    async function loadHistory(monthText=''){
-      const user = requireLogin();
-      if(!user) return;
-      const r = await api('getParttimeHistory',{userId:user.id, monthText});
-      const rows = r.rows || [];
-      qs('#monthBadge').textContent = monthLabel(r.monthText || '');
-      qs('#monthTotal').textContent = formatHoursLabel(r.monthTotalHours || 0);
-      qs('#list').innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">${formatHoursLabel(x.totalHours)}${x.doublePayHours>0?`｜雙倍計薪 ${formatHoursLabel(x.doublePayHours)}`:x.payMultiplier===2?'｜雙倍計薪':''}</span></div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('') || '<div class="muted">本月目前沒有紀錄</div>';
     }
 
     function pendingStatusHtml(text){
@@ -702,7 +640,7 @@
           qs('#hoursSelect').value = '';
           renderHoursGrid();
           qs('#workDate').value = localDateInputValue();
-          await loadHistory(r.monthText || '');
+          if(qs('#historySearchResult').childElementCount) await searchHistoryRange();
           await loadDateContext();
           await loadPendingItems();
           progress.done('送出成功');
@@ -716,6 +654,7 @@
         throw e;
       }
     }
+    let parttimeMonthControl;
     function init(){
       fillHeader();
       qs('#workDate').value = localDateInputValue();
@@ -723,11 +662,9 @@
       qs('#workDate').addEventListener('input', async ()=>{ clearValidation(); await loadDateContext(); });
       qs('#workDate').addEventListener('change', async ()=>{ clearValidation(); await loadDateContext(); });
       qs('#hoursSelect').addEventListener('change', ()=>{ clearValidation(); updateHoursGrid(); });
-      const historyBtn = qs('#historySearchBtn');
-      if(historyBtn) historyBtn.onclick = searchHistoryRange;
+      parttimeMonthControl=EmployeeMonthView.mount('#parttimeHistoryMonth',{onSearch:searchHistoryRange});
       initParttimeExcessModal();
       renderHoursGrid();
-      loadHistory();
       loadPendingItems();
       loadDateContext();
     }

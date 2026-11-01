@@ -124,6 +124,8 @@
 </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="internal-workspace.css?v=20261031-mobile1">
+<link rel="stylesheet" href="employee-month-view.css?v=20261101-month-view-v1">
+<script src="employee-month-view.js?v=20261101-month-view-v1"></script>
 </head>
 <body onload="init()">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -146,6 +148,7 @@
     </div>
 
     <div id="staffBlock">
+      <section class="card" id="leaveScheduleCard" hidden><h2 class="title" style="font-size:20px">我的班表 · 選擇請假日期</h2><div id="leaveScheduleMonth"></div><div id="leaveScheduleRows" aria-live="polite"></div></section>
       <div class="card">
         <div class="field" id="fieldReason">
           <label for="reason">請假原因</label>
@@ -167,7 +170,7 @@
         <h2 class="title" style="font-size:20px;margin-bottom:8px">我的請假資訊</h2>
         <div class="summary-box" id="leaveSimpleMetaWrap"><div class="help-title">基本資訊</div><div class="summary-grid" id="leaveSimpleMeta"></div></div>
       </div>
-      <div class="card" id="leaveHistoryCard"><h2 class="title" style="font-size:20px;margin-bottom:8px">本年度請假紀錄</h2><div class="muted" id="yearText">只顯示今年資料。</div><div id="list" class="list" style="margin-top:12px"></div></div>
+      <div class="card" id="leaveHistoryCard"><h2 class="title" style="font-size:20px;margin-bottom:8px">歷史請假紀錄</h2><div id="leaveHistoryMonth"></div><div id="yearText" role="status"></div><div id="list" class="list" style="margin-top:12px"></div></div>
     </div>
 
     <div class="card hidden" id="approvalAdminCard">
@@ -195,8 +198,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260919-taiwan-v2"></script>
-<script src="app.js?v=20260802-security-phase1"></script>
+  <script src="firebase-client.js?v=20261101-month-view-v1"></script>
+<script src="app.js?v=20261101-month-view-v1"></script>
 
 <script>
 let historyRows = [];
@@ -221,6 +224,61 @@ let leaveEventCandidates = [];
 let leaveEventCandidateMap = {};
 let leaveSegmentsState = [];
 let leaveSegmentSeed = 0;
+let leaveScheduleControl,leaveHistoryControl,leaveMonthRows=[],leaveChosenDate='';
+let leaveMonthReadVersion=0;
+const leaveKnownDates=new Set();
+async function loadLeaveSchedule(selection){
+  const version=++leaveMonthReadVersion,box=qs('#leaveScheduleRows');box.textContent='讀取中…';
+  try{
+    const result=await api('getMonthlySchedule',{userId:currentUser.id,month:selection.month});
+    if(version!==leaveMonthReadVersion)return;
+    if(!result.ok)throw Error(result.message||'班表讀取失敗');
+    leaveMonthRows=result.rows||[];leaveMonthRows.forEach(row=>leaveKnownDates.add(row.date));box.innerHTML=EmployeeMonthView.rowsHtml(leaveMonthRows,{selectable:true});
+    box.querySelectorAll('[data-leave-day]').forEach(button=>button.onclick=()=>{
+      leaveChosenDate=button.dataset.leaveDay;
+      // Reuse an empty segment, otherwise append a different scheduled day.
+      let seg=leaveSegmentsState.find(s=>s.startDate===leaveChosenDate||s.leaveDate===leaveChosenDate)||leaveSegmentsState.find(s=>!s.startDate&&!s.leaveDate);
+      if(!seg){seg=createDefaultSegment();leaveSegmentsState.push(seg);}
+      seg.startDate=seg.endDate=seg.leaveDate=leaveChosenDate;
+      seg.mode=leaveChosenDate<EmployeeMonthView.today()?'retro':'schedule';
+      renderSegments();
+      qs('#reason').focus();
+      box.querySelectorAll('[data-leave-day]').forEach(b=>b.textContent=b.dataset.leaveDay===leaveChosenDate?'已選擇':'選擇');
+    });
+    renderSegments();
+  }catch(e){if(version===leaveMonthReadVersion){leaveMonthRows=[];box.textContent=e.message||'班表讀取失敗，請重新查詢。';}}
+}
+async function searchLeaveMonth(selection){
+  qs('#yearText').textContent='查詢中…';qs('#list').innerHTML='';
+  try{
+    const result=await api('getLeaveHistory',{userId:currentUser.id,month:selection.month});
+    if(!result.ok)throw Error(result.message||'查詢失敗');
+    renderHistory(result.rows||[]);qs('#yearText').textContent=(result.rows||[]).length?'':'尚無資料';
+  }catch(e){qs('#yearText').textContent=e.message||'查詢失敗，請重試。';}
+}
+function initLeaveMonthViews(){
+  if(!leaveHistoryControl)leaveHistoryControl=EmployeeMonthView.mount('#leaveHistoryMonth',{onSearch:searchLeaveMonth});
+  if(isParttimeLeaveUser()&&!leaveScheduleControl){
+    qs('#leaveScheduleCard').hidden=false;
+    leaveScheduleControl=EmployeeMonthView.mount('#leaveScheduleMonth',{onSearch:loadLeaveSchedule});
+    loadLeaveSchedule(leaveScheduleControl.get());
+  }
+}
+function applyScheduledDateChoices(){
+  if(!isParttimeLeaveUser()||isRetroQueryLocked())return;
+  qsa('[data-segment-start-date],[data-segment-end-date],[data-segment-leave-date]').forEach(input=>{
+    const dates=[...new Set(leaveMonthRows.map(r=>r.date))].sort();
+    // An existing application remains reviewable even after its schedule changes.
+    if((qs('#editingRequestId').value||leaveKnownDates.has(input.value))&&input.value&&!dates.includes(input.value))dates.push(input.value);
+    const select=document.createElement('select');
+    for(const attr of input.attributes)if(attr.name!=='type'&&attr.name!=='value')select.setAttribute(attr.name,attr.value);
+    select.innerHTML='<option value="">選擇排班日</option>'+dates.map(date=>'<option value="'+escapeHtml(date)+'">'+escapeHtml(date)+'</option>').join('');
+    select.value=dates.includes(input.value)?input.value:'';
+    input.replaceWith(select);
+    if(select.dataset.segmentEndDate)select.closest('.segment-field').hidden=true;
+  });
+}
+
 
 
 function applyParttimeLeaveUi_(){
@@ -341,7 +399,7 @@ function setLocalMsg(text, isError=false){ setMsg(qs('#localMsg'), text, isError
 
 function nextLeaveSegmentId(){ leaveSegmentSeed += 1; return 'SEG_' + leaveSegmentSeed; }
 function createDefaultSegment(mode){
-  const today = localDateInputValue();
+  const today = isParttimeLeaveUser() ? leaveChosenDate : localDateInputValue();
   const m = mode || 'schedule';
   return { id: nextLeaveSegmentId(), mode: m, startDate: today, endDate: today, leaveDate: today, startTime: '', endTime: '', contextHtml: '', contextError: false };
 }
@@ -717,7 +775,8 @@ function bindSegmentEvents(){
     const key = leaveNormalizeDateKey(el.value);
     seg.startDate = key;
     if(key && el.value !== key) el.value = key;
-    if(!seg.endDate) seg.endDate = key;
+    if(isParttimeLeaveUser() || !seg.endDate) seg.endDate = key;
+    if(isParttimeLeaveUser()){const end=qs(`[data-segment-end-date="${seg.id}"]`);if(end)end.value=key;}
     renderSegmentSummary();
     refreshScheduleSegmentContext(seg.id);
   });
@@ -809,6 +868,7 @@ function renderSegments(){
       `}
     </div>`;
   }).join('');
+  applyScheduledDateChoices();
   bindSegmentEvents();
   const segToolbar = qs('#fieldSegments .segment-toolbar');
   if(segToolbar) segToolbar.classList.toggle('hidden', isRetroLockedMode());
@@ -1668,6 +1728,7 @@ function renderLeaveOverview(overview){
 async function loadStaffData(){
   const user = requireLogin();
   if(!user || leaveApprovalMode) return;
+  initLeaveMonthViews();
 
   // Firebase 版不再讓「假勤制度讀取」卡住整個頁面：先用本機預設假別打開表單，後台再同步正式設定。
   buildLeavePolicyMaps(defaultLeavePolicyBundle_());
@@ -1682,8 +1743,8 @@ async function loadStaffData(){
 
   leaveEventCandidates = [];
   leaveEventCandidateMap = {};
-  qs('#yearText').textContent = '載入請假紀錄中…';
-  renderHistory([]);
+  qs('#yearText').textContent = '';
+  historyRows=[];qs('#list').innerHTML='';
   renderEventChoiceForReason(qs('#eventChoice') ? qs('#eventChoice').value : '');
   toggleBereavementRelation();
 
@@ -1698,7 +1759,7 @@ async function loadStaffData(){
     try{
       const [policyRes, historyLoaded, profileLoaded] = await Promise.all([
         apiSafe('getLeavePolicyPublicBundle', { userId:user.id }, 3500, '請假制度讀取逾時'),
-        apiSafe('getLeaveHistory', { userId:user.id }, 8000, '請假紀錄讀取逾時'),
+        isParttimeLeaveUser()?Promise.resolve({ok:true,rows:[],eventCandidates:[]}):apiSafe('getLeaveHistory', { userId:user.id }, 8000, '請假紀錄讀取逾時'),
         apiSafe('getMyProfile', { userId:user.id }, 8000, '個人資料讀取逾時')
       ]);
 
@@ -1719,13 +1780,11 @@ async function loadStaffData(){
         leaveEventCandidates = Array.isArray(historyRes.eventCandidates) ? historyRes.eventCandidates : [];
         leaveEventCandidateMap = {};
         leaveEventCandidates.forEach(item => { if(item && item.eventId) leaveEventCandidateMap[item.eventId] = item; });
-        qs('#yearText').textContent = `${historyRes.year || ''} 年度資料`;
-        renderHistory(Array.isArray(historyRes.rows) ? historyRes.rows : []);
+        // Annual data is retained for staff entitlements, not rendered as history.
       }else{
         leaveEventCandidates = [];
         leaveEventCandidateMap = {};
-        qs('#yearText').textContent = '本年度資料讀取失敗';
-        renderHistory([]);
+        qs('#yearText').textContent = '';
         warnings.push('請假紀錄：' + ((historyRes && historyRes.message) || '讀取失敗'));
       }
 
@@ -1748,8 +1807,7 @@ async function loadStaffData(){
       warnings.push('背景載入：' + ((err && err.message) || '未知錯誤'));
       leaveEventCandidates = [];
       leaveEventCandidateMap = {};
-      qs('#yearText').textContent = '本年度資料讀取失敗';
-      renderHistory([]);
+      qs('#yearText').textContent = '';
     }finally{
       setLocalMsg(warnings.length ? warnings.join('；') : '', !!warnings.length);
     }

@@ -39,6 +39,7 @@ function protectedLoginUrl(){const page=String((location&&location.pathname)||''
 function requireLogin(){const user=getUser();if(!user){location.href=protectedLoginUrl();return null;}if(!isExternalTeacher(user)&&user.portalSessionBridge!==true&&localStorage.getItem('employeeSecureAuthVersion')!=='1'){localStorage.removeItem('employeeUser');localStorage.removeItem('employeeUserId');location.href=protectedLoginUrl();return null;}const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase();if(user.passwordResetRequired===true&&path!=='change-password.html'){location.href='change-password.html';return null;}const feature=currentFeatureKey();if(feature==='contract'&&!isExternalTeacher(user)){location.href='dashboard.html';return null;}if(feature==='contractAdmin'&&!isManager(user)){location.href='dashboard.html';return null;}if(feature&&feature!=='contract'&&feature!=='contractAdmin'&&feature!=='settings'&&!guardFeatureAccess(feature,user))return null;return user;}
 async function api(action, payload={}){
   const firebaseOnlyActions = {
+    getMonthlySchedule:true,
     login:true,
     forgotPassword:true,
     changePassword:true,
