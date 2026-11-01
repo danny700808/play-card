@@ -9,6 +9,12 @@ const {createInventoryCountAccess}=require('../functions/inventoryCountAccess');
 const {renewalDraft,assertOnlineSignable}=require('../functions/rentalCustomerPolicy');
 const staff={auth:{uid:'u1',token:{employee:true,employeeId:'e1',email:'staff@example.test'}}};
 const employee={employeeId:'e1',email:'staff@example.test',name:'Staff',accountStatus:'active',role:'staff',passwordHash:'private-hash'};
+test('public network diagnostic cannot create punches or access employee data',async()=>{
+ const f=database(),api=createEmployeeDataGateway(f),allowed={rawRequest:{headers:{'x-forwarded-for':'125.229.190.123'}}};
+ assert.equal((await api.selfService({action:'clock-network'},allowed)).companyNetwork,true);assert.equal(f.rows.size,0);
+ await assert.rejects(api.selfService({action:'clock-network'},{rawRequest:{headers:{'x-forwarded-for':'125.229.190.123, 203.0.113.2'}}}),/公司 Wi-Fi/);
+ await assert.rejects(api.selfService({action:'clock'},allowed),/登入/);
+});
 test('employee gateway requires an active identity and returns only its rows and payroll map',async()=>{
   const f=database({'employees/e1':employee,'employees/e2':{employeeId:'e2',email:'other@example.test'},'salarySetup/default':{employeeConfigMap:{e1:{employeeId:'e1',salary:32000},e2:{employeeId:'e2',salary:40000}},secret:'hidden'},'leaveRequests/conflict':{employeeId:'e2',email:'staff@example.test'}});
   const api=createEmployeeDataGateway(f);

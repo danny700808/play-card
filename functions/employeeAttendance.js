@@ -101,7 +101,7 @@ function createEmployeeAttendance({db,FieldValue,now=()=>new Date()}){
     const doc=await db.collection('employees').doc(row.targetEmployeeId).get();
     let employee=doc.exists?{__id:doc.id,...doc.data()}:null;
     if(!employee){const q=await db.collection('employees').where('employeeId','==',row.targetEmployeeId).limit(1).get();if(!q.empty)employee={__id:q.docs[0].id,...q.docs[0].data()};}
-    if(!employee||!active(employee)||employee.lineNotifyEnabled===false)return false;
+    if(!employee||!active(employee)||employee.lineNotifyEnabled===false||employee.lineNotifyEnabled==='否'||clean(employee.lineUserId||employee['LINE User ID'])!==row.targetLineUserId)return false;
     const info=await createScheduleComputer(await snapshot(row.targetEmployeeId),now()).day(employee,row.attendanceReminder.date);
     return reminderPlans(info,now()).some(p=>p.kind===row.attendanceReminder.kind&&p.scheduleKey===row.attendanceReminder.scheduleKey);
   }
