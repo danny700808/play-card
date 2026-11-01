@@ -142,7 +142,6 @@
         <div class="clock-mode-grid">
           <button class="clock-mode-btn" type="button" id="modeStandardBtn" onclick="selectClockMode('標準打卡')">標準打卡</button>
           <button class="clock-mode-btn" type="button" id="modeSpecialBtn" onclick="selectClockMode('特殊打卡')">特殊打卡</button>
-          <button class="clock-mode-btn" type="button" id="modeTempBtn" onclick="goTemporaryAttendance()">臨時出勤申請</button>
           <button class="clock-mode-btn hidden" style="grid-column:1/-1" type="button" id="modeEarlyLeaveBtn" onclick="submitEarlyLeave()">提早下班</button>
         </div>
         <div class="muted section-note">請先選擇打卡方式。標準打卡會直接成立；特殊打卡需填寫原因並送主管審核；臨時出勤申請只處理主管尚未排班但實際出勤的情況。</div>
@@ -223,11 +222,6 @@
   <script src="app.js?v=20261101-attendance-revision-v1"></script>
   <script>
 
-    function goTemporaryAttendance(){
-      const u = getUser ? (getUser() || {}) : {};
-      const id = encodeURIComponent(u.id || u.employeeId || u.userId || '');
-      location.href = 'temporary-attendance.html' + (id ? ('?employeeId=' + id) : '');
-    }
     function goLeaveForRetro(issue){
       const u = getUser ? (getUser() || {}) : {};
       const params = new URLSearchParams();
@@ -399,7 +393,8 @@
     function renderTodayScheduleHtml(info){
       const rows = (info && info.schedules) || [];
       if(!rows.length){
-        return '<div>' + escapeHtml((info && info.message) || '今天沒有排班，如主管尚未來得及排班但你實際有出勤，請使用「臨時出勤申請」。') + '</div>';
+        const message=(info&&info.message)||'今天沒有排班。';
+        return '<div>' + escapeHtml(/^今天沒有排班/.test(message)?'今天沒有排班。':message) + '</div>';
       }
       const selected = (qs('#selectedScheduleKey') && qs('#selectedScheduleKey').value) || window.__selectedScheduleKey || '';
       const cards = rows.map((s, idx) => {
@@ -544,7 +539,6 @@
       qsa('.clock-mode-btn').forEach(btn => btn.classList.remove('active'));
       if(qs('#modeStandardBtn')) qs('#modeStandardBtn').classList.add(mode === '標準打卡' ? 'active' : 'hidden');
       if(qs('#modeSpecialBtn')) qs('#modeSpecialBtn').classList.add(mode === '特殊打卡' ? 'active' : 'hidden');
-      if(qs('#modeTempBtn')) qs('#modeTempBtn').classList.add('hidden');
       if(qs('#modeEarlyLeaveBtn')) qs('#modeEarlyLeaveBtn').classList.add('hidden');
 
       updateClockActionNote(mode);
@@ -621,7 +615,6 @@
       qsa('.clock-mode-btn').forEach(btn => btn.classList.remove('active'));
       qs('#modeStandardBtn') && qs('#modeStandardBtn').classList.remove('hidden');
       qs('#modeSpecialBtn') && qs('#modeSpecialBtn').classList.remove('hidden');
-      qs('#modeTempBtn') && qs('#modeTempBtn').classList.remove('hidden');
       updateClockModeButtonsBySchedule(window.__todayClockSchedule || {});
       setMsg(qs('#mainMsg'), '');
     }

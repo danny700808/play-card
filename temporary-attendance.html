@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>臨時出勤申請</title><link rel="stylesheet" href="style.css">
+<title>補登／臨時出勤</title><link rel="stylesheet" href="style.css">
 <style>
 :root{--brand:#1f7a5a;--red:#b42318;--line:#e5e7eb;--muted:#6b7280;--bg:#f6f8fb;--ink:#111827}
 body{background:var(--bg);color:var(--ink)}
@@ -36,7 +36,7 @@ body{background:var(--bg);color:var(--ink)}
   </div>
 <div class="container">
 <div class="card">
-  <h1 class="title">臨時出勤申請</h1>
+  <h1 class="title">補登／臨時出勤</h1>
   <div class="internal-explanation muted">主管尚未排班、臨時增加出勤、需要班表外額外出勤，或已提出請假後又臨時回來出勤時使用。請假與臨時出勤是兩筆獨立紀錄，會各自保留、各自審核。
 若是「原本有班但忘記打卡」，請回打卡頁下方「有班但未完成打卡」提出補打卡；若是已打卡但時間錯誤，請在該筆紀錄點「修正這筆」。
 主管核准後，系統會正式補進打卡紀錄、工讀時數與薪資；員工不需要再回工讀時數頁重複登記。</div>
@@ -62,7 +62,7 @@ body{background:var(--bg);color:var(--ink)}
     <div id="lawHint" class="law-hint hidden"></div>
     <div class="field" style="margin-top:12px"><label>臨時出勤原因</label><textarea id="reason" placeholder="請填寫原因，例如：主管臨時通知支援、現場臨時加班、主管尚未排班但實際出勤"></textarea></div>
     <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn" id="submitBtn" onclick="submitRequest()">送出臨時出勤申請</button>
+      <button class="btn" id="submitBtn" onclick="submitRequest()">送出申請</button>
     </div>
   </div>
 </div>
@@ -529,7 +529,7 @@ async function submitRequest(){
     msg('已送出臨時出勤申請，請等待主管審核。','success');
     qs('#reason').value='';
   }catch(e){msg('送出失敗：'+(e.message||e),'error')}
-  finally{submittingRequest=false;if(submitBtn){submitBtn.disabled=false;submitBtn.textContent='送出臨時出勤申請';}}
+  finally{submittingRequest=false;if(submitBtn){submitBtn.disabled=false;submitBtn.textContent='送出申請';}}
 }
 </script>
   <script src="global-nav.js?v=20260603unified1"></script>

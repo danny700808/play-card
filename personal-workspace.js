@@ -5,7 +5,7 @@
  const money=n=>'$'+Number(n||0).toLocaleString('zh-TW'),today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'});
  const params=new URLSearchParams(location.search);let preview=false,realPreview=false,state=null,tab='attendance',generation=0,previewLoad=0,attendanceMonth=today().slice(0,7),salaryMonth=today().slice(0,7);
  const icons={schedule:'▦',attendance:'◷',salary:'＄',rental:'⌂',more:'☰'};
- const features={clock:['打卡','clock.html'],hours:['填寫工時','parttime.html'],leave:['請假','leave.html'],temporary:['臨時出勤','temporary-attendance.html'],announcement:['公告','announcements.html'],task:['待辦','task.html'],routine:['定期事項','routine.html'],training:['教育訓練','training.html'],forms:['表單與證明','forms-hub.html'],notification:['通知設定','profile.html']};
+ const features={clock:['打卡','clock.html'],hours:['填寫工時','parttime.html'],leave:['請假','leave.html'],temporary:['補登／臨時出勤','temporary-attendance.html'],announcement:['公告','announcements.html'],task:['待辦','task.html'],routine:['定期事項','routine.html'],training:['教育訓練','training.html'],forms:['表單與證明','forms-hub.html'],notification:['通知設定','profile.html']};
  function status(text,error=false){$('personalStatus').textContent=text||'';$('personalStatus').classList.toggle('personal-error',error);}
  async function verifyIdentity(expected){
   const auth=firebase.auth();if(auth.authStateReady)await auth.authStateReady();const claims=auth.currentUser?(await auth.currentUser.getIdTokenResult()).claims:{};
@@ -51,7 +51,7 @@
  function foldRows(lines){return lines.length?lines.slice(0,3).join('')+(lines.length>3?'<details><summary>展開其餘 '+(lines.length-3)+' 筆</summary>'+lines.slice(3).join('')+'</details>':''):'尚無資料';}
  function monthRange(month){const [y,m]=month.split('-').map(Number);return {startDate:month+'-01',endDate:month+'-'+new Date(Date.UTC(y,m,0)).getUTCDate()};}
  async function attendance(){
-  body(card('',row(today(),'今日排班')+'<div id="todaySchedule" class="personal-value">讀取中…</div><div class="personal-grid" style="margin-top:12px">'+button('上／下班打卡','clock','primary')+button('補登出勤','temporary','soft')+'</div>')+actions([...(state.user.identityType==='parttime'?[['填寫工時','hours','時']]:[]),['請假申請','leave','假'],['打卡紀錄','clock','錄'],['我的班表','schedule-own','班']])+card('出勤紀錄',monthInput('attendanceMonth',attendanceMonth)+'<div id="recentAttendance">讀取中…</div>'));
+  body(card('',row(today(),'今日排班')+'<div id="todaySchedule" class="personal-value">讀取中…</div><div class="personal-grid" style="margin-top:12px">'+button('上／下班打卡','clock','primary')+button('補登／臨時出勤','temporary','soft')+'</div>')+actions([...(state.user.identityType==='parttime'?[['填寫工時','hours','時']]:[]),['請假申請','leave','假'],['打卡紀錄','clock','錄'],['我的班表','schedule-own','班']])+card('出勤紀錄',monthInput('attendanceMonth',attendanceMonth)+'<div id="recentAttendance">讀取中…</div>'));
   $('attendanceMonth').addEventListener('change',event=>{if(!event.target.value)return;attendanceMonth=event.target.value;generation++;attendance();});
   const version=generation,payload={userId:state.user.id};
   const results=await Promise.allSettled([personalRead('getTodaySchedule',payload),personalRead('getClockHistoryRange',{...payload,...monthRange(attendanceMonth)})]);
