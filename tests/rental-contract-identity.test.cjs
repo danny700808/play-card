@@ -36,7 +36,7 @@ test('client coalesces reads, shows explanation, uppercases first letter and sto
  const calls=[];w.fetch=async(url,opts)=>{const payload=JSON.parse(opts.body);calls.push(payload);const body=payload.identityNumber==='A123456789'?{ok:true,contract}:{ok:true,requiresIdentity:true};return {ok:true,text:async()=>JSON.stringify(body)};};
  w.eval(fs.readFileSync(require('node:path').join(__dirname,'../rental-common.js'),'utf8'));
  const a=w.YZRental.get('rentalContracts','c1'),b=w.YZRental.get('rentalContracts','c1');await new Promise(r=>setImmediate(r));
- assert.equal(calls.length,1);assert.equal(w.document.querySelectorAll('dialog').length,1);assert.match(w.document.querySelector('dialog').textContent,/護照號碼或居留證號碼/);
+ assert.equal(calls.length,1);assert.equal(w.document.querySelectorAll('dialog').length,1);assert.match(w.document.querySelector('dialog').textContent,/護照號碼、居留證號碼或統一編號/);
  assert.equal(w.document.querySelector('#contractPreview').textContent,'');const input=w.document.querySelector('input');assert.equal(input.type,'password');
  input.value='a123456789';input.dispatchEvent(new w.Event('input'));assert.equal(input.value,'A123456789');
  w.document.querySelector('form').dispatchEvent(new w.Event('submit',{cancelable:true}));assert.equal((await a).customerName,'Test customer');await b;
