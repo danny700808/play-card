@@ -559,16 +559,23 @@
   }
   function fitLessonNames(grid) {
     if (!grid) return;
-    const lines = [...grid.querySelectorAll('.lesson-student-subject')];
-    lines.forEach(line => { line.style.fontSize = '12px'; });
+    const lines = [...grid.querySelectorAll('.lesson-student-subject, .lesson-room-status')];
+    const baseSize = line => line.classList.contains('lesson-student-subject') ? 12 : 10;
+    const textWidth = line => [...line.children].reduce((sum, text) => sum + Math.max(text.scrollWidth, text.getBoundingClientRect().width), 0);
+    lines.forEach(line => { line.style.fontSize = `${baseSize(line)}px`; });
     const sizes = lines.map(line => {
-      const text = line.firstElementChild;
-      const width = text ? text.getBoundingClientRect().width : 0;
+      const width = textWidth(line);
       return width > 0 && line.clientWidth > 0
-        ? Math.min(12, Math.floor(1200 * Math.max(1, line.clientWidth - 1) / width) / 100)
-        : 12;
+        ? Math.max(1, Math.min(baseSize(line), Math.floor(baseSize(line) * Math.max(1, line.clientWidth - 1) / width)))
+        : baseSize(line);
     });
     lines.forEach((line, index) => { line.style.fontSize = `${sizes[index]}px`; });
+    // Some fonts round glyph advances; verify the rendered width after shrinking.
+    lines.forEach((line, index) => {
+      while (sizes[index] > 1 && line.clientWidth > 0 && textWidth(line) > line.clientWidth) {
+        line.style.fontSize = `${--sizes[index]}px`;
+      }
+    });
   }
 
   function updateWeekViewport() {
