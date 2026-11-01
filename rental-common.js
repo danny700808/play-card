@@ -92,7 +92,56 @@
     }finally{clearTimeout(timer);}
   }
   async function all(collection, limit){ if(managerReadCollections.has(collection))return managerRead(collection,null,limit); const snap=await db().collection(collection).limit(limit||500).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
-  async function get(collection,id){ if(!id) return null; const params=new URLSearchParams(global.location.search),token=params.get('token')||params.get('signToken'); if(collection==='rentalContracts'&&token)return (await call('rentalGetContractHttp',{contractId:id,token})).contract; if(managerReadCollections.has(collection))return managerRead(collection,clean(id)); const doc=await db().collection(collection).doc(clean(id)).get(); return doc.exists?Object.assign({__id:doc.id},doc.data()||{}):null; }
+
+  // Customer identity stays in memory for this page only; never in URLs or browser storage.
+  const rentalIdentityValues=new Map(),rentalIdentityReads=new Map();
+  function normalizeRentalIdentity(value){return String(value==null?'':value).trim().replace(/^[a-z]/,c=>c.toUpperCase());}
+  function requestRentalIdentity(payload,challenge){
+    return new Promise(resolve=>{
+      const dialog=document.createElement('dialog');dialog.id='rentalIdentityDialog';
+      dialog.style.cssText='width:min(440px,calc(100% - 40px));box-sizing:border-box;padding:26px;border:1px solid #dbe5ef;border-radius:20px;color:#18314a;background:#fff;box-shadow:0 18px 70px #18314a33';
+      const style=document.createElement('style');style.textContent='#rentalIdentityDialog::backdrop{background:rgba(238,243,247,.98)}#rentalIdentityDialog input,#rentalIdentityDialog button{box-sizing:border-box;width:100%;padding:12px;border-radius:10px;font-size:16px}#rentalIdentityDialog input{margin:8px 0;border:1px solid #aebfd3}#rentalIdentityDialog button{border:0;background:#1f7a5a;color:white;font-weight:700;cursor:pointer}#rentalIdentityDialog button:disabled{opacity:.55}';
+      dialog.innerHTML='<form><h2 style="margin:0 0 14px;font-size:22px">驗證身分後查看合約</h2><p style="line-height:1.7">請輸入您簽約時填寫的證件號碼（身分證字號、護照號碼或居留證號碼）。</p><label for="rentalIdentityInput" style="font-weight:700">查看密碼：簽約時填寫的證件號碼</label><input id="rentalIdentityInput" type="password" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="64" placeholder="請輸入完整證件號碼" required><p style="font-size:13px;color:#64748b;line-height:1.6;margin:0 0 14px">英文字首會自動轉成大寫。公司租約請輸入當時填寫的統一編號。</p><div id="rentalIdentityError" role="alert" style="color:#b42318;line-height:1.6;margin-bottom:12px"></div><button type="submit">確認並查看合約</button><p style="margin:16px 0 0;text-align:center"><a href="https://lin.ee/Fx5Y2mL" style="color:#146c43">聯絡官方 LINE</a></p></form>';
+      document.head.appendChild(style);document.body.appendChild(dialog);
+      const input=dialog.querySelector('input'),button=dialog.querySelector('button'),error=dialog.querySelector('[role="alert"]');
+      input.addEventListener('input',()=>{input.value=input.value.replace(/^[a-z]/,c=>c.toUpperCase());});
+      dialog.addEventListener('cancel',e=>e.preventDefault());
+      function unavailable(result){error.textContent=result.message||'此合約尚未建檔證件號碼，請聯絡店家補齊資料後再查看。';input.disabled=true;button.disabled=true;}
+      if(challenge.identityUnavailable)unavailable(challenge);
+      dialog.querySelector('form').addEventListener('submit',async event=>{
+        event.preventDefault();if(button.disabled)return;button.disabled=true;error.textContent='';button.textContent='驗證中…';
+        try{
+          const identityNumber=normalizeRentalIdentity(input.value);
+          const result=await call('rentalGetContractHttp',Object.assign({},payload,{identityNumber}));
+          if(result.identityUnavailable){unavailable(result);return;}
+          if(result.requiresIdentity||!result.contract)throw Error('證件號碼不符，請重新確認。');
+          rentalIdentityValues.set(payload.contractId+'|'+payload.token,identityNumber);
+          input.value='';dialog.close();dialog.remove();style.remove();resolve(result.contract);
+        }catch(e){error.textContent=e.message||'暫時無法驗證，請稍後再試。';}
+        finally{if(!input.disabled)button.disabled=false;button.textContent='確認並查看合約';}
+      });
+      dialog.showModal();if(!input.disabled)input.focus();
+    });
+  }
+  async function readRentalCustomerContract(id,token){
+    const key=id+'|'+token;
+    if(rentalIdentityReads.has(key))return rentalIdentityReads.get(key);
+    const operation=(async()=>{
+      const payload={contractId:id,token};if(rentalIdentityValues.has(key))payload.identityNumber=rentalIdentityValues.get(key);
+      const result=await call('rentalGetContractHttp',payload);
+      if(result.requiresIdentity)return requestRentalIdentity(payload,result);
+      if(!result.contract)throw Error('無法讀取合約，請聯絡店家。');
+      return result.contract;
+    })();
+    rentalIdentityReads.set(key,operation);
+    try{return await operation;}finally{rentalIdentityReads.delete(key);}
+  }
+
+  if(typeof global.addEventListener==='function'){
+    global.addEventListener('pagehide',()=>{if(rentalIdentityValues.size){rentalIdentityValues.clear();document.body.style.visibility='hidden';}});
+    global.addEventListener('pageshow',event=>{if(event.persisted&&document.body.style.visibility==='hidden')global.location.reload();});
+  }
+  async function get(collection,id){ if(!id) return null; const params=new URLSearchParams(global.location.search),token=params.get('token')||params.get('signToken'); if(collection==='rentalContracts'&&token)return readRentalCustomerContract(id,token); if(managerReadCollections.has(collection))return managerRead(collection,clean(id)); const doc=await db().collection(collection).doc(clean(id)).get(); return doc.exists?Object.assign({__id:doc.id},doc.data()||{}):null; }
   async function set(collection,id,data,merge=true){ await db().collection(collection).doc(clean(id)).set(data||{}, {merge}); }
   function nowText(){ const d=new Date(); return ymd(d)+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds()); }
   function contractStatus(row){ return clean(row.status || row.contractStatus || '草稿'); }

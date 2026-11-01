@@ -2073,6 +2073,7 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
   const token = clean(data.token || data.signToken);
   const { ref, contract } = await getContractForToken(contractId, token);
   require('./rentalCustomerPolicy').assertOnlineSignable(contract);
+  require('./rentalContractIdentity').assertUnchangedIdentity(contract,data.customerIdNumber||contract.customerIdNumber);
   const incoming = Object.assign({}, contract || {}, data || {});
   const urls = rentalAssetUrls(incoming);
   if (!urls.signatureUrl) throw new Error('缺少簽名圖片網址。請先將簽名上傳到 Firebase Storage。');
@@ -2081,7 +2082,7 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
   require('./privateContractAssets').validateAssetUrl(urls.signatureUrl,assetPolicy);
   require('./privateContractAssets').validateAssetUrl(urls.idImageUrl,assetPolicy);
   const update = stripUndefined(stripRentalInlineAssets({
-    customerIdNumber: clean(data.customerIdNumber || contract.customerIdNumber),
+    customerIdNumber: require('./rentalContractIdentity').normalize(data.customerIdNumber || contract.customerIdNumber),
     customerIdImageUrl: urls.idImageUrl,
     idImageUrl: urls.idImageUrl,
     customerSignatureUrl: urls.signatureUrl,
@@ -2098,7 +2099,7 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
     updatedAtText: nowText(),
   }, { deleteInline: true }));
   await db.runTransaction(async tx=>{
-    const fresh=await tx.get(ref),live=fresh.data()||{};require('./rentalCustomerPolicy').assertOnlineSignable(live);
+    const fresh=await tx.get(ref),live=fresh.data()||{};require('./rentalCustomerPolicy').assertOnlineSignable(live);require('./rentalContractIdentity').assertUnchangedIdentity(live,update.customerIdNumber);
     const allowed=[live.renewalToken,live.officialContractToken,live.customerToken,live.signToken,live.token].map(clean).filter(Boolean);
     if(!allowed.includes(token))throw new Error('契約連結已更新，請使用最新連結。');
     if(live.status==='待付款確認'&&live.customerIdNumber===update.customerIdNumber&&live.customerIdImageUrl===update.customerIdImageUrl&&live.customerSignatureUrl===update.customerSignatureUrl)return;
@@ -2128,10 +2129,8 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
   return { contractId, status: '待付款確認' };
 });
 
-exports.rentalGetContractHttp = httpEndpoint(async (data) => {
-  const { contract } = await getContractForToken(data.contractId || data.id, data.token || data.signToken);
-  return { contract };
-});
+const rentalContractIdentity=require('./rentalContractIdentity').createRentalContractIdentity({db,authorize:getContractForToken});
+exports.rentalGetContractHttp = httpEndpoint(async (data,req) => {if(req.res)req.res.set('Cache-Control','private, no-store');return rentalContractIdentity.read(data,req);});
 
 exports.rentalSubmitRenewalRequestHttp = httpEndpoint(async (data) => {
   const { ref, contract } = await getContractForToken(data.contractId || data.id, data.token || data.customerToken || data.signToken);

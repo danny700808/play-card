@@ -21,7 +21,7 @@
 
     <section id="identityPanel" class="card2">
       <h2 class="section-title">甲方身分證資料</h2>
-      <div class="row2"><div class="field" id="idNumberField"><label>身分證字號 / 統編<span class="required-tag">必填</span></label><input id="customerIdNumber" placeholder="例如 A123456789"><div class="error-note">請填寫身分證字號 / 統編。</div></div><div class="field" id="idImageField"><label>甲方證明圖片<span class="required-tag">必填</span></label><input id="idImageInput" type="file" accept="image/*" capture="environment"><div class="hint">請上傳身分證或可供確認身分之證明圖片。圖片會自動加上「限柚子樂器設備租用使用」浮水印，並放在契約第二頁最下方備查。</div><div class="error-note">請上傳身分證證明圖片。</div></div></div>
+      <div class="row2"><div class="field" id="idNumberField"><label>身分證字號 / 統編<span class="required-tag">必填</span></label><input autocapitalize="characters" oninput="this.value=this.value.replace(/^[a-z]/,c=>c.toUpperCase())" id="customerIdNumber" placeholder="例如 A123456789"><div class="error-note">請填寫身分證字號 / 統編。</div></div><div class="field" id="idImageField"><label>甲方證明圖片<span class="required-tag">必填</span></label><input id="idImageInput" type="file" accept="image/*" capture="environment"><div class="hint">請上傳身分證或可供確認身分之證明圖片。圖片會自動加上「限柚子樂器設備租用使用」浮水印，並放在契約第二頁最下方備查。</div><div class="error-note">請上傳身分證證明圖片。</div></div></div>
       <img id="idPreview" class="preview-img" style="display:none" alt="身分證證明預覽">
     </section>
 
@@ -49,7 +49,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
-  <script src="rental-common.js?v=20261006-initial-term-v1"></script>
+  <script src="rental-common.js?v=20261101-identity-gate-v1"></script>
   <script>
     const R=window.YZRental;
 
