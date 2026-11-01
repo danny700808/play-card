@@ -125,8 +125,8 @@
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="internal-workspace.css?v=20261031-mobile1">
 <link rel="stylesheet" href="employee-month-view.css?v=20261101-month-view-v2">
-<script src="employee-month-view.js?v=20261101-month-view-v1"></script>
-</head>
+<script src="employee-month-view.js?v=20261101-simple-attendance-v1"></script>
+<link rel="stylesheet" href="employee-attendance-view.css?v=20261101-simple-attendance-v1"><script src="employee-attendance-view.js?v=20261101-simple-attendance-v1"></script><script src="employee-single-day-leave.js?v=20261101-simple-attendance-v1"></script></head>
 <body onload="init()">
   <div class="yz-global-nav" data-yz-global-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
@@ -149,7 +149,7 @@
 
     <div id="staffBlock">
       <section class="card" id="leaveScheduleCard" hidden><h2 class="title" style="font-size:20px">我的班表 · 選擇請假日期</h2><div id="leaveScheduleMonth"></div><div id="leaveScheduleRows" aria-live="polite"></div></section>
-      <div class="card">
+      <div class="card" id="legacyLeaveForm">
         <div class="field" id="fieldReason">
           <label for="reason">請假原因</label>
           <select id="reason" disabled><option value="">讀取假別中...</option></select>
@@ -198,7 +198,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20261101-protected-clock-v1"></script>
+  <script src="firebase-client.js?v=20261101-simple-attendance-v1"></script>
 <script src="app.js?v=20261101-attendance-revision-v1"></script>
 
 <script>
@@ -234,17 +234,7 @@ async function loadLeaveSchedule(selection){
     if(version!==leaveMonthReadVersion)return;
     if(!result.ok)throw Error(result.message||'班表讀取失敗');
     leaveMonthRows=result.rows||[];leaveMonthRows.forEach(row=>leaveKnownDates.add(row.date));box.innerHTML=EmployeeMonthView.rowsHtml(leaveMonthRows,{selectable:true});
-    box.querySelectorAll('[data-leave-day]').forEach(button=>button.onclick=()=>{
-      leaveChosenDate=button.dataset.leaveDay;
-      // Reuse an empty segment, otherwise append a different scheduled day.
-      let seg=leaveSegmentsState.find(s=>s.startDate===leaveChosenDate||s.leaveDate===leaveChosenDate)||leaveSegmentsState.find(s=>!s.startDate&&!s.leaveDate);
-      if(!seg){seg=createDefaultSegment();leaveSegmentsState.push(seg);}
-      seg.startDate=seg.endDate=seg.leaveDate=leaveChosenDate;
-      seg.mode=leaveChosenDate<EmployeeMonthView.today()?'retro':'schedule';
-      renderSegments();
-      qs('#reason').focus();
-      box.querySelectorAll('[data-leave-day]').forEach(b=>b.textContent=b.dataset.leaveDay===leaveChosenDate?'已選擇':'選擇');
-    });
+    box.querySelectorAll('[data-leave-day]').forEach(button=>button.onclick=()=>openSingleDayLeave(button.dataset.leaveDay));
     renderSegments();
   }catch(e){if(version===leaveMonthReadVersion){leaveMonthRows=[];box.textContent=e.message||'班表讀取失敗，請重新查詢。';}}
 }
@@ -260,9 +250,21 @@ function initLeaveMonthViews(){
   if(!leaveHistoryControl)leaveHistoryControl=EmployeeMonthView.mount('#leaveHistoryMonth',{onSearch:searchLeaveMonth});
   if(isParttimeLeaveUser()&&!leaveScheduleControl){
     qs('#leaveScheduleCard').hidden=false;
-    leaveScheduleControl=EmployeeMonthView.mount('#leaveScheduleMonth',{onSearch:loadLeaveSchedule});
+    leaveScheduleControl=EmployeeMonthView.mount('#leaveScheduleMonth',{month:/^\d{4}-\d{2}-\d{2}$/.test(leaveQuery().get('date')||'')?leaveQuery().get('date').slice(0,7):EmployeeMonthView.today().slice(0,7),onSearch:loadLeaveSchedule});
     loadLeaveSchedule(leaveScheduleControl.get());
   }
+}
+let singleDayDeepLinkOpened=false;
+async function openSingleDayLeave(date,request){
+  try{
+    const monthly=await api('getMonthlySchedule',{userId:currentUser.id,month:date.slice(0,7)});
+    if(!monthly.ok)throw Error(monthly.message||'班表讀取失敗');
+    const shifts=(monthly.rows||[]).filter(r=>r.date===date);
+    const q=leaveQuery(),early=q.get('source')==='earlyLeave';
+    EmployeeSingleDayLeave.open({date,shifts,request,userId:currentUser.id,api:(action,payload)=>api(action,payload),readonly:!!window.__previewLocation,reasons:availableLeaveTypes().map(r=>r.name||r['假別名稱']).filter(Boolean).filter(isAllowedParttimeLeaveTypeName),fileToDataUrl,
+      ...(early?{startTime:q.get('startTime'),endTime:q.get('endTime'),extraPayload:{caseId:q.get('caseId')||'ATTCASE_'+currentUser.id+'_'+Date.now()}}:{}),
+      onSaved:async(result)=>{if(early)await submitRetroClockCorrectionIfNeeded({requestId:result.requestId,caseId:result.caseId});setMsg(qs('#pageMsg'),'請假申請已送交主管。');await loadLeaveSchedule(leaveScheduleControl.get());if(leaveHistoryControl)await searchLeaveMonth(leaveHistoryControl.get());}});
+  }catch(e){setMsg(qs('#pageMsg'),e.message,true);}
 }
 function applyScheduledDateChoices(){
   if(!isParttimeLeaveUser()||isRetroQueryLocked())return;
@@ -284,6 +286,7 @@ function applyScheduledDateChoices(){
 
 function applyParttimeLeaveUi_(){
   if(!isParttimeLeaveUser()) return;
+  qs('#legacyLeaveForm').hidden=true;
   const pageHint = qs('#pageHint');
   if(pageHint) pageHint.textContent = '';
   const infoCard = qs('#leaveSimpleInfoCard');
@@ -1738,7 +1741,8 @@ async function loadStaffData(){
   applyParttimeLeaveUi_();
   renderBereavementOptions('');
   toggleHoursByReason();
-  applyRetroQueryPrefill();
+  if(!isParttimeLeaveUser())applyRetroQueryPrefill();
+  else if(leaveQuery().get('date')&&!singleDayDeepLinkOpened){singleDayDeepLinkOpened=true;openSingleDayLeave(leaveQuery().get('date'));}
   setLeaveFormEnabled(true);
   setLocalMsg('', false);
   setPageProgressDone('請假表單已開啟');
@@ -1818,6 +1822,9 @@ async function loadStaffData(){
 function startEdit(requestId){
   const row = historyRows.find(item => item.requestId === requestId);
   if(!row) return;
+  const singleSegment = !row.segments?.length || (row.segments.length === 1 && (!row.segments[0].endDate || row.segments[0].endDate === (row.segments[0].date || row.segments[0].leaveDate || row.segments[0].startDate)));
+  if(isParttimeLeaveUser() && singleSegment)return openSingleDayLeave(row.leaveDate||row.startDate,row);
+  qs('#legacyLeaveForm').hidden=false;
   qs('#editingRequestId').value = row.requestId;
   renderReasonOptions(row.reason || '');
   qs('#reason').value = row.reason || '';

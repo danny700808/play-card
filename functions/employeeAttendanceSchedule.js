@@ -211,7 +211,7 @@ function createScheduleComputer(snapshot,now=new Date()){
       });
 
     assignmentRows.map(normalizeAssignment)
-      .filter(x => x.enabled && x.employeeId === employeeId && x.startDate && dateKey >= x.startDate && (x.indefinite || !x.endDate || dateKey <= x.endDate))
+      .filter(x => x.enabled && !(Array.isArray(x.excludedDates)&&x.excludedDates.includes(dateKey)) && x.employeeId === employeeId && x.startDate && dateKey >= x.startDate && (x.indefinite || !x.endDate || dateKey <= x.endDate))
       .forEach(assignment => {
         const template = templates.find(t => clean(t.templateId || t.id) === clean(assignment.templateId) || clean(t.__id) === clean(assignment.templateId));
         if(!template) return;

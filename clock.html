@@ -103,8 +103,8 @@
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="internal-workspace.css?v=20261031-mobile1">
 <link rel="stylesheet" href="employee-month-view.css?v=20261101-month-view-v2">
-<script src="employee-month-view.js?v=20261101-month-view-v1"></script>
-</head>
+<script src="employee-month-view.js?v=20261101-simple-attendance-v1"></script>
+<link rel="stylesheet" href="employee-attendance-view.css?v=20261101-simple-attendance-v1"><script src="employee-attendance-view.js?v=20261101-simple-attendance-v1"></script></head>
 <body onload="init()">
   <div class="yz-global-nav" data-yz-global-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
@@ -113,7 +113,7 @@
 
   <div class="container">
 
-    <div class="card">
+    <div class="card" id="clockTodayCard">
       <div class="topbar">
         <div>
           <h1 class="title" style="margin:0">打卡系統</h1>
@@ -198,7 +198,7 @@
       <div id="pendingEmpty" class="pending-empty">目前沒有待處理事項。</div>
     </div>
 
-    <div class="card">
+    <div class="card" id="clockRecentCard" hidden>
       <div class="history-head">
         <div>
           <h2 class="title" style="font-size:20px;margin-bottom:4px">近期打卡記錄</h2>
@@ -208,8 +208,8 @@
       <div id="editableList" class="list"></div>
     </div>
 
-    <div class="card">
-      <details id="clockHistoryDetails">
+    <div class="card" id="clockSearchCard" hidden>
+      <details id="clockHistoryDetails" open>
         <summary class="title" style="font-size:20px;margin-bottom:4px;cursor:pointer">歷史打卡紀錄</summary>
         <div id="clockHistoryMonth"></div>
         <div id="rangeMsg" class="message local-message"></div>
@@ -222,7 +222,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20261101-protected-clock-v1"></script>
+  <script src="firebase-client.js?v=20261101-simple-attendance-v1"></script>
   <script src="app.js?v=20261101-attendance-revision-v1"></script>
   <script>
 
@@ -723,61 +723,10 @@
       updatePendingEmpty();
     }
 
-    function renderHistoryRow(x, readonly){
-      const isLate=x.clockType!=='特殊打卡'&&(x.status==='遲到'||Number(x.lateMinutes)>0);
-      const lateText=isLate?'遲到 '+Number(x.lateMinutes||0)+' 分鐘':'';
-      const noteText = x.note ? `<div class="muted" style="margin-top:6px">備註：${escapeHtml(x.note)}</div>` : '';
-      const originalText = x.originalRef ? `<div class="muted" style="margin-top:6px">原始紀錄：${escapeHtml(x.originalRef)}</div>` : '';
-      const correctionText = x.status === '補打卡' ? '<div class="muted" style="margin-top:6px">此筆為補登／修正核准後的正式紀錄。</div>' : '';
-      const pendingText = x.pendingCorrection ? `<div class="pending-status-line"><strong>已送出修正申請待主管審核</strong>${escapeHtml(pendingAutoReturnText())}</div>` : '';
-      const canFix = !readonly&&(!x.missing||x.canModify||x.pendingCorrection)
-        ? (x.pendingCorrection
-          ? `<button class="btn mini-btn secondary" type="button" disabled>待主管審核</button>`
-          : `<div class="clock-punch-actions"><button class="btn mini-btn js-open-correction" data-id="${escapeHtml(x.id)}">${x.missing?'補打卡':'修正打卡時間'}</button>${x.missing?`<button class="btn mini-btn secondary js-history-leave" data-issue="${escapeHtml(JSON.stringify({...x.scheduleSnapshot,date:x.date}))}">請假</button>`:''}</div>`)
-        : '';
-      return `
-        <div class="clock-item">
-          <div class="clock-punch-header">
-            <div class="clock-punch-info">
-              <strong>${isLate?'<span class="clock-late-badge">遲到</span> ':''}${escapeHtml(x.actionName || '打卡')} ${escapeHtml(x.time||(x.missing?'未打卡':''))}</strong>
-              <div class="clock-punch-meta"><span class="tag ${x.status==='曠職'?'clock-late-badge':''} ${x.status === '補打卡' ? 'subtle' : ''}">${escapeHtml(isLate?lateText:(x.statusLabel || x.status || ''))}</span>${x.clockType&&x.clockType!=='標準打卡'?'<span>'+escapeHtml(x.clockType)+'</span>':''}</div>
-            </div>
-            ${canFix}
-          </div>
-          ${noteText}
-          ${originalText}
-          ${correctionText}
-          ${pendingText}
-          <div class="correction-box hidden" data-missing="${x.missing?'1':''}" data-schedule="${escapeHtml(JSON.stringify(x.scheduleSnapshot||{}))}" id="correction-${escapeHtml(x.id)}">
-            <div class="readonly-line">${x.missing?'班表時間':'原紀錄'}：${escapeHtml(x.date)} ${escapeHtml((x.time || x.expectedTime || '').slice(0,5))}｜${escapeHtml(x.actionName)}｜${escapeHtml(x.clockType)}</div>
-            <div class="grid" style="margin-top:10px">
-              <div class="field">
-                <label>修正日期</label>
-                <input type="date" class="js-correct-date" value="${escapeHtml(x.date)}" ${x.missing?'readonly':''}>
-              </div>
-              <div class="field">
-                <label>正確打卡時間</label>
-                <input type="time" class="js-correct-time" value="${escapeHtml((x.time || x.expectedTime || '').slice(0,5))}">
-              </div>
-            </div>
-            <input type="hidden" class="js-correct-action" value="${escapeHtml(x.actionName)}">
-            <input type="hidden" class="js-correct-type" value="${escapeHtml(x.clockType)}">
-            <div class="field">
-              <label>修正原因</label>
-              <textarea class="js-correct-reason" placeholder="請填寫修正原因，例如：手機時間延遲、現場訊號不穩、時間誤按"></textarea>
-              <div class="field-error js-correct-error"></div>
-            </div>
-            <div class="message local-message js-correct-msg"></div>
-            <button class="btn js-submit-correction" data-id="${escapeHtml(x.id)}">送出修正申請</button>
-          </div>
-        </div>`;
-    }
-
-    function renderIntoList(targetSel, rows, readonly){
-      const list = qs(targetSel);
-      const dates=[...new Set((rows||[]).map(row=>row.date))].sort().reverse();
-      list.innerHTML=dates.map(date=>'<section class="item clock-day"><h3>'+escapeHtml(date)+'</h3>'+(rows||[]).filter(row=>row.date===date).sort((a,b)=>String(a.time||a.expectedTime).localeCompare(String(b.time||b.expectedTime))).map(row=>renderHistoryRow(row,readonly)).join('')+['上班','下班'].filter(action=>!(rows||[]).some(row=>row.date===date&&String(row.actionName).includes(action))).map(action=>'<div class="clock-line muted">'+action+'打卡：尚無紀錄</div>').join('')+'</section>').join('')||'<div class="muted">尚無資料</div>';
-      if(!readonly) bindCorrectionActions();
+    function renderHistoryRow(x){return EmployeeAttendanceView.punch(x,0);}
+    function renderIntoList(targetSel,rows){
+      const user=requireLogin();
+      EmployeeAttendanceView.mount(qs(targetSel),rows,{userId:user.id,readonly:!!window.__previewLocation,api:(action,payload)=>api(action,payload),onChanged:searchRange,onLeave:row=>{location.href='leave.html?date='+encodeURIComponent(row.date);}});
     }
 
     async function loadEditableHistory(){
@@ -1035,7 +984,7 @@
 
     function refreshClockPageInBackground(){
       setTimeout(() => {
-        loadEditableHistory().catch(()=>{});
+
         loadTodaySchedule().catch(()=>{});
         loadMissingClockIssues().catch(()=>{});
       }, 80);
@@ -1164,18 +1113,16 @@
 
 function init(){
       fillHeader();
+      const historyOnly=new URLSearchParams(location.search).get('view')==='history';
+      qs('#clockTodayCard').hidden=historyOnly;
+      qs('#clockSearchCard').hidden=!historyOnly;
+      if(historyOnly){document.title='打卡紀錄';qs('#clockHistoryDetails summary').textContent='打卡紀錄';initRangeDefault();searchRange();markClockCorrectionRepliesReadOnEnter_();return;}
       tick();
       setInterval(tick, 1000);
       
       qs('#clockInBtn').onclick = () => doClock('上班打卡');
       qs('#clockOutBtn').onclick = () => doClock('下班打卡');
-      initRangeDefault();
       loadTodaySchedule();
-      loadMissingClockIssues();
-      
-      loadEditableHistory()
-        .then(()=>markClockCorrectionRepliesReadOnEnter_())
-        .catch(e => setMsg(qs('#mainMsg'), friendlyClockMessage(e.message || '載入打卡紀錄失敗'), true));
     }
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>

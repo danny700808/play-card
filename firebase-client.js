@@ -1328,7 +1328,7 @@
       });
 
     assignmentRows.map(normalizeAssignment)
-      .filter(x => x.enabled && x.employeeId === employeeId && x.startDate && dateKey >= x.startDate && (x.indefinite || !x.endDate || dateKey <= x.endDate))
+      .filter(x => x.enabled && !(Array.isArray(x.excludedDates)&&x.excludedDates.includes(dateKey)) && x.employeeId === employeeId && x.startDate && dateKey >= x.startDate && (x.indefinite || !x.endDate || dateKey <= x.endDate))
       .forEach(assignment => {
         const template = templates.find(t => clean(t.templateId || t.id) === clean(assignment.templateId) || clean(t.__id) === clean(assignment.templateId));
         if(!template) return;
@@ -4309,7 +4309,7 @@
     };
   }
   function normalizeAssignment(o){
-    return { id:clean(o.assignmentId || o['套用ID'] || o.__id), source:'employeeSchedules', sourceLabel:'固定班表', employeeId:clean(o.employeeId || o['員工ID']), templateId:clean(o.templateId || o['模板ID']), templateName:clean(o.templateName || o['模板名稱']), startDate:dateText(o.startDate || o['開始日期']), endDate:dateText(o.endDate || o['結束日期']), indefinite:truthy(o.indefinite || o['無期限']), enabled:isEnabledRow(o) };
+    return { id:clean(o.assignmentId || o['套用ID'] || o.__id), source:'employeeSchedules', sourceLabel:'固定班表', excludedDates:Array.isArray(o.excludedDates)?o.excludedDates:[], employeeId:clean(o.employeeId || o['員工ID']), templateId:clean(o.templateId || o['模板ID']), templateName:clean(o.templateName || o['模板名稱']), startDate:dateText(o.startDate || o['開始日期']), endDate:dateText(o.endDate || o['結束日期']), indefinite:truthy(o.indefinite || o['無期限']), enabled:isEnabledRow(o) };
   }
   async function schedulesForDate(employeeId, dateKey){
     const [singleRows, assignmentRows, templateRows] = await Promise.all([
@@ -4320,7 +4320,7 @@
     const templates = templateRows.map(normalizeTemplate).filter(t => t.enabled);
     const schedules = [];
     singleRows.map(r => normalizeSingle(r, dateKey)).filter(s => s.enabled && s.date === dateKey && s.startTime && s.endTime).forEach(s => { s.hours = hoursBetween(dateKey, s.startTime, s.endTime); s.key = scheduleKey(s); schedules.push(s); });
-    assignmentRows.map(normalizeAssignment).filter(a => a.enabled && a.startDate && dateKey >= a.startDate && (a.indefinite || !a.endDate || dateKey <= a.endDate)).forEach(a => {
+    assignmentRows.map(normalizeAssignment).filter(a => a.enabled && !a.excludedDates.includes(dateKey) && a.startDate && dateKey >= a.startDate && (a.indefinite || !a.endDate || dateKey <= a.endDate)).forEach(a => {
       const t = templates.find(x => clean(x.id) === clean(a.templateId) || clean(x.templateId) === clean(a.templateId));
       if(!t) return;
       const d = dayFromTemplate(t, dateKey);
@@ -7683,7 +7683,7 @@
     }
     const existingRaw=id?await findDirectOrQuery('leaveRequests',id,'requestId'):null; const existing=existingRaw?normalizeLeave(existingRaw):null; if(id&&!existing)return{ok:false,message:'找不到要修改的請假申請。'}; if(existing&&existing.status!==PENDING)return{ok:false,message:'已完成簽核的請假不能再修改。'};
     try{
-      const segments=await enrichRequestedSegments(employeeId,payload); const isRetro=segments.some(s=>s.mode==='retro'); await validateNewLeave(employeeId,segments,id,isRetro);
+      const segments=await enrichRequestedSegments(employeeId,payload); const isRetro=segments.some(s=>s.mode==='retro')||payload.singleDayFlow===true; await validateNewLeave(employeeId,segments,id,isRetro);
       if(isRetro&&payload.leaveReplacementAcknowledged!==true){const impact=await getLeaveReplacementImpact(payload);if(impact.requiresConfirmation)return{ok:false,requiresConfirmation:true,message:'請先確認補假對既有打卡與工時的影響。',impact};}
       const mode=await getPayMode(payload.reason||payload.leaveName||(existing&&existing.reason)); payload.payMode=mode; payload.payFactor=payFactor(mode);
       const doc=leaveDocFromPayload(payload,segments,existingRaw||null); delete doc.__id; delete doc.raw; const ref=db().collection('leaveRequests').doc(doc.requestId);
@@ -7809,7 +7809,7 @@
         const pendingLeave=(info.pendingLeaveBlocks||[]).some(b=>b.start<=boundary&&b.end>=boundary);
         const pendingTemporary=(info.pendingTemporaryAttendanceBlocks||[]).some(b=>temporaryBlockCoversPunch(b,action,boundary));
         const due=info.date<today||nowMinutes()>=boundary;
-        rows.push({id:'MISSING_'+s.scheduleKey+'_'+(isIn?'IN':'OUT'),date:info.date,time:'',expectedTime,actionName:action,clockType:'標準打卡',missing:true,status:pending?'待主管審核':pendingLeave?'請假待審':pendingTemporary?'臨時出勤待審':info.date<today?'曠職':'尚未打卡',pendingCorrection:!!pending,canModify:due&&!pending&&!pendingLeave&&!pendingTemporary,scheduleKey:s.scheduleKey,originalScheduleKey:s.originalScheduleKey,scheduleSnapshot:s});
+        rows.push({id:'MISSING_'+s.scheduleKey+'_'+(isIn?'IN':'OUT'),date:info.date,time:'',expectedTime,actionName:action,clockType:'標準打卡',missing:true,attendanceNeedsReview:info.date<today,status:pending?'待主管審核':pendingLeave?'請假待審':pendingTemporary?'臨時出勤待審':'未打卡',pendingCorrection:!!pending,canModify:due&&!pending&&!pendingLeave&&!pendingTemporary,scheduleKey:s.scheduleKey,originalScheduleKey:s.originalScheduleKey,scheduleSnapshot:s});
       }
     }
     return rows;
@@ -7972,10 +7972,11 @@
       if(uncoveredOverlap&&reqType!=='parttimeExcess')return{ok:false,message:`臨時出勤 ${start}-${end} 與沒有請假紀錄的正式班段 ${minToTime(uncoveredOverlap[0])}-${minToTime(uncoveredOverlap[1])} 重疊，請調整時間。`};
       const temps=(await rowsByEmployee('temporaryAttendanceRequests',employeeId).catch(()=>[])).filter(r=>clean(r.__id)!==clean(raw.__id)&&statusOf(r)===APPROVED&&dateText(r.date||r['日期'])===date); const dup=temps.find(r=>timeOverlap(start,end,r.approvedStartTime||r.startTime,r.approvedEndTime||r.endTime)); if(dup)return{ok:false,message:'這個時段已經有其他核准的臨時出勤。'};
     }
-    const hours=hoursBetween(start,end),gross=Math.round(hours*rate),reviewer=currentUser(),reqRef=db().collection('temporaryAttendanceRequests').doc(raw.__id||id),inId=`TEMP_CLOCK_${safeId(id)}_IN`,outId=`TEMP_CLOCK_${safeId(id)}_OUT`,ptId=`PT_TEMP_${safeId(id)}`;
+    const payMultiplier=Number(payload.payMultiplier??raw.payMultiplier)===2||payload.payMultiplier==null&&raw.doublePay===true?2:1;
+    const hours=hoursBetween(start,end),gross=Math.round(hours*rate*payMultiplier),reviewer=currentUser(),reqRef=db().collection('temporaryAttendanceRequests').doc(raw.__id||id),inId=`TEMP_CLOCK_${safeId(id)}_IN`,outId=`TEMP_CLOCK_${safeId(id)}_OUT`,ptId=`PT_TEMP_${safeId(id)}`;
     try{ await db().runTransaction(async tx=>{ const snap=await tx.get(reqRef); if(!snap.exists||statusOf(snap.data())!==PENDING)throw new Error('這筆申請已被其他主管處理。'); let inSnap,outSnap,ptSnap; if(approve){ inSnap=await tx.get(db().collection('clockRecords').doc(inId)); outSnap=await tx.get(db().collection('clockRecords').doc(outId)); if(type.includes('工讀')||lower(type)==='parttime')ptSnap=await tx.get(db().collection('parttimeRecords').doc(ptId)); }
-        tx.set(reqRef,{status:approve?APPROVED:REJECTED,'狀態':approve?APPROVED:REJECTED,approvedStartTime:approve?start:'',approvedEndTime:approve?end:'',approvedHours:approve?hours:0,approvedHourlyRate:approve?rate:0,managerNote:note,'主管備註':note,reviewedAt:serverTs(),reviewedBy:clean(reviewer.id||reviewer.employeeId),updatedAt:serverTs(),source:VERSION},{merge:true}); if(!approve)return;
-        const base={employeeId,'員工ID':employeeId,name,'姓名':name,clockDate:date,'打卡日期':date,clockType:'臨時出勤','打卡方式':'臨時出勤',status:'臨時出勤核准','狀態':'臨時出勤核准',sourceIp:'臨時出勤核准','來源IP':'臨時出勤核准',lateMinutes:0,'遲到分鐘':0,earlyLeaveMinutes:0,'早退分鐘':0,note,'備註':note,isSupplement:true,scheduleLinked:false,sourceType:'temporaryAttendanceApproved',temporaryAttendanceRequestId:id,source:VERSION,createdAt:serverTs(),updatedAt:serverTs()}; if(!inSnap.exists)tx.set(db().collection('clockRecords').doc(inId),Object.assign({},base,{recordId:inId,'紀錄ID':inId,clockTime:`${start}:00`,'打卡時間':`${start}:00`,actionName:'上班打卡','打卡動作':'上班打卡'})); if(!outSnap.exists)tx.set(db().collection('clockRecords').doc(outId),Object.assign({},base,{recordId:outId,'紀錄ID':outId,clockTime:`${end}:00`,'打卡時間':`${end}:00`,actionName:'下班打卡','打卡動作':'下班打卡'})); if((type.includes('工讀')||lower(type)==='parttime')&&ptSnap&&!ptSnap.exists)tx.set(db().collection('parttimeRecords').doc(ptId),{recordId:ptId,'紀錄ID':ptId,employeeId,'員工ID':employeeId,name,'姓名':name,date,workDate:date,'日期':date,hours,totalHours:hours,'時數':hours,'總時數':hours,hourlyRate:rate,'時薪':rate,grossPay:gross,'當日工資':gross,status:'臨時出勤核准','狀態':'臨時出勤核准',note,'備註':note,payable:'是','是否計薪':'是',sourceType:'temporaryAttendanceApproved',temporaryAttendanceRequestId:id,source:VERSION,createdAt:serverTs(),updatedAt:serverTs()}); });
+        tx.set(reqRef,{status:approve?APPROVED:REJECTED,'狀態':approve?APPROVED:REJECTED,approvedStartTime:approve?start:'',approvedEndTime:approve?end:'',approvedHours:approve?hours:0,approvedHourlyRate:approve?rate:0,payMultiplier,doublePay:payMultiplier===2,managerNote:note,'主管備註':note,reviewedAt:serverTs(),reviewedBy:clean(reviewer.id||reviewer.employeeId),updatedAt:serverTs(),source:VERSION},{merge:true}); if(!approve)return;
+        const base={employeeId,'員工ID':employeeId,name,'姓名':name,clockDate:date,'打卡日期':date,clockType:'臨時出勤','打卡方式':'臨時出勤',status:'臨時出勤核准','狀態':'臨時出勤核准',sourceIp:'臨時出勤核准','來源IP':'臨時出勤核准',lateMinutes:0,'遲到分鐘':0,earlyLeaveMinutes:0,'早退分鐘':0,note,'備註':note,isSupplement:true,scheduleLinked:false,sourceType:'temporaryAttendanceApproved',temporaryAttendanceRequestId:id,source:VERSION,createdAt:serverTs(),updatedAt:serverTs()}; if(!inSnap.exists)tx.set(db().collection('clockRecords').doc(inId),Object.assign({},base,{recordId:inId,'紀錄ID':inId,clockTime:`${start}:00`,'打卡時間':`${start}:00`,actionName:'上班打卡','打卡動作':'上班打卡'})); if(!outSnap.exists)tx.set(db().collection('clockRecords').doc(outId),Object.assign({},base,{recordId:outId,'紀錄ID':outId,clockTime:`${end}:00`,'打卡時間':`${end}:00`,actionName:'下班打卡','打卡動作':'下班打卡'})); if((type.includes('工讀')||lower(type)==='parttime')&&ptSnap&&!ptSnap.exists)tx.set(db().collection('parttimeRecords').doc(ptId),{recordId:ptId,'紀錄ID':ptId,employeeId,'員工ID':employeeId,name,'姓名':name,date,workDate:date,'日期':date,hours,totalHours:hours,payMultiplier,doublePay:payMultiplier===2,'時數':hours,'總時數':hours,hourlyRate:rate,'時薪':rate,grossPay:gross,'當日工資':gross,status:'臨時出勤核准','狀態':'臨時出勤核准',note,'備註':note,payable:'是','是否計薪':'是',sourceType:'temporaryAttendanceApproved',temporaryAttendanceRequestId:id,source:VERSION,createdAt:serverTs(),updatedAt:serverTs()}); });
       await queueNotification('temporaryAttendance','employee',{employeeId,email:clean(raw.email||raw.Email),notificationMessage:approve ? `臨時出勤已核准：${date.slice(5).replace('-','/')} ${start}-${end}` : `臨時出勤已駁回${note?'\n原因：'+note:''}`}); return{ok:true,message:approve?'已核准，正式打卡與工讀薪資資料已以同一交易建立。':'已駁回。'};
     }catch(e){ return{ok:false,message:e&&e.message?e.message:String(e)}; }
   }

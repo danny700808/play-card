@@ -5,7 +5,7 @@
  const money=n=>'$'+Number(n||0).toLocaleString('zh-TW'),today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'});
  const params=new URLSearchParams(location.search);let preview=false,realPreview=false,state=null,tab='attendance',generation=0,previewLoad=0,attendanceMonth=today().slice(0,7),salaryMonth=today().slice(0,7);
  const icons={schedule:'▦',attendance:'◷',salary:'＄',rental:'⌂',more:'☰'};
- const features={clock:['打卡','clock.html'],hours:['填寫工時','parttime.html'],leave:['請假','leave.html'],temporary:['補登／臨時出勤','temporary-attendance.html'],announcement:['公告','announcements.html'],task:['待辦','task.html'],routine:['定期事項','routine.html'],training:['教育訓練','training.html'],forms:['表單與證明','forms-hub.html'],notification:['通知設定','profile.html']};
+ const features={clock:['打卡','clock.html'],history:['打卡紀錄','clock.html?view=history'],hours:['填寫工時','parttime.html'],leave:['請假','leave.html'],temporary:['補登／臨時出勤','temporary-attendance.html'],announcement:['公告','announcements.html'],task:['待辦','task.html'],routine:['定期事項','routine.html'],training:['教育訓練','training.html'],forms:['表單與證明','forms-hub.html'],notification:['通知設定','profile.html']};
  function status(text,error=false){$('personalStatus').textContent=text||'';$('personalStatus').classList.toggle('personal-error',error);}
  async function verifyIdentity(expected){
   const auth=firebase.auth();if(auth.authStateReady)await auth.authStateReady();const claims=auth.currentUser?(await auth.currentUser.getIdTokenResult()).claims:{};
@@ -50,18 +50,19 @@
  function monthInput(id,value){return '<div class="personal-month"><label for="'+id+'">月份</label><input id="'+id+'" type="month" value="'+esc(value)+'"></div>';}
  function foldRows(lines){return lines.length?lines.slice(0,3).join('')+(lines.length>3?'<details><summary>展開其餘 '+(lines.length-3)+' 筆</summary>'+lines.slice(3).join('')+'</details>':''):'尚無資料';}
  function monthRange(month){const [y,m]=month.split('-').map(Number);return {startDate:month+'-01',endDate:month+'-'+new Date(Date.UTC(y,m,0)).getUTCDate()};}
- function attendanceDayRows(records){
-  const days=new Map();for(const r of records){const date=r.date||r.workDate||'';if(!days.has(date))days.set(date,[]);days.get(date).push(r);}
-  return [...days].sort((a,b)=>b[0].localeCompare(a[0])).map(([date,rows])=>'<section class="personal-day-record"><strong>'+esc(date)+'</strong>'+rows.sort((a,b)=>String(a.time||a.clockTime||'').localeCompare(String(b.time||b.clockTime||''))).map(r=>row((r.actionName||r.action||'打卡')+(r.clockType&&r.clockType!=='標準打卡'?' · '+r.clockType:''),(r.time||r.clockTime||r.status||'尚無紀錄')+(r.status==='遲到'||Number(r.lateMinutes)>0?' · 遲到':''))).join('')+'</section>');
+ async function openAttendanceLeave(record){
+  const page='leave.html?date='+encodeURIComponent(record.date);
+  generation++;
+  if(preview){const employeeDocId=$('previewPerson').value;await PersonalPreviewFrame.open({container:$('personalBody'),page,user:state.user,role:'employee',onBack:()=>selectTab('attendance'),read:(method,payload)=>managerRead('preview-employee-read',{employeeDocId,method,payload})});}
+  else showFrame('請假',page);
  }
  async function attendance(){
-  body(card('',row(today(),'今日排班')+'<div id="todaySchedule" class="personal-value">讀取中…</div><div class="personal-grid" style="margin-top:12px">'+button('上／下班打卡','clock','primary')+button('補登／臨時出勤','temporary','soft')+'</div>')+actions([...(state.user.identityType==='parttime'?[['填寫工時','hours','時']]:[]),['請假申請','leave','假'],['打卡紀錄','clock','錄'],['我的班表','schedule-own','班']])+card('出勤紀錄',monthInput('attendanceMonth',attendanceMonth)+'<div id="recentAttendance">讀取中…</div>'));
-  $('attendanceMonth').addEventListener('change',event=>{if(!event.target.value)return;attendanceMonth=event.target.value;generation++;attendance();});
+  body(card('',row(today(),'今日排班')+'<div id="todaySchedule" class="personal-value">讀取中…</div><div class="personal-grid" style="margin-top:12px">'+button('上／下班打卡','clock','primary')+button('補登／臨時出勤','temporary','soft')+'</div>')+actions([...(state.user.identityType==='parttime'?[['填寫工時','hours','時']]:[]),['請假申請','leave','假'],['打卡紀錄','history','錄'],['我的班表','schedule-own','班']])+card(today().slice(0,7).replace('-',' 年 ')+' 月出勤紀錄','<div id="recentAttendance">讀取中…</div>'));
   const version=generation,payload={userId:state.user.id};
-  const results=await Promise.allSettled([personalRead('getTodaySchedule',payload),personalRead('getClockHistoryRange',{...payload,...monthRange(attendanceMonth),includeMissing:true})]);
+  const results=await Promise.allSettled([personalRead('getTodaySchedule',payload),personalRead('getClockHistoryRange',{...payload,...monthRange(today().slice(0,7)),includeMissing:true})]);
   if(version!==generation)return;
   const schedule=results[0];if(schedule.status==='fulfilled'&&schedule.value?.ok!==false){const r=schedule.value,rows=r.schedules||[];state.scheduleText=rows.length?rows.map(s=>[s.startTime,s.endTime].filter(Boolean).join(' — ')).join('／'):(r.startTime?[r.startTime,r.endTime].filter(Boolean).join(' — '):'今日無排班');$('todaySchedule').textContent=state.scheduleText;}else $('todaySchedule').textContent='班表讀取失敗';
-  const recent=results[1];if(recent.status==='fulfilled'&&recent.value?.ok!==false){const rows=Array.isArray(recent.value)?recent.value:recent.value?.rows||[];state.clockRows=rows;state.clockHtml=foldRows(attendanceDayRows(rows));$('recentAttendance').innerHTML=state.clockHtml;}else $('recentAttendance').textContent='紀錄讀取失敗，請重新查詢。';
+  const recent=results[1];if(recent.status==='fulfilled'&&recent.value?.ok!==false){const rows=Array.isArray(recent.value)?recent.value:recent.value?.rows||[];state.clockRows=rows;EmployeeAttendanceView.mount($('recentAttendance'),rows,{readonly:preview,userId:state.user.id,api:(action,payload)=>api(action,payload),onChanged:()=>attendance(),onLeave:openAttendanceLeave});}else $('recentAttendance').textContent='紀錄讀取失敗，請重新查詢。';
  }
 
  async function monthSalary(){return preview?managerRead('preview-month',{employeeDocId:$('previewPerson').value,month:salaryMonth}):call('payroll-month',{month:salaryMonth});}

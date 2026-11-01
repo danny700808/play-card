@@ -25,6 +25,7 @@ body{background:var(--bg);color:var(--ink)}
 .readonly-box{padding:12px;border:1px solid var(--line);border-radius:12px;background:#f9fafb;font-weight:900}
 .hidden{display:none!important}
 @media(max-width:720px){.grid{grid-template-columns:1fr}.container{padding:10px}.title{font-size:23px}}
+.temporary-date-time{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}.temporary-date-time .field{min-width:0}.temporary-date-time input,.temporary-date-time select{box-sizing:border-box;min-width:0;width:100%;font-size:14px;padding:8px}.temporary-double{display:flex;align-items:center;gap:8px;margin:12px 0;font-size:14px}.temporary-double input{width:auto}.law-hint{font-size:14px;padding:10px 12px;line-height:1.5}.temporary-date-time label{font-size:13px}#requestHours{font-size:13px;color:#375f6c}
 </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="internal-workspace.css?v=20261031-mobile1">
@@ -45,22 +46,19 @@ body{background:var(--bg);color:var(--ink)}
 </div>
 
 <div class="card">
-  <div class="grid">
-    <div class="field"><label>員工</label><div id="employeeNameBox" class="readonly-box">讀取中...</div><select id="employeeSelect" style="display:none"></select></div>
-    <div class="field"><label>員工身分</label><div id="employeeTypeBox" class="readonly-box">自動判斷</div><input type="hidden" id="employeeType" value=""></div>
-    <div class="field"><label>申請日期</label><input id="workDate" type="date" onchange="analyzeSelectedDate()"></div>
-  </div>
-
   <div id="analysisBox" class="law-hint hidden"></div>
-
+  <div hidden><div id="employeeNameBox"></div><select id="employeeSelect"></select><div id="employeeTypeBox"></div><input type="hidden" id="employeeType"></div>
+  <div class="grid temporary-date-time">
+    <div class="field"><label for="workDate">日期</label><input id="workDate" type="date" onchange="analyzeSelectedDate()"></div>
+    <div class="field"><label for="startTime">上班時間</label><select id="startTime" onchange="refreshEndOptions();validateSelectedTime(false)"></select></div>
+    <div class="field"><label for="endTime">下班時間</label><select id="endTime" onchange="validateSelectedTime(false)"></select></div>
+  </div>
   <div id="timeSection" class="hidden">
-    <div class="grid" style="margin-top:12px">
-      <div class="field"><label>申請上班時間</label><select id="startTime" onchange="refreshEndOptions();validateSelectedTime(false)"></select></div>
-      <div class="field"><label>申請下班時間</label><select id="endTime" onchange="validateSelectedTime(false)"></select></div>
-      <input type="hidden" id="payable" value="待主管審核">
-    </div>
+    <input type="hidden" id="payable" value="待主管審核">
+    <label id="doublePayLabel" class="temporary-double"><input id="doublePay" type="checkbox"> 本次工時雙倍計薪</label>
+    <div id="requestHours"></div>
     <div id="lawHint" class="law-hint hidden"></div>
-    <div class="field" style="margin-top:12px"><label>臨時出勤原因</label><textarea id="reason" placeholder="請填寫原因，例如：主管臨時通知支援、現場臨時加班、主管尚未排班但實際出勤"></textarea></div>
+    <div class="field" style="margin-top:12px"><label>臨時出勤原因</label><textarea id="reason" placeholder="請填寫臨時出勤原因"></textarea></div>
     <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn" id="submitBtn" onclick="submitRequest()">送出申請</button>
     </div>
@@ -72,7 +70,7 @@ body{background:var(--bg);color:var(--ink)}
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-<script src="firebase-client.js?v=20260919-taiwan-v2"></script>
+<script src="firebase-client.js?v=20261101-simple-attendance-v1"></script>
 <script src="app.js?v=20260802-security-phase1"></script>
 <script>
 let employees=[];
@@ -169,6 +167,7 @@ function showBox(sel,text,type){
 function setTimeSection(show){
   const timeSection = qs('#timeSection');
   if (timeSection) timeSection.classList.toggle('hidden', !show);
+  qs('#startTime').disabled=!show;qs('#endTime').disabled=!show;
   // 舊版曾有 blockedReturn 區塊，部分頁面已移除；避免因找不到元素導致頁面只剩日期欄位。
   const blockedReturn = qs('#blockedReturn');
   if (blockedReturn) blockedReturn.classList.toggle('hidden', show);
@@ -245,6 +244,7 @@ async function init(){
     }
 
     currentEmployee=me;
+    qs('#doublePayLabel').hidden=!me.part;
     qs('#employeeSelect').innerHTML=`<option value="${me.id}">${me.name}</option>`;
     qs('#employeeSelect').value=me.id;
     qs('#employeeNameBox').textContent=`${me.name}｜${money(me.hourlyRate)}/時`;
@@ -290,6 +290,7 @@ async function analyzeSelectedDate(){
   const emp=currentEmployee;
   const date=clean(qs('#workDate').value);
   currentAnalysis=null;
+  qs('#doublePay').checked=false;qs('#requestHours').textContent='';
   setTimeSection(false);
   showBox('#lawHint','');
   if(!emp||!date){showBox('#analysisBox','請先選擇日期。','notice');return}
@@ -358,8 +359,8 @@ async function analyzeSelectedDate(){
   const scheduleText=merged.length?merged.map(r=>minToTime(r.start)+'～'+minToTime(r.end)).join('、'):'目前沒有排班';
   const remainHours=Math.max(0,12-existing);
   const text=merged.length
-    ? `系統判斷：這一天仍有需要正常打卡的班表 ${scheduleText}，約 ${existing} 小時。\n臨時出勤開放班表外時間，以及已有請假紀錄的時間；如果是其他班表內忘記打卡，請回打卡頁提出補打卡。\n本日可再申請最多約 ${remainHours} 小時，實際是否計薪由主管審核確認。`+leaveText
-    : (leaveRequests.length?'系統判斷：原班表時間已有請假紀錄，仍可另外送出臨時出勤。兩筆紀錄不互相取消或覆寫。':'系統判斷：這一天目前沒有排班。\n可送出臨時出勤申請，主管核准後才會正式補進打卡、時數與薪資。\n本日出勤最多以12小時為上限，實際是否計薪由主管審核確認。')+leaveText;
+    ? `當日班表 ${scheduleText}。請選班表外的臨時出勤時間。主管核准後會自動建立打卡、工時與薪資，不用再打卡。`
+    : (leaveRequests.length?'當日已有請假紀錄，可另送臨時出勤申請。':'當日沒有排班，可送出臨時出勤申請。')+'主管核准後會自動建立打卡、工時與薪資，不用再打卡。';
 
   if(!ranges.length){
     const t='系統目前找不到可開放的臨時出勤時間，因此不開放送出。';
@@ -462,7 +463,7 @@ function validateSelectedTime(showMessage){
   }
 
   const okText=`目前可送出：${qs('#employeeType').value||'員工'}｜${a.dayType}｜原本 ${a.existingHours} 小時＋本次 ${h} 小時＝合計 ${a.existingHours+h} 小時。主管審核時會確認是否計薪與實際金額。`;
-  showBox('#lawHint',okText,'ok');
+  showBox('#lawHint','');qs('#requestHours').textContent='本次 '+h+' 小時';
   return {ok:true,hours:h,message:okText};
 }
 
@@ -505,6 +506,7 @@ async function submitRequest(){
       startTime:start,申請上班時間:start,
       endTime:end,申請下班時間:end,
       requestedHours:h,申請時數:h,
+      payMultiplier:emp.part&&qs('#doublePay').checked?2:1,doublePay:emp.part&&qs('#doublePay').checked,
       requestType:'臨時出勤申請',申請類型:'臨時出勤申請',
       payable:'待主管審核',是否計薪:'待主管審核',
       hourlyRate:emp.hourlyRate,時薪:emp.hourlyRate,
@@ -526,7 +528,7 @@ async function submitRequest(){
         notificationMessage:`【臨時出勤】${emp.name||emp.id} 送出 ${date} ${start}-${end} 臨時出勤申請，請主管審核。`
       });
     }catch(notifyErr){ console.warn('[temporary attendance notification skipped]', notifyErr); }
-    msg('已送出臨時出勤申請，請等待主管審核。','success');
+    msg('已送交主管。核准後會自動建立打卡、工時與薪資，不用再打卡。','success');
     qs('#reason').value='';
   }catch(e){msg('送出失敗：'+(e.message||e),'error')}
   finally{submittingRequest=false;if(submitBtn){submitBtn.disabled=false;submitBtn.textContent='送出申請';}}

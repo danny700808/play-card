@@ -42,14 +42,14 @@ test('approval commits replacements atomically; rejection and concurrent edits p
   else {assert.equal(store.get('parttimeRecords/hours').totalHours,3);assert.equal(store.get('clockRecords/in').status,'遲到');assert.equal(result.ok,scenario==='reject');assert.equal(store.get('leaveRequests/leave').status,scenario==='reject'?'已駁回':'待審核');}
  }
 });
-function page(file,needle){const html=fs.readFileSync(file,'utf8'),dom=new JSDOM(html,{url:'https://example.test/'+file,runScripts:'outside-only'}),w=dom.window;w.qs=s=>w.document.querySelector(s);w.qsa=s=>[...w.document.querySelectorAll(s)];w.requireLogin=()=>({id:'e1'});w.setMsg=(n,t)=>n.textContent=t;w.eval([...html.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]).find(s=>s.includes(needle))+(file==='leave.html'?"\nwindow.testReady=()=>{leavePageReady=true;leaveSegmentsState=[{mode:'retro',leaveDate:'2026-10-30',startTime:'18:00',endTime:'21:00'}];};":''));return {dom,w};}
+function page(file,needle){const html=fs.readFileSync(file,'utf8'),dom=new JSDOM(html,{url:'https://example.test/'+file,runScripts:'outside-only'}),w=dom.window;w.qs=s=>w.document.querySelector(s);w.qsa=s=>[...w.document.querySelectorAll(s)];w.requireLogin=()=>({id:'e1'});w.setMsg=(n,t)=>n.textContent=t;w.eval(fs.readFileSync('employee-attendance-view.js','utf8'));w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.onclose?.()};w.eval([...html.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]).find(s=>s.includes(needle))+(file==='leave.html'?"\nwindow.testReady=()=>{leavePageReady=true;leaveSegmentsState=[{mode:'retro',leaveDate:'2026-10-30',startTime:'18:00',endTime:'21:00'}];};":''));return {dom,w};}
 test('no shift hides hours and submit; scheduled day restores them',()=>{
  const {dom,w}=page('parttime.html','function renderDateContext');w.renderHoursGrid();w.renderDateContext({workDate:'2026-11-01',canRegister:false});assert(w.qs('#fieldHours').hidden);assert(w.qs('#submitBtn').hidden);
  w.renderDateContext({workDate:'2026-11-03',canRegister:true});assert.equal(w.qs('#fieldHours').hidden,false);assert.equal(w.qs('#submitBtn').hidden,false);dom.window.close();
 });
 test('every recent punch offers correction and late status is explicit',()=>{
  const {dom,w}=page('clock.html','function renderHistoryRow');w.pendingAutoReturnText=()=>'';w.renderIntoList('#editableList',[{id:'in',date:'2026-10-30',time:'18:10',actionName:'上班打卡',clockType:'標準打卡',status:'遲到',lateMinutes:10,canModify:false},{id:'out',date:'2026-10-30',time:'21:00',actionName:'下班打卡',status:'正常',canModify:false}],false);
- assert.equal(w.qsa('#editableList .js-open-correction').length,2);assert.equal(w.qsa('#editableList .item').length,1);assert.equal(w.qsa('#editableList .clock-day .clock-item').length,2);assert.match(w.qs('#editableList').textContent,/上班打卡 18:10/);assert.match(w.qs('#editableList').textContent,/下班打卡 21:00/);assert(w.qs('.clock-late-badge'));dom.window.close();
+ assert.equal(w.qsa('#editableList [data-ea-correct]').length,2);assert.equal(w.qsa('#editableList .ea-day').length,1);assert.equal(w.qsa('#editableList .ea-day .ea-punch').length,2);assert.match(w.qs('#editableList').textContent,/上班18:10/);assert.match(w.qs('#editableList').textContent,/下班21:00/);assert(w.qs('.ea-alert'));dom.window.close();
 });
 test('cancelling retroactive leave impact confirmation never submits a leave request',async()=>{
  const {dom,w}=page('leave.html','let leaveSegmentsState');w.testReady();w.validateForm=()=>true;w.validateLeaveClockConflictBeforeSubmit=async()=>({ok:true});const calls=[];w.api=async action=>{calls.push(action);return {ok:true,requiresConfirmation:true,rows:[{date:'2026-10-30',clocks:[{action:'上班打卡',time:'18:00',replaced:true}],hoursRemoved:3}]};};let text='';w.confirm=t=>{text=t;return false;};await w.submitLeave();assert.deepEqual(calls,['getLeaveReplacementImpact']);assert.match(text,/主管核准後/);assert.match(text,/工讀時數減少 3 小時/);dom.window.close();
@@ -75,7 +75,7 @@ test('scheduled blank days show both missing punches without creating records, a
  const c=context();Object.assign(c,{PENDING:'待審核',nowMinutes:()=>12*60,statusOf:r=>r.status,temporaryBlockCoversPunch:(b,a,t)=>b.start<=t&&b.end>=t});
  vm.runInContext(source.slice(source.indexOf('  function missingRowsForDay('),source.indexOf('  async function attendanceHistoryWithMissing(')),c);
  const day={date:'2026-10-30',schedules:[{...shift,originalScheduleKey:'shift-a'}]};
- const rows=c.missingRowsForDay(day,[],'2026-11-01');assert.equal(rows.length,2);assert(rows.every(r=>r.status==='曠職'&&r.canModify&&r.missing));assert.equal(rows[0].time,'');
+ const rows=c.missingRowsForDay(day,[],'2026-11-01');assert.equal(rows.length,2);assert(rows.every(r=>r.status==='未打卡'&&r.attendanceNeedsReview&&r.canModify&&r.missing));assert.equal(rows[0].time,'');
  assert.equal(c.missingRowsForDay({...day,schedules:[]},[],'2026-11-01').length,0);
  assert.equal(c.missingRowsForDay({...day,date:'2026-11-02'},[],'2026-11-01').length,0);
  const pending=c.missingRowsForDay(day,[{status:'待審核',correctDate:day.date,correctAction:'上班打卡',scheduleKey:'shift-a'}],'2026-11-01');assert(pending[0].pendingCorrection);assert.equal(pending[0].canModify,false);
@@ -83,14 +83,11 @@ test('scheduled blank days show both missing punches without creating records, a
  const leavePending=c.missingRowsForDay({...day,pendingLeaveBlocks:[{start:18*60,end:21*60}]},[],'2026-11-01');assert(leavePending.every(r=>!r.canModify&&r.status==='請假待審'));
 });
 
-test('missing punches share one daily card and submit a missingClock approval rather than edit a nonexistent record',async()=>{
- const {dom,w}=page('clock.html','function renderHistoryRow');w.pendingAutoReturnText=()=>'';w.startActionButtonProgress=()=>({done(){},fail(){}});w.loadEditableHistory=async()=>{};let sent;
+test('missing punch opens a reason form and submits a missingClock approval without writing a punch',async()=>{
+ const {dom,w}=page('clock.html','function renderHistoryRow');let sent;w.searchRange=async()=>{};
  w.api=async(action,payload)=>{sent={action,payload};return{ok:true,message:'送出'};};
- w.renderIntoList('#editableList',[{id:'missing-in',date:'2026-10-30',missing:true,expectedTime:'18:00',actionName:'上班打卡',clockType:'標準打卡',status:'曠職',canModify:true,scheduleSnapshot:shift}],false);
- let leaveIssue;w.goLeaveForRetro=issue=>{leaveIssue=issue;};w.qs('.js-history-leave').click();
- assert.equal(leaveIssue.date,'2026-10-30');assert.equal(leaveIssue.startTime,'18:00');assert.equal(leaveIssue.endTime,'21:00');assert.equal(leaveIssue.scheduleKey,'shift-a');
- assert.equal(w.qs('.js-open-correction').textContent,'補打卡');assert.equal(w.qs('.clock-late-badge').textContent,'曠職');
- w.qs('.js-open-correction').click();assert.equal(w.qs('.correction-box').classList.contains('hidden'),false);
- const box=w.qs('.correction-box');box.querySelector('.js-correct-reason').value='忘記打卡';await w.submitInlineCorrection('missing-in',box,box.querySelector('.js-submit-correction'));
- assert.equal(sent.payload.requestKind,'missingClock');assert.equal(sent.payload.originalRecordId,'');assert.equal(sent.payload.correctTime,'18:00');assert.equal(sent.payload.scheduleKey,'shift-a');dom.window.close();
+ w.renderIntoList('#editableList',[{id:'missing-in',date:'2026-10-30',missing:true,expectedTime:'18:00',actionName:'上班打卡',clockType:'標準打卡',status:'未打卡',attendanceNeedsReview:true,canModify:true,scheduleSnapshot:shift}],false);
+ assert.equal(w.qs('[data-ea-correct]').textContent,'補打卡');assert.match(w.qs('#editableList').textContent,/整天未打卡・待確認/);
+ w.qs('[data-ea-correct]').click();const form=w.qs('dialog form');form.elements.reason.value='忘記打卡';await form.onsubmit({preventDefault(){}});
+ assert.equal(sent.action,'submitClockCorrection');assert.equal(sent.payload.requestKind,'missingClock');assert.equal(sent.payload.originalRecordId,'');assert.equal(sent.payload.correctTime,'18:00');assert.equal(sent.payload.scheduleKey,'shift-a');dom.window.close();
 });

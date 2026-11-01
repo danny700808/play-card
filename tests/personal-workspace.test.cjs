@@ -24,7 +24,7 @@ test('manager can view a real employee snapshot and all edit buttons remain read
  const person={id:'e1',employeeId:'e1',name:'測試員工甲',identityType:'parttime',identityLabel:'工讀生',email:'test@example.test'};
  w.fetch=async(url,options)=>{const data=JSON.parse(options.body).data;calls.push(data.action);assert.equal(data.expectedEmployeeId,'manager');const result=data.action==='preview-roster'?{rows:[person]}:data.action==='preview'?{user:person,profile:{mobilePhone:'0912345678'},missingFields:['address'],capabilities:{attendance:true},profilePending:false,readOnly:true}:data.action==='preview-month'?{hasData:data.month==='2026-10',rate:196,gross:784,deduction:84,net:700,insurance:{labor:84,health:0,retirement:0},lateDeduction:0,rows:[{date:'2026-10-30',hours:4,grossPay:784}]}:null;assert(result,'preview may only call protected reads');return {ok:true,json:async()=>({result})};};
  w.api=async(action,payload)=>{calls.push(action);assert.equal(payload.userId,'e1');if(action==='getTodaySchedule')return {ok:true,schedules:[{startTime:'10:00',endTime:'14:00'}]};if(action==='getClockHistoryRange')return {ok:true,rows:[{date:'2026-10-30',actionName:'上班打卡',time:'10:03'}]};if(action==='getMySalaryInfo')return {ok:true,info:{mainAmountText:'$196 / 小時'}};if(action==='getParttimeHistory')return {ok:true,rows:[{date:'2026-10-30',hours:4,grossPay:784}]};throw Error('write API forbidden');};
- w.eval(fs.readFileSync('personal-workspace-model.js','utf8'));w.eval(fs.readFileSync('personal-workspace.js','utf8'));await new Promise(r=>setTimeout(r,40));
+ w.eval(fs.readFileSync('employee-attendance-view.js','utf8'));w.eval(fs.readFileSync('personal-workspace-model.js','utf8'));w.eval(fs.readFileSync('personal-workspace.js','utf8'));await new Promise(r=>setTimeout(r,40));
  assert.equal(w.document.getElementById('personalName').textContent,'測試員工甲');assert.match(w.document.getElementById('previewLabel').textContent,/模擬/);assert.match(w.document.getElementById('recentAttendance').textContent,/10:03/);
  w.document.querySelector('[data-tab=salary]').click();await new Promise(r=>setTimeout(r,15));w.document.getElementById('salaryMonth').value='2026-10';w.document.getElementById('salaryMonth').dispatchEvent(new w.Event('change'));await new Promise(r=>setTimeout(r,15));assert.match(w.document.getElementById('salaryInfo').textContent,/196/);assert.match(w.document.getElementById('salaryHours').textContent,/784/);
  w.document.querySelector('[data-tab=more]').click();w.document.querySelector('[data-action=profile]').click();assert.equal(w.document.querySelector('[name=mobilePhone]').value,'0912345678');w.document.getElementById('personalProfileForm').dispatchEvent(new w.Event('submit',{cancelable:true}));
@@ -36,15 +36,15 @@ test('manager can view a real employee snapshot and all edit buttons remain read
  w.api=async()=>({ok:true,rows:[],schedules:[]});
  w.eval(fs.readFileSync('personal-preview-frame.js','utf8'));
  w.document.querySelector('[data-tab=attendance]').click();await new Promise(r=>setTimeout(r,5));
- w.document.getElementById('attendanceMonth').value='2026-09';w.document.getElementById('attendanceMonth').dispatchEvent(new w.Event('change'));await new Promise(r=>setTimeout(r,5));
- for(const key of ['temporary','hours','leave','clock','schedule-own']){
+ assert.equal(w.document.getElementById('attendanceMonth'),null);
+ for(const key of ['temporary','hours','leave','clock','history','schedule-own']){
   w.document.querySelector('[data-action="'+key+'"]').click();await new Promise(r=>setTimeout(r,15));
   assert(w.document.querySelector('iframe'),key+' should open its form');
   w.document.querySelector('.personal-frame-head button').click();await new Promise(r=>setTimeout(r,10));
   assert.equal(w.document.querySelectorAll('iframe').length,0,key+' return must leave the form');
   assert(w.document.getElementById('todaySchedule'),key+' return must restore attendance home');
   assert.equal(w.document.querySelector('[data-tab=attendance]').getAttribute('aria-current'),'page');
-  assert.equal(w.document.getElementById('attendanceMonth').value,'2026-09','return preserves the selected history month');
+  assert.equal(w.document.getElementById('attendanceMonth'),null,'home shows current month without a month selector');
  }
  assert.equal(writes,0);
  dom.window.close();

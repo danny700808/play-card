@@ -40,7 +40,7 @@ test('leave uses actual scheduled choices, preserves selection and requests hist
  const {dom,w}=page('leave.html','let leaveSegmentsState');w.setTestUser();
  const calls=[];w.api=async(a,p)=>{calls.push([a,p]);return a==='getMonthlySchedule'?{ok:true,rows:[{date:'2026-11-04',startTime:'09:00',endTime:'12:00',source:'singleDaySchedules'}]}:{ok:true,rows:[]};};
  w.renderSegments=()=>{};w.initLeaveMonthViews();await new Promise(r=>setTimeout(r,10));assert.equal(calls.length,1);assert.equal(calls[0][0],'getMonthlySchedule');
- w.qs('[data-leave-day]').click();assert.equal(w.testSegments()[0].startDate,'2026-11-04');
+ let selected;w.openSingleDayLeave=date=>{selected=date;};assert.equal(w.qs('[data-leave-day]').textContent,'請假');w.qs('[data-leave-day]').click();assert.equal(selected,'2026-11-04');
  const input=w.document.createElement('input');input.dataset.segmentStartDate='SEG_1';input.value='2026-11-04';w.qs('#segmentList').append(input);w.applyScheduledDateChoices();const select=w.qs('[data-segment-start-date]');assert.equal(select.tagName,'SELECT');assert.equal(select.options.length,2);assert.equal(select.value,'2026-11-04');
  await w.searchLeaveMonth({month:'2025-02'});assert.equal(calls[1][1].month,'2025-02');assert.equal(w.qs('#list').textContent,'尚無資料');dom.window.close();
 });

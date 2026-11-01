@@ -25,7 +25,7 @@
       const hours=Math.round((toMinutes(end)-toMinutes(start))/60*100)/100;
       const day=new Date(row.date+'T12:00:00+08:00').toLocaleDateString('zh-TW',{weekday:'short',timeZone:'Asia/Taipei'});
       const temporary=row.source==='singleDaySchedules'||row.source==='temporaryAttendanceRequests';
-      return '<div class="employee-shift-row"><div><strong>'+esc(row.date.slice(5)+' '+day)+'</strong><span>'+esc(start+'–'+end)+' · '+esc(hours)+' 小時</span></div>'+(temporary?'<span class="employee-shift-tag">臨時排班</span>':'')+(selectable?'<button type="button" class="btn secondary" data-leave-day="'+esc(row.date)+'">選擇</button>':'')+'</div>';
+      return '<div class="employee-shift-row"><div><strong>'+esc(row.date.slice(5)+' '+day)+'</strong><span>'+esc(start+'–'+end)+' · '+esc(hours)+' 小時</span></div>'+(temporary?'<span class="employee-shift-tag">臨時排班</span>':'')+(selectable?'<button type="button" class="btn secondary" data-leave-day="'+esc(row.date)+'">請假</button>':'')+'</div>';
     }).join('');
   }
   global.EmployeeMonthView={range,mount,rowsHtml,today};
