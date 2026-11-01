@@ -42,7 +42,7 @@ test('leave uses actual scheduled choices, preserves selection and requests hist
  w.renderSegments=()=>{};w.initLeaveMonthViews();await new Promise(r=>setTimeout(r,10));assert.equal(calls.length,1);assert.equal(calls[0][0],'getMonthlySchedule');
  w.qs('[data-leave-day]').click();assert.equal(w.testSegments()[0].startDate,'2026-11-04');
  const input=w.document.createElement('input');input.dataset.segmentStartDate='SEG_1';input.value='2026-11-04';w.qs('#segmentList').append(input);w.applyScheduledDateChoices();const select=w.qs('[data-segment-start-date]');assert.equal(select.tagName,'SELECT');assert.equal(select.options.length,2);assert.equal(select.value,'2026-11-04');
- await w.searchLeaveMonth({month:'2025-02'});assert.equal(calls[1][1].month,'2025-02');assert.equal(w.qs('#yearText').textContent,'尚無資料');dom.window.close();
+ await w.searchLeaveMonth({month:'2025-02'});assert.equal(calls[1][1].month,'2025-02');assert.equal(w.qs('#list').textContent,'尚無資料');dom.window.close();
 });
 test('changed pages and shared scripts compile',()=>{
  for(const file of ['clock.html','parttime.html','leave.html','employee-schedule.html'])for(const match of fs.readFileSync(file,'utf8').matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))if(match[1].trim())new vm.Script(match[1],{filename:file});

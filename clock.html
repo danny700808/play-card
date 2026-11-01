@@ -989,6 +989,7 @@
     }
 
     async function loadMissingClockIssues(){
+      if(qs('#clockPendingCard')?.hidden)return;
       const user = requireLogin();
       if(!user) return;
       try{

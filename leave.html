@@ -253,7 +253,7 @@ async function searchLeaveMonth(selection){
   try{
     const result=await api('getLeaveHistory',{userId:currentUser.id,month:selection.month});
     if(!result.ok)throw Error(result.message||'查詢失敗');
-    renderHistory(result.rows||[]);qs('#yearText').textContent=(result.rows||[]).length?'':'尚無資料';
+    renderHistory(result.rows||[]);qs('#yearText').textContent='';
   }catch(e){qs('#yearText').textContent=e.message||'查詢失敗，請重試。';}
 }
 function initLeaveMonthViews(){
@@ -1483,7 +1483,7 @@ function renderHistory(rows){
       ${x.modifyCount ? `<div class="muted">已重新送審 ${escapeHtml(String(x.modifyCount))} 次</div>` : ''}
       ${x.canEdit || x.canDelete ? `<div class="item-actions">${x.canEdit ? `<button class="btn secondary mini-btn" type="button" data-edit-id="${escapeHtml(x.requestId)}">修改</button>` : ''}${x.canDelete ? `<button class="btn secondary mini-btn" type="button" data-delete-id="${escapeHtml(x.requestId)}">刪除</button>` : ''}</div>` : ''}
     </div>
-  `).join('') || '<div class="muted">本年度目前沒有請假紀錄</div>';
+  `).join('') || '<div class="muted">尚無資料</div>';
   qsa('[data-edit-id]').forEach(btn => btn.onclick = () => startEdit(btn.dataset.editId));
   qsa('[data-delete-id]').forEach(btn => btn.onclick = () => handleDelete(btn.dataset.deleteId));
 }

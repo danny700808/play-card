@@ -1620,7 +1620,8 @@
       const p=payload||{}, employeeId=employeeIdFrom(p), month=clean(p.month);
       if(!employeeId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw Error('請選擇年、月。');
       // Fetch each source once; expand recurring assignments locally for this month.
-      const sources=await Promise.all([rowsByEmployee('singleDaySchedules',employeeId),rowsByEmployee('employeeSchedules',employeeId),all('scheduleTemplates'),Promise.resolve([])]);
+      const scheduleRows=async col=>mergeByDocId((await Promise.all([queryEq(col,'employeeId',employeeId),queryEq(col,'員工ID',employeeId)])).flat());
+      const sources=await Promise.all([scheduleRows('singleDaySchedules'),scheduleRows('employeeSchedules'),all('scheduleTemplates'),Promise.resolve([])]);
       const [year,mo]=month.split('-').map(Number), days=new Date(Date.UTC(year,mo,0)).getUTCDate(), rows=[];
       for(let day=1;day<=days;day++){
         const date=month+'-'+String(day).padStart(2,'0');
