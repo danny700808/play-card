@@ -411,6 +411,8 @@
   ],{badge:'badge-items',common:[leaf('work-notifications','通知設定','notification-settings.html'),leaf('work-line','通知檢查','line-notification-check.html')]}),
   branch('rental','租賃',[
    leaf('rental-applications','申請與契約','rental-admin.html'),
+   leaf('rental-overdue','已逾期','rental-admin.html?filter=overdue'),
+   leaf('rental-reminder','到期提醒中','rental-admin.html?filter=reminder'),
    leaf('rental-template','契約模板','rental-template-settings.html'),
    leaf('rental-fees','費用與提醒','rental-settings.html'),
    leaf('rental-print','合約列印','rental-contract-admin.html'),

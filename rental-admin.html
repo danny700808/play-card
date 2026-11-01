@@ -105,6 +105,12 @@
     }
 
 
+    @media screen and (min-width:761px){
+      #equipmentRows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px}
+      #equipmentRows .equipment-row{min-width:0;margin:0;grid-template-columns:minmax(0,1fr) auto;align-items:end}
+      #equipmentRows .field{min-width:0;margin:0}
+      #equipmentRows .btn{align-self:end;min-height:34px}
+    }
     /* Unified controls and compact desktop workspace. */
     .rental-toolbar-heading{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
     .rental-toolbar .rental-search-box{flex:1;max-width:460px;min-width:220px;margin:0;padding:0;border:0;background:transparent}
