@@ -94,7 +94,9 @@
     .missing-form.hidden{display:none!important}
     .readonly-line{padding:10px 12px;border:1px solid #e5e7eb;border-radius:12px;background:#f9fafb;font-weight:800;color:#374151}
 
-  </style>
+
+    .clock-late-badge{background:#fff0ec;color:#b33a2d;border-radius:5px;padding:3px 6px}.clock-day h3{font-size:16px;margin:12px 0 7px}.clock-day .item{margin-bottom:8px}
+</style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="internal-workspace.css?v=20261031-mobile1">
 <link rel="stylesheet" href="employee-month-view.css?v=20261101-month-view-v2">
@@ -217,8 +219,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20261101-month-view-v1"></script>
-  <script src="app.js?v=20261101-month-view-v1"></script>
+  <script src="firebase-client.js?v=20261101-attendance-revision-v1"></script>
+  <script src="app.js?v=20261101-attendance-revision-v1"></script>
   <script>
 
     function goTemporaryAttendance(){
@@ -725,23 +727,24 @@
     }
 
     function renderHistoryRow(x, readonly){
-      const lateText = x.clockType === '特殊打卡' ? '' : (x.status === '遲到' ? '｜遲到 ' + (x.lateMinutes || 0) + ' 分鐘' : '');
+      const isLate=x.clockType!=='特殊打卡'&&(x.status==='遲到'||Number(x.lateMinutes)>0);
+      const lateText=isLate?'遲到 '+Number(x.lateMinutes||0)+' 分鐘':'';
       const noteText = x.note ? `<div class="muted" style="margin-top:6px">備註：${escapeHtml(x.note)}</div>` : '';
       const originalText = x.originalRef ? `<div class="muted" style="margin-top:6px">原始紀錄：${escapeHtml(x.originalRef)}</div>` : '';
       const correctionText = x.status === '補打卡' ? '<div class="muted" style="margin-top:6px">此筆為補登／修正核准後的正式紀錄。</div>' : '';
       const pendingText = x.pendingCorrection ? `<div class="pending-status-line"><strong>已送出修正申請待主管審核</strong>${escapeHtml(pendingAutoReturnText())}</div>` : '';
-      const canFix = (!readonly && x.canModify)
+      const canFix = !readonly
         ? (x.pendingCorrection
           ? `<button class="btn mini-btn secondary" type="button" disabled>待主管審核</button>`
-          : `<button class="btn mini-btn js-open-correction" data-id="${escapeHtml(x.id)}">修正這筆</button>`)
+          : `<button class="btn mini-btn js-open-correction" data-id="${escapeHtml(x.id)}">修正打卡時間</button>`)
         : '';
       return `
         <div class="item clock-item">
           <div class="top">
-            <strong>${escapeHtml(x.date)} ${escapeHtml(x.time)}</strong>
-            <span class="tag ${x.status === '補打卡' ? 'subtle' : ''}">${escapeHtml(x.statusLabel || x.status || '')}</span>
+            <strong>${isLate?'<span class="clock-late-badge">遲到</span> ':''}${escapeHtml(x.actionName || '打卡')} ${escapeHtml(x.time)}</strong>
+            <span class="tag ${x.status === '補打卡' ? 'subtle' : ''}">${escapeHtml(isLate?lateText:(x.statusLabel || x.status || ''))}</span>
           </div>
-          <div class="clock-line">${escapeHtml(x.actionName)}｜${escapeHtml(x.clockType)}${lateText}</div>
+          <div class="clock-line">${escapeHtml(x.clockType)}</div>
           ${noteText}
           ${originalText}
           ${correctionText}
@@ -774,7 +777,8 @@
 
     function renderIntoList(targetSel, rows, readonly){
       const list = qs(targetSel);
-      list.innerHTML = (rows || []).map(x => renderHistoryRow(x, readonly)).join('') || '<div class="muted">目前沒有紀錄</div>';
+      const dates=[...new Set((rows||[]).map(row=>row.date))].sort().reverse();
+      list.innerHTML=dates.map(date=>'<section class="clock-day"><h3>'+escapeHtml(date)+'</h3>'+(rows||[]).filter(row=>row.date===date).sort((a,b)=>String(a.time).localeCompare(String(b.time))).map(row=>renderHistoryRow(row,readonly)).join('')+['上班','下班'].filter(action=>!(rows||[]).some(row=>row.date===date&&String(row.actionName).includes(action))).map(action=>'<div class="clock-line muted">'+action+'打卡：尚無紀錄</div>').join('')+'</section>').join('')||'<div class="muted">尚無資料</div>';
       if(!readonly) bindCorrectionActions();
     }
 
@@ -798,7 +802,7 @@
       try {
         const r = await api('getClockHistoryRange', { userId:user.id, startDate, endDate });
         setMsg(qs('#rangeMsg'), r.message || ((r.rows || []).length ? '' : '尚無資料'), !r.ok);
-        renderIntoList('#rangeList', r.rows || [], true);
+        renderIntoList('#rangeList', r.rows || [], false);
 
       } catch(e) {
         setMsg(qs('#rangeMsg'), e.message || '搜尋失敗', true);
@@ -808,7 +812,7 @@
     function bindCorrectionActions(){
       qsa('.js-open-correction').forEach(btn => {
         btn.onclick = () => {
-          const box = qs('#correction-' + btn.dataset.id);
+          const box = btn.closest('.clock-item').querySelector('.correction-box');
           if(!box) return;
           box.classList.toggle('hidden');
         };
@@ -842,6 +846,7 @@
           progress.done('已送出');
           box.querySelector('.js-correct-reason').value = '';
           await loadEditableHistory();
+          if(qs('#rangeList').childElementCount)await searchRange();
         } else {
           progress.fail('送出失敗');
         }
@@ -1133,8 +1138,7 @@
         const r = await api('clock', payload);
         let successMessage = r.message || '';
         if(r && r.ok && Number(r.lateMinutes || 0) > 0){
-          const deductionText = (r.lateDeductionText || '').trim() || ((Number(r.lateDeductionAmount || 0) > 0) ? ('$' + Math.floor(Number(r.lateDeductionAmount || 0))) : '$0');
-          successMessage += '\n本次遲到 ' + Number(r.lateMinutes || 0) + ' 分鐘，預計扣薪 ' + deductionText + '。如有疑義，請提出補登／修正申請。';
+          successMessage += '\n本次遲到 ' + Number(r.lateMinutes || 0) + ' 分鐘，扣款依月結計算。如需更正，請點選「修正打卡時間」。';
         }
         setMsg(msg, friendlyClockMessage(successMessage), !r.ok);
         if(r.ok){

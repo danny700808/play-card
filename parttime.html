@@ -352,9 +352,9 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20261101-month-view-v1"></script>
+  <script src="firebase-client.js?v=20261101-attendance-revision-v1"></script>
 
-  <script src="app.js?v=20261101-month-view-v1"></script>
+  <script src="app.js?v=20261101-attendance-revision-v1"></script>
   <script>
     function localDateInputValue(){
       const now = new Date();
@@ -460,6 +460,8 @@
       const main = qs('#dateStatusMain');
       const note = qs('#dateStatusNote');
       const btn = qs('#submitBtn');
+      const allowed=!!(ctx&&ctx.canRegister);
+      ['fieldHours','fieldNote','submitBtn'].forEach(id=>{const node=qs('#'+id);if(node)node.hidden=!allowed;});
       if(!ctx || !ctx.workDate){
         if(box) box.style.display = 'none';
         if(btn) btn.disabled = false;
@@ -665,6 +667,7 @@
       parttimeMonthControl=EmployeeMonthView.mount('#parttimeHistoryMonth',{onSearch:searchHistoryRange});
       initParttimeExcessModal();
       renderHoursGrid();
+      renderDateContext(null);
       loadPendingItems();
       loadDateContext();
     }

@@ -198,8 +198,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20261101-month-view-v1"></script>
-<script src="app.js?v=20261101-month-view-v1"></script>
+  <script src="firebase-client.js?v=20261101-attendance-revision-v1"></script>
+<script src="app.js?v=20261101-attendance-revision-v1"></script>
 
 <script>
 let historyRows = [];
@@ -1928,6 +1928,17 @@ async function submitLeave(){
     setLocalMsg(clockConflict.message || '此日期已有打卡紀錄，請改用事後補假流程。', true);
     return;
   }
+  let replacementImpact=null;
+  if((leaveSegmentsState||[]).some(seg=>seg.mode==='retro')){
+    try{
+      replacementImpact=await api('getLeaveReplacementImpact',{userId:user.id,reason:qs('#reason').value,segments:collectSegmentPayload()});
+      if(!replacementImpact.ok)throw Error(replacementImpact.message||'無法核對既有出勤');
+      if(replacementImpact.requiresConfirmation){
+        const lines=replacementImpact.rows.map(row=>row.date+'\n'+(row.clocks.length?row.clocks.map(c=>c.action+' '+c.time+(c.replaced?'（核准後由請假取代）':'（保留非請假時段）')).join('\n'):'沒有打卡紀錄')+'\n工讀時數減少 '+row.hoursRemoved+' 小時');
+        if(!confirm('請確認補假影響\n\n'+lines.join('\n\n')+'\n\n主管核准後，請假涵蓋的原打卡及工時將不再顯示或重複計薪，原紀錄保留供查核。送審期間維持原紀錄。\n是否確定送出？'))return;
+      }
+    }catch(e){setLocalMsg('無法確認補假影響：'+(e.message||'請稍後再試'),true);return;}
+  }
   const file = qs('#file').files[0];
   const editingId = qs('#editingRequestId').value;
   const eventMeta = selectedEventChoiceMeta();
@@ -1939,6 +1950,7 @@ async function submitLeave(){
   const attendanceCaseId = retroMeta ? (queryCaseId || `ATTCASE_${String(user.id || 'USER').replace(/[^A-Za-z0-9_-]/g,'_')}_${Date.now()}`) : '';
   const payload = {
     userId:user.id,
+    leaveReplacementAcknowledged:!!replacementImpact,
     reason:qs('#reason').value,
     note:qs('#note').value.trim(),
     bereavementRelation: relation,

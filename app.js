@@ -40,6 +40,7 @@ function requireLogin(){const user=getUser();if(!user){location.href=protectedLo
 async function api(action, payload={}){
   const firebaseOnlyActions = {
     getMonthlySchedule:true,
+    getLeaveReplacementImpact:true,
     login:true,
     forgotPassword:true,
     changePassword:true,
