@@ -122,7 +122,9 @@
     if(!storedProof()){clearTicket();if(await resumeSession())return;showEmail();message('LINE 返回時切換了瀏覽器。請用 Email 完成這次登入；不需要重新綁定。');return;}
     try{
       const result=await call('unifiedLoginStatus',{ticket});
-      if(result.choices.length&&!result.forceEmployeeLink){await choose((result.choices.find(c=>c.id==='employee')||result.choices[0]).id);return;}
+      const employeeChoice=result.choices.find(c=>c.id==='employee');
+      const employeeEntry=typeof global.requestedLoginTarget==='function'&&global.requestedLoginTarget().split(/[?#]/)[0]==='dashboard.html';
+      if(result.choices.length&&!result.forceEmployeeLink&&(!employeeEntry||employeeChoice)){await choose((employeeChoice||result.choices[0]).id);return;}
       showEmail();message('首次使用這個 LINE，請用原本登記的 Email 收驗證碼，確認是您本人。');
     }catch(error){clearTicket();message(error.message,true);}
   }
