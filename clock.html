@@ -95,6 +95,7 @@
     .readonly-line{padding:10px 12px;border:1px solid #e5e7eb;border-radius:12px;background:#f9fafb;font-weight:800;color:#374151}
 
 
+    .clock-network-hint{font-size:14px;line-height:1.5;color:#245f70;padding:7px 9px;background:#edf7f8;border-radius:7px;margin-top:6px}
     .clock-late-badge{background:#fff0ec;color:#b33a2d;border-radius:5px;padding:3px 6px}.clock-day h3{font-size:15px;margin:0 0 5px}.clock-day .clock-item{padding:8px 0}.clock-day .clock-item+.clock-item{border-top:1px solid #e0e9ec}.clock-punch-header{display:flex;align-items:center;justify-content:space-between;gap:8px}.clock-punch-info{display:grid;gap:4px;min-width:0}.clock-punch-info strong{font-size:14px}.clock-punch-meta{display:flex;align-items:center;gap:6px}.clock-day .clock-punch-header>.btn{flex-shrink:0;margin:0}.clock-day.item{margin-bottom:10px}
 </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
@@ -139,6 +140,7 @@
       <input type="hidden" id="selectedScheduleKey" value="">
       <div class="field">
         <label>打卡方式</label>
+        <div id="companyNetworkHint" class="clock-network-hint">上班打卡前，請先連接公司 Wi-Fi。</div>
         <div class="clock-mode-grid">
           <button class="clock-mode-btn" type="button" id="modeStandardBtn" onclick="selectClockMode('標準打卡')">標準打卡</button>
           <button class="clock-mode-btn" type="button" id="modeSpecialBtn" onclick="selectClockMode('特殊打卡')">特殊打卡</button>
@@ -523,7 +525,7 @@
       const suffix = '';
       if(mode === '標準打卡'){
         qs('#clockActionTitle').textContent = '標準打卡';
-        qs('#clockActionNote').textContent = '正常在公司上班使用；上班打卡需連公司 Wi‑Fi，且只能在上班前一小時後打卡。' + suffix;
+        qs('#clockActionNote').textContent = '上班請連接公司 Wi-Fi；下班不限網路。' + suffix;
       }else if(mode === '特殊打卡'){
         qs('#clockActionTitle').textContent = '特殊打卡';
         qs('#clockActionNote').textContent = '有班表但因特殊狀況無法使用標準打卡時使用；送出時需填寫原因並送主管審核。' + suffix;
