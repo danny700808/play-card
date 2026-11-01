@@ -378,6 +378,7 @@
       }
       if(isActive){
         b('','openPaidRenewal()','登記已收款續租');
+        if((c.renewalEntries||[]).some(e=>e.incomeSource==='admin-paid-renewal' && e.note!=='續約 '+e.periods+' 期')) b('secondary','normalizePaidRenewalNotes()','套用標準續約備註');
         b('','sendRenewalReturnLink()','傳送續約 / 退租連結給客人');
         b('secondary','printRentalContract()','預覽 / 列印');
         deleteWholeCase();
@@ -1367,12 +1368,29 @@ ${url}
       const startDate=paidRenewalDateAdd(c.endDate,1),endDate=paidRenewalDateAdd(startDate,periods*periodDays-1);
       const counts=internalRentalCountSnapshot(c);
       if(counts.current===null||!counts.assetName)throw Error('請先補齊內部設備識別與初租前次數。');
-      const entry={recordId:input.recordId,renewalNo:entries.length+1,method:'第 '+(entries.length+1)+' 次續約',periods,startDate,endDate,days:(periods*periodDays)+' 天',rentFee:fee,incomeAmount:fee,incomeRecognizedAt:receivedDate,receivedAt:receivedDate,incomeReceived:true,incomeSource:'admin-paid-renewal',paymentMethod:input.paymentMethod||'未註明',note:'第 '+(entries.length+2)+' 次租用；已收款 '+fee.toLocaleString('zh-TW')+' 元（'+receivedDate+'）',internalRentalCountBefore:counts.current,internalRentalCountAdd:periods,internalRentalCountAfter:counts.current+periods,confirmedAt:now};
+      const entry={recordId:input.recordId,renewalNo:entries.length+1,method:'第 '+(entries.length+1)+' 次續約',periods,startDate,endDate,days:(periods*periodDays)+' 天',rentFee:fee,incomeAmount:fee,incomeRecognizedAt:receivedDate,receivedAt:receivedDate,incomeReceived:true,incomeSource:'admin-paid-renewal',paymentMethod:input.paymentMethod||'未註明',note:'續約 '+periods+' 期',internalRentalCountBefore:counts.current,internalRentalCountAdd:periods,internalRentalCountAfter:counts.current+periods,confirmedAt:now};
       entries.push(entry);
       const total=entries.reduce((sum,e)=>sum+Math.max(0,R.num(e.incomeAmount!==undefined&&e.incomeAmount!==null&&e.incomeAmount!==''?e.incomeAmount:e.rentFee)),0);
       const initial=c.rentalIncomeAmount!==undefined&&c.rentalIncomeAmount!==null&&R.clean(c.rentalIncomeAmount)!==''?Math.max(0,R.num(c.rentalIncomeAmount)):Math.max(0,R.num(c.rentFee)+R.num(c.shippingFee));
       return {status:'租賃中',initialStartDate:c.initialStartDate||c.startDate||c.officialStartDate||'',initialEndDate:c.initialEndDate||c.officialEndDate||c.endDate,endDate,officialEndDate:endDate,currentEndDate:endDate,renewalEntries:entries,renewalIncomeAmountTotal:total,rentalIncomeTotalAmount:initial+total,latestRenewalIncomeAmount:fee,latestRenewalIncomeRecognizedAt:receivedDate,latestRenewalIncomeReceived:true,latestRenewalIncomeSource:'admin-paid-renewal',internalRentalCountRenewalPeriods:counts.renewals+periods,internalRentalCountCurrent:counts.current+periods,internalRentalCountAfter:counts.current+periods,internalRentalCountFormula:counts.before+' + '+counts.initial+' + '+(counts.renewals+periods)+' = '+(counts.current+periods),internalRentalCountUpdatedAt:now,latestRenewalConfirmedAt:now,updatedAtText:now};
     }
+
+    window.normalizePaidRenewalNotes=async function(){
+      const id=R.val('contractId');
+      if(!id)return R.toast('請先選擇契約',false);
+      try{
+        const ref=R.db().collection('rentalContracts').doc(id);
+        await R.db().runTransaction(async tx=>{
+          const snap=await tx.get(ref);if(!snap.exists)throw Error('找不到契約');
+          const c=snap.data(),entries=Array.isArray(c.renewalEntries)?c.renewalEntries:[];let changed=false;
+          const normalized=entries.map(e=>{if(e.incomeSource!=='admin-paid-renewal'||e.note==='續約 '+e.periods+' 期')return e;changed=true;return {...e,note:'續約 '+e.periods+' 期'};});
+          if(changed)tx.set(ref,{renewalEntries:normalized,updatedAtText:R.nowText()},{merge:true});
+        });
+        await loadAll();selected=Object.assign({__id:id},await R.get('rentalContracts',id));renderContract(selected);
+        R.toast('已套用標準續約備註；租期、收款與綁定資料保留，未發送通知。',true);
+      }catch(error){R.toast(error.message||String(error),false);}
+    };
+
     window.openPaidRenewal=async function(){
       try{
         const id=R.val('contractId');if(!id)throw Error('請先選擇正式契約。');
