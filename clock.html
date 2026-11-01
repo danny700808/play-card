@@ -748,7 +748,7 @@
       const {startDate,endDate}=clockMonthControl.get();
       try {
         const r = await api('getClockHistoryRange', { userId:user.id, startDate, endDate, includeMissing:true });
-        setMsg(qs('#rangeMsg'), r.message || ((r.rows || []).length ? '' : '尚無資料'), !r.ok);
+        setMsg(qs('#rangeMsg'), r.ok ? '' : (r.message || '搜尋失敗'), !r.ok);
         renderIntoList('#rangeList', r.rows || [], false);
 
       } catch(e) {

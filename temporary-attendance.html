@@ -26,6 +26,9 @@ body{background:var(--bg);color:var(--ink)}
 .hidden{display:none!important}
 @media(max-width:720px){.grid{grid-template-columns:1fr}.container{padding:10px}.title{font-size:23px}}
 .temporary-date-time{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}.temporary-date-time .field{min-width:0}.temporary-date-time input,.temporary-date-time select{box-sizing:border-box;min-width:0;width:100%;font-size:14px;padding:8px}.temporary-double{display:flex;align-items:center;gap:8px;margin:12px 0;font-size:14px}.temporary-double input{width:auto}.law-hint{font-size:14px;padding:10px 12px;line-height:1.5}.temporary-date-time label{font-size:13px}#requestHours{font-size:13px;color:#375f6c}
+body:is(.personal-embedded,.internal-workspace) .temporary-request-form .field label,body:is(.personal-embedded,.internal-workspace) .temporary-request-form .temporary-double{font-size:13px!important;line-height:1.45!important}
+body:is(.personal-embedded,.internal-workspace) .temporary-request-form :is(select,input:not([type=checkbox]),textarea){font-size:14px!important;min-height:38px!important}
+@media(max-width:500px){body:is(.personal-embedded,.internal-workspace) .temporary-date-time{grid-template-columns:repeat(2,minmax(0,1fr))!important}.temporary-date-time .field:first-child{grid-column:1/-1}}
 </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="internal-workspace.css?v=20261031-mobile1">
@@ -45,7 +48,7 @@ body{background:var(--bg);color:var(--ink)}
   <button class="btn gray hidden" id="retryInitBtn" type="button" onclick="init()">重新讀取</button>
 </div>
 
-<div class="card">
+<div class="card temporary-request-form">
   <div id="analysisBox" class="law-hint hidden"></div>
   <div hidden><div id="employeeNameBox"></div><select id="employeeSelect"></select><div id="employeeTypeBox"></div><input type="hidden" id="employeeType"></div>
   <div class="grid temporary-date-time">
