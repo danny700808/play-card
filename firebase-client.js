@@ -7809,7 +7809,7 @@
         const pendingLeave=(info.pendingLeaveBlocks||[]).some(b=>b.start<=boundary&&b.end>=boundary);
         const pendingTemporary=(info.pendingTemporaryAttendanceBlocks||[]).some(b=>temporaryBlockCoversPunch(b,action,boundary));
         const due=info.date<today||nowMinutes()>=boundary;
-        rows.push({id:'MISSING_'+s.scheduleKey+'_'+(isIn?'IN':'OUT'),date:info.date,time:'',expectedTime,actionName:action,clockType:'標準打卡',missing:true,status:pending?'待主管審核':pendingLeave?'請假待審':pendingTemporary?'臨時出勤待審':info.date<today?'缺卡':'尚未打卡',pendingCorrection:!!pending,canModify:due&&!pending&&!pendingLeave&&!pendingTemporary,scheduleKey:s.scheduleKey,originalScheduleKey:s.originalScheduleKey,scheduleSnapshot:s});
+        rows.push({id:'MISSING_'+s.scheduleKey+'_'+(isIn?'IN':'OUT'),date:info.date,time:'',expectedTime,actionName:action,clockType:'標準打卡',missing:true,status:pending?'待主管審核':pendingLeave?'請假待審':pendingTemporary?'臨時出勤待審':info.date<today?'曠職':'尚未打卡',pendingCorrection:!!pending,canModify:due&&!pending&&!pendingLeave&&!pendingTemporary,scheduleKey:s.scheduleKey,originalScheduleKey:s.originalScheduleKey,scheduleSnapshot:s});
       }
     }
     return rows;

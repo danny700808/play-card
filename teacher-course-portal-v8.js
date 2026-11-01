@@ -674,7 +674,6 @@
             ? '已取消'
             : (status === 'pending_conflict' ? '待補排' : ''))));
     const details = [
-      event.subjectName,
       event.roomName,
       event.lessonPlanLabel,
       stateLabel,
@@ -704,7 +703,7 @@
       groupLabel ? 'group-lesson' : '',
       conflict ? 'conflict-lesson' : ''
     ].filter(Boolean).join(' ');
-    return `<button class="${classes}" type="button" data-event="${escapeHtml(event.id)}"><span class="lesson-time">${escapeHtml(event.startTime)}～${escapeHtml(event.endTime)}${groupLabel ? `<em>${groupLabel}</em>` : ''}</span><strong>${escapeHtml(names)}</strong><small>${escapeHtml(details)}</small></button>`;
+    return `<button class="${classes}" type="button" data-event="${escapeHtml(event.id)}"><span class="lesson-time">${escapeHtml(event.startTime)}～${escapeHtml(event.endTime)}${groupLabel ? `<em>${groupLabel}</em>` : ''}</span><strong class="lesson-student-subject">${escapeHtml(names)}${event.subjectName ? `・${escapeHtml(event.subjectName)}` : ''}</strong><small class="lesson-room-status">${escapeHtml(details)}</small></button>`;
   }
 
   function overlapGroups(rows) {

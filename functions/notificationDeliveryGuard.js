@@ -6,6 +6,7 @@ function millis(v) {
   return typeof v === 'number' ? v : Date.parse(v || '');
 }
 function queueBlockReason(row, now = Date.now()) {
+  if(row.source==='employee-attendance-reminder-v1'&&millis(row.expiresAt)<=now)return '打卡提醒已過時，停止補送。';
   const status = clean(row.status);
   if (/^(已發送|sent|已轉寄Email|已取消|cancelled|canceled|已略過|skipped|deleted)$/i.test(status)) return '此通知已結束，不重新發送。';
   const created = millis(row.createdAt);

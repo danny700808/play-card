@@ -98,6 +98,7 @@
     .clock-day .tag{font-size:12px!important}.clock-day .tag.clock-late-badge{background:#fff0ec!important;color:#b33a2d!important}
     .clock-network-hint{font-size:14px;line-height:1.5;color:#245f70;padding:7px 9px;background:#edf7f8;border-radius:7px;margin-top:6px}
     .clock-late-badge{background:#fff0ec;color:#b33a2d;border-radius:5px;padding:3px 6px}.clock-day h3{font-size:15px;margin:0 0 5px}.clock-day .clock-item{padding:8px 0}.clock-day .clock-item+.clock-item{border-top:1px solid #e0e9ec}.clock-punch-header{display:flex;align-items:center;justify-content:space-between;gap:8px}.clock-punch-info{display:grid;gap:4px;min-width:0}.clock-punch-info strong{font-size:14px}.clock-punch-meta{display:flex;align-items:center;gap:6px}.clock-day .clock-punch-header>.btn{flex-shrink:0;margin:0}.clock-day.item{margin-bottom:10px}
+    .clock-punch-actions{display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;max-width:52%}.clock-punch-actions .btn{margin:0;padding:7px 9px;font-size:12px;min-height:34px}
 </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="internal-workspace.css?v=20261031-mobile1">
@@ -221,7 +222,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20261101-missing-clock-v1"></script>
+  <script src="firebase-client.js?v=20261101-absence-actions-v1"></script>
   <script src="app.js?v=20261101-attendance-revision-v1"></script>
   <script>
 
@@ -732,14 +733,14 @@
       const canFix = !readonly&&(!x.missing||x.canModify||x.pendingCorrection)
         ? (x.pendingCorrection
           ? `<button class="btn mini-btn secondary" type="button" disabled>待主管審核</button>`
-          : `<button class="btn mini-btn js-open-correction" data-id="${escapeHtml(x.id)}">修正打卡時間</button>`)
+          : `<div class="clock-punch-actions"><button class="btn mini-btn js-open-correction" data-id="${escapeHtml(x.id)}">${x.missing?'補打卡':'修正打卡時間'}</button>${x.missing?`<button class="btn mini-btn secondary js-history-leave" data-issue="${escapeHtml(JSON.stringify({...x.scheduleSnapshot,date:x.date}))}">請假</button>`:''}</div>`)
         : '';
       return `
         <div class="clock-item">
           <div class="clock-punch-header">
             <div class="clock-punch-info">
               <strong>${isLate?'<span class="clock-late-badge">遲到</span> ':''}${escapeHtml(x.actionName || '打卡')} ${escapeHtml(x.time||(x.missing?'未打卡':''))}</strong>
-              <div class="clock-punch-meta"><span class="tag ${x.status==='缺卡'?'clock-late-badge':''} ${x.status === '補打卡' ? 'subtle' : ''}">${escapeHtml(isLate?lateText:(x.statusLabel || x.status || ''))}</span>${x.clockType&&x.clockType!=='標準打卡'?'<span>'+escapeHtml(x.clockType)+'</span>':''}</div>
+              <div class="clock-punch-meta"><span class="tag ${x.status==='曠職'?'clock-late-badge':''} ${x.status === '補打卡' ? 'subtle' : ''}">${escapeHtml(isLate?lateText:(x.statusLabel || x.status || ''))}</span>${x.clockType&&x.clockType!=='標準打卡'?'<span>'+escapeHtml(x.clockType)+'</span>':''}</div>
             </div>
             ${canFix}
           </div>
@@ -807,6 +808,9 @@
     }
 
     function bindCorrectionActions(){
+      qsa('.js-history-leave').forEach(btn => {
+        btn.onclick = () => goLeaveForRetro(JSON.parse(btn.dataset.issue || '{}'));
+      });
       qsa('.js-open-correction').forEach(btn => {
         btn.onclick = () => {
           const box = btn.closest('.clock-item').querySelector('.correction-box');

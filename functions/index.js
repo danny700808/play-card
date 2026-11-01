@@ -1419,6 +1419,10 @@ async function processNotificationQueueDoc(docRef, row, options = {}) {
       return {ok:true,skipped:true,queueId,reason:'class-closure'};
     }
     row = closureCheck.row;
+    if(row.source==='employee-attendance-reminder-v1'&&!await employeeAttendance.stillNeeded(row)){
+      await markQueue(docRef,{status:'已取消',cancelReason:'出勤或班表已更新，不再需要打卡提醒。'});
+      return {ok:true,skipped:true,queueId};
+    }
     const result = channel === 'line' ? await sendLinePush(row) : await sendEmailViaSendGrid(row);
     await markQueue(docRef, {
       status: '已發送',
@@ -2429,7 +2433,9 @@ exports.privateContractAssetHttp=onRequest({region:['us-central1', 'asia-east1']
   try{const asset=await privateContractAssets().download(req.query);res.set('Content-Type',asset.contentType);if(asset.contentType==='text/html')res.set('Content-Disposition','attachment; filename="contract.html"');res.status(200).send(asset.buffer);}
   catch(error){res.status(403).send('附件連結無效或已失效。');}
 });
-const employeeDataGateway=require('./employeeDataGateway').createEmployeeDataGateway({db,FieldValue:admin.firestore.FieldValue,Filter:admin.firestore.Filter,queueManager:queueManagerNotification,queueEmail:createNotificationQueue,getManager:getPrimaryManagerLineRecipient,resolveTeacher:async data=>{const portal=require('./coursePortal');return portal.resolveTeacherUtilityEmployee(await portal.requireSession(data,['teacher']));}});
+const employeeAttendance=require('./employeeAttendance').createEmployeeAttendance({db,FieldValue:admin.firestore.FieldValue});
+exports.employeeAttendanceReminders=onSchedule({schedule:'every 1 minutes',timeZone:'Asia/Taipei',region:'asia-east1',timeoutSeconds:120,memory:'512MiB',maxInstances:1},async()=>{const result=await employeeAttendance.run();console.log('employee-attendance-reminders',JSON.stringify(result));if(!result.ok)throw Error('部分員工提醒讀取失敗');return result;});
+const employeeDataGateway=require('./employeeDataGateway').createEmployeeDataGateway({db,FieldValue:admin.firestore.FieldValue,Filter:admin.firestore.Filter,attendance:employeeAttendance,queueManager:queueManagerNotification,queueEmail:createNotificationQueue,getManager:getPrimaryManagerLineRecipient,resolveTeacher:async data=>{const portal=require('./coursePortal');return portal.resolveTeacherUtilityEmployee(await portal.requireSession(data,['teacher']));}});
 exports.employeeSelfService=onCall({region:['us-central1', 'asia-east1'],timeoutSeconds:60},request=>employeeDataGateway.selfService(request.data||{},request));
 exports.employeePrivateDataRead=onCall({region:['us-central1', 'asia-east1'],timeoutSeconds:60},request=>employeeDataGateway.read(request.data||{},request));
 exports.employeeFeatureNotification=onCall({region:['us-central1', 'asia-east1'],timeoutSeconds:60},async request=>{await rateLimitPublicForm(request.rawRequest,'employee-notification-'+clean(request.auth&&request.auth.uid));return employeeDataGateway.notify(request.data||{},request);});

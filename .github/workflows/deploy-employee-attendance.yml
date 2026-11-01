@@ -1,0 +1,91 @@
+name: Deploy Employee Attendance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Share the lock with the broad portal rollout: both can update these functions.
+concurrency:
+  group: deploy-course-portal-auth-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Select supported runtime for this isolated deployment
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          const config=JSON.parse(fs.readFileSync('firebase.json','utf8'));
+          for(const entry of (Array.isArray(config.functions)?config.functions:[config.functions]))entry.runtime='nodejs22';
+          fs.writeFileSync('firebase.json',JSON.stringify(config,null,2));
+          const pkg=JSON.parse(fs.readFileSync('functions/package.json','utf8'));pkg.engines={...pkg.engines,node:'22'};fs.writeFileSync('functions/package.json',JSON.stringify(pkg,null,2));
+          NODE
+      - name: Install Functions dependencies
+        working-directory: functions
+        run: npm ci
+      - name: Verify attendance and reminder services
+        run: |
+          node --check functions/index.js
+          node --check functions/employeeAttendance.js
+          node --test tests/employee-attendance-server.test.cjs tests/private-data-backend.test.cjs
+      - name: Prepare existing Firebase runtime settings
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          SERVICE_ACCOUNT_PATH: ${{ runner.temp }}/youzi-internal-workspace.json
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          for (const key of ['FIREBASE_SERVICE_ACCOUNT','GMAIL_USER','GMAIL_APP_PASSWORD']) if (!process.env[key]) throw new Error('Missing deployment setting: '+key);
+          const credentials = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+          if (credentials.project_id !== 'youzi-c1b74') throw new Error('Unexpected Firebase project');
+          fs.writeFileSync(process.env.SERVICE_ACCOUNT_PATH, JSON.stringify(credentials), {mode:0o600});
+          const settings = {
+            LINE_CHANNEL_ACCESS_TOKEN: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
+            GMAIL_USER: process.env.GMAIL_USER,
+            GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD,
+            EMAIL_FROM: process.env.EMAIL_FROM || '',
+            PUBLIC_WEB_BASE_URL: 'https://danny700808.github.io/play-card/',
+            LINE_LOGIN_CALLBACK_URL: 'https://asia-east1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback'
+          };
+          fs.writeFileSync('functions/.env', Object.entries(settings).map(([key,value])=>key+'='+JSON.stringify(value)).join('\n')+'\n', {mode:0o600});
+          NODE
+      - name: Install pinned Firebase CLI
+        run: npm install --global firebase-tools@15.24.0
+      - name: Deploy attendance services and delivery guards
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-internal-workspace.json
+        run: firebase deploy --project youzi-c1b74 --non-interactive --force --only functions:employeeSelfService,functions:employeeAttendanceReminders,functions:sendNotificationQueueOnCreate,functions:flushNotificationQueue
+      - name: Verify deployed services
+        working-directory: functions
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-internal-workspace.json
+        run: |
+          node <<'NODE'
+          const {GoogleAuth}=require('google-auth-library');
+          (async()=>{const client=await new GoogleAuth({scopes:['https://www.googleapis.com/auth/cloud-platform']}).getClient();
+          for(const [region,names] of [['asia-east1',['employeeSelfService','employeeAttendanceReminders']],['us-central1',['employeeSelfService','sendNotificationQueueOnCreate','flushNotificationQueue']]])for(const name of names){
+            const {data}=await client.request({url:`https://cloudfunctions.googleapis.com/v2/projects/youzi-c1b74/locations/${region}/functions/${name}`});if(data.state!=='ACTIVE')throw Error(name+' not active');console.log(name,region,data.state,data.updateTime);
+          }})().catch(e=>{console.error(e.message);process.exitCode=1;});
+          NODE
+      - name: Remove temporary credentials
+        if: always()
+        env:
+          SERVICE_ACCOUNT_PATH: ${{ runner.temp }}/youzi-internal-workspace.json
+        run: |
+          node -e "const fs=require('fs');for(const file of [process.env.SERVICE_ACCOUNT_PATH,'functions/.env'])if(file&&fs.existsSync(file))fs.unlinkSync(file);"

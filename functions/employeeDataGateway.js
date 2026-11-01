@@ -11,7 +11,7 @@ const pick=(row,fields)=>Object.fromEntries(fields.filter(key=>row[key]!==undefi
 const clean=v=>String(v==null?'':v).trim();
 function owns(row,id,user){if(!row||typeof row!=='object')return false;const primary=clean(row.employeeId||row['員工ID']||row.userId||row.applicantId);if(primary)return primary===user.employeeId;if(id===user.employeeId)return true;return ['email','Email','userEmail','employeeEmail'].some(field=>user.email&&clean(row[field]).toLowerCase()===user.email);}
 function scrub(row){const out={...row};for(const key of Object.keys(out)){if(/password|passwd|密碼|resetToken|passwordHash/i.test(key))delete out[key];}return out;}
-function createEmployeeDataGateway({db,FieldValue,Filter,queueManager,queueEmail,getManager,resolveTeacher}){
+function createEmployeeDataGateway({db,FieldValue,Filter,queueManager,queueEmail,getManager,resolveTeacher,attendance}){
   async function identity(request,data={}){
     if(data.sessionToken&&resolveTeacher){
       if(!GOODS_COLLECTIONS.has(clean(data.collection)))throw new HttpsError('permission-denied','老師課務入口請使用對應的安全服務。');
@@ -66,6 +66,11 @@ function createEmployeeDataGateway({db,FieldValue,Filter,queueManager,queueEmail
   async function selfService(data,request){
     const {account,user}=await identity(request,data),action=clean(data.action),input=data.payload||{};
     if(JSON.stringify(input).length>40000)throw new HttpsError('invalid-argument','資料過大。');
+    if(action==='clock-network'){
+      require('./employeeAttendance').networkCheck(request,'上班打卡');
+      return {ok:true,companyNetwork:true};
+    }
+    if(action==='clock')return attendance.clock(input,request,user);
     if(action==='goods-inquiry'){
       const id=clean(data.id);if(!/^[A-Za-z0-9_-]{1,150}$/.test(id))throw Error('詢價編號不正確。');
       const row=pick(input,['sourceType','itemId','itemName','imageUrl','quantity','needBy','note','websiteProductId','websiteProductUrl','websiteOriginalPrice','websiteVariantSummary','websiteSource']);
