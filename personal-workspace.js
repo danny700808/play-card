@@ -36,7 +36,7 @@
  function bindActions(){document.querySelectorAll('[data-action]').forEach(el=>el.addEventListener('click',()=>open(el.dataset.action)));}
  function body(html){$('personalBody').innerHTML=html;bindActions();}
  function nav(){
-  $('personalName').textContent=state.user.name;$('personalRole').textContent=state.user.identityLabel;
+  $('personalName').textContent=state.user.name;$('personalRole').textContent=state.user.identityType==='external'?'音樂老師':state.user.identityLabel;
   $('personalTabs').innerHTML=model.tabs(state.capabilities).map(([key,label])=>'<button type="button" class="personal-tab '+(tab===key?'active':'')+'" aria-current="'+(tab===key?'page':'false')+'" data-tab="'+key+'"><b aria-hidden="true">'+icons[key]+'</b>'+label+'</button>').join('');
   document.querySelectorAll('[data-tab]').forEach(el=>el.addEventListener('click',()=>selectTab(el.dataset.tab)));
  }
@@ -130,7 +130,7 @@
     const teacherId=id.slice(8),selected=$('previewPerson').selectedOptions[0];
     const result=await managerRead('teacher-read',{teacherId,method:'coursePortalTeacherUtilitySession'});if(version!==previewLoad)return;
     state={user:{...result.user,name:result.user.name==='外聘老師'?selected.textContent.replace('（外聘老師）',''):result.user.name},capabilities:{teacher:true},profile:result.profile};realPreview=true;
-    $('personalName').textContent=state.user.name;$('personalRole').textContent='外聘老師';$('previewLabel').innerHTML='<span>模擬 '+esc(state.user.name)+'</span><span>唯讀檢視</span>';status('');
+    $('personalName').textContent=state.user.name;$('personalRole').textContent='音樂老師';$('previewLabel').innerHTML='<span>模擬 '+esc(state.user.name)+'</span><span>唯讀檢視</span>';status('');
     await PersonalPreviewFrame.open({container:$('personalBody'),page:'teacher-course-portal.html',user:result.user,read:(method,payload)=>managerRead('teacher-read',{teacherId,method,payload})});return;
    }
    const result=await managerRead('preview',{employeeDocId:id});if(version!==previewLoad)return;state=result;realPreview=true;$('previewLabel').innerHTML='<span>模擬 '+esc(state.user.name)+'</span><span>唯讀檢視</span>';document.title=state.user.name+'｜手機檢視';selectTab('attendance');
