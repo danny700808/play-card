@@ -95,7 +95,7 @@
     .readonly-line{padding:10px 12px;border:1px solid #e5e7eb;border-radius:12px;background:#f9fafb;font-weight:800;color:#374151}
 
 
-    .clock-late-badge{background:#fff0ec;color:#b33a2d;border-radius:5px;padding:3px 6px}.clock-day h3{font-size:16px;margin:12px 0 7px}.clock-day .item{margin-bottom:8px}
+    .clock-late-badge{background:#fff0ec;color:#b33a2d;border-radius:5px;padding:3px 6px}.clock-day h3{font-size:15px;margin:0 0 5px}.clock-day .clock-item{padding:8px 0}.clock-day .clock-item+.clock-item{border-top:1px solid #e0e9ec}.clock-punch-header{display:flex;align-items:center;justify-content:space-between;gap:8px}.clock-punch-info{display:grid;gap:4px;min-width:0}.clock-punch-info strong{font-size:14px}.clock-punch-meta{display:flex;align-items:center;gap:6px}.clock-day .clock-punch-header>.btn{flex-shrink:0;margin:0}.clock-day.item{margin-bottom:10px}
 </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="internal-workspace.css?v=20261031-mobile1">
@@ -739,17 +739,18 @@
           : `<button class="btn mini-btn js-open-correction" data-id="${escapeHtml(x.id)}">修正打卡時間</button>`)
         : '';
       return `
-        <div class="item clock-item">
-          <div class="top">
-            <strong>${isLate?'<span class="clock-late-badge">遲到</span> ':''}${escapeHtml(x.actionName || '打卡')} ${escapeHtml(x.time)}</strong>
-            <span class="tag ${x.status === '補打卡' ? 'subtle' : ''}">${escapeHtml(isLate?lateText:(x.statusLabel || x.status || ''))}</span>
+        <div class="clock-item">
+          <div class="clock-punch-header">
+            <div class="clock-punch-info">
+              <strong>${isLate?'<span class="clock-late-badge">遲到</span> ':''}${escapeHtml(x.actionName || '打卡')} ${escapeHtml(x.time)}</strong>
+              <div class="clock-punch-meta"><span class="tag ${x.status === '補打卡' ? 'subtle' : ''}">${escapeHtml(isLate?lateText:(x.statusLabel || x.status || ''))}</span>${x.clockType&&x.clockType!=='標準打卡'?'<span>'+escapeHtml(x.clockType)+'</span>':''}</div>
+            </div>
+            ${canFix}
           </div>
-          <div class="clock-line">${escapeHtml(x.clockType)}</div>
           ${noteText}
           ${originalText}
           ${correctionText}
           ${pendingText}
-          <div class="item-actions">${canFix}</div>
           <div class="correction-box hidden" id="correction-${escapeHtml(x.id)}">
             <div class="readonly-line">原紀錄：${escapeHtml(x.date)} ${escapeHtml((x.time || '').slice(0,5))}｜${escapeHtml(x.actionName)}｜${escapeHtml(x.clockType)}</div>
             <div class="grid" style="margin-top:10px">
@@ -778,7 +779,7 @@
     function renderIntoList(targetSel, rows, readonly){
       const list = qs(targetSel);
       const dates=[...new Set((rows||[]).map(row=>row.date))].sort().reverse();
-      list.innerHTML=dates.map(date=>'<section class="clock-day"><h3>'+escapeHtml(date)+'</h3>'+(rows||[]).filter(row=>row.date===date).sort((a,b)=>String(a.time).localeCompare(String(b.time))).map(row=>renderHistoryRow(row,readonly)).join('')+['上班','下班'].filter(action=>!(rows||[]).some(row=>row.date===date&&String(row.actionName).includes(action))).map(action=>'<div class="clock-line muted">'+action+'打卡：尚無紀錄</div>').join('')+'</section>').join('')||'<div class="muted">尚無資料</div>';
+      list.innerHTML=dates.map(date=>'<section class="item clock-day"><h3>'+escapeHtml(date)+'</h3>'+(rows||[]).filter(row=>row.date===date).sort((a,b)=>String(a.time).localeCompare(String(b.time))).map(row=>renderHistoryRow(row,readonly)).join('')+['上班','下班'].filter(action=>!(rows||[]).some(row=>row.date===date&&String(row.actionName).includes(action))).map(action=>'<div class="clock-line muted">'+action+'打卡：尚無紀錄</div>').join('')+'</section>').join('')||'<div class="muted">尚無資料</div>';
       if(!readonly) bindCorrectionActions();
     }
 

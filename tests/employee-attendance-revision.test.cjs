@@ -49,7 +49,7 @@ test('no shift hides hours and submit; scheduled day restores them',()=>{
 });
 test('every recent punch offers correction and late status is explicit',()=>{
  const {dom,w}=page('clock.html','function renderHistoryRow');w.pendingAutoReturnText=()=>'';w.renderIntoList('#editableList',[{id:'in',date:'2026-10-30',time:'18:10',actionName:'上班打卡',clockType:'標準打卡',status:'遲到',lateMinutes:10,canModify:false},{id:'out',date:'2026-10-30',time:'21:00',actionName:'下班打卡',status:'正常',canModify:false}],false);
- assert.equal(w.qsa('#editableList .js-open-correction').length,2);assert.match(w.qs('#editableList').textContent,/上班打卡 18:10/);assert.match(w.qs('#editableList').textContent,/下班打卡 21:00/);assert(w.qs('.clock-late-badge'));dom.window.close();
+ assert.equal(w.qsa('#editableList .js-open-correction').length,2);assert.equal(w.qsa('#editableList .item').length,1);assert.equal(w.qsa('#editableList .clock-day .clock-item').length,2);assert.match(w.qs('#editableList').textContent,/上班打卡 18:10/);assert.match(w.qs('#editableList').textContent,/下班打卡 21:00/);assert(w.qs('.clock-late-badge'));dom.window.close();
 });
 test('cancelling retroactive leave impact confirmation never submits a leave request',async()=>{
  const {dom,w}=page('leave.html','let leaveSegmentsState');w.testReady();w.validateForm=()=>true;w.validateLeaveClockConflictBeforeSubmit=async()=>({ok:true});const calls=[];w.api=async action=>{calls.push(action);return {ok:true,requiresConfirmation:true,rows:[{date:'2026-10-30',clocks:[{action:'上班打卡',time:'18:00',replaced:true}],hoursRemoved:3}]};};let text='';w.confirm=t=>{text=t;return false;};await w.submitLeave();assert.deepEqual(calls,['getLeaveReplacementImpact']);assert.match(text,/主管核准後/);assert.match(text,/工讀時數減少 3 小時/);dom.window.close();
