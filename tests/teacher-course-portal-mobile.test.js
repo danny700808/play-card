@@ -13,7 +13,7 @@ const css = fs.readFileSync(path.join(root, 'teacher-course-portal-v8.css'), 'ut
 new vm.Script(source, { filename: 'teacher-course-portal-v8.js' });
 
 assert(!html.includes('id="teacherPortalNav"'), '老師頁首不應再有多餘操作列');
-assert(html.indexOf('id="logoutBtn"') > html.indexOf('id="teacherMoreTitle"'), '登出應位於其他選單');
+assert(!html.includes('id="logoutBtn"'), '老師其他選單不再提供登出按鈕');
 assert(!html.includes('teacherWelcomeTitle'), '老師登入後不應再顯示重複的歡迎姓名標題');
 assert(!source.includes('老師課務｜歡迎'), '老師程式不應再動態加入歡迎姓名');
 
@@ -86,7 +86,7 @@ assert(source.includes("'goods-attention'") && source.includes('summary.goodsAtt
 assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop','teacherAnnouncementBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
 assert(html.includes('teacher-daily-reminder.js?v=20260806-daily-reminder-v1'), '每日提醒工具 cache key 過期');
 assert(html.includes('teacher-course-portal-v8.css?v=20261101-lesson-fit-v2'), '老師首頁樣式 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.js?v=20261101-lesson-fit-v2'), '老師首頁程式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.js?v=20261101-teacher-return'), '老師首頁程式 cache key 過期');
 
 const lineLoginIndex = html.indexOf('data-line-login');
 const emailLoginIndex = html.indexOf('data-regular-auth-form');

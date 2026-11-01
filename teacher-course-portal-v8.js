@@ -22,7 +22,6 @@
 
   const bindView = document.getElementById('bindView');
   const appView = document.getElementById('appView');
-  const logoutBtn = document.getElementById('logoutBtn');
   const teacherLoginHeader = document.getElementById('teacherLoginHeader');
 
   let token = '';
@@ -2545,10 +2544,6 @@
   document.getElementById('closeBonusRequest').addEventListener('click',()=>document.getElementById('bonusRequestModal').classList.add('hidden'));
   document.getElementById('bonusRequestForm').addEventListener('submit',async(event)=>{event.preventDefault();const button=event.submitter;loading(button,true,'送出中…');try{const form=event.currentTarget;let photoData='';const file=document.getElementById('bonusPhoto').files[0];if(file){photoData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=reject;reader.readAsDataURL(file);});}const result=await invoke('coursePortalTeacherBonusRequest',{sessionToken:token,studentId:form.elements.studentId.value,studentName:form.elements.studentName.value,description:form.elements.description.value,photoData});document.getElementById('bonusRequestModal').classList.add('hidden');form.reset();toast(result.message||'申請已送出。');}catch(error){toast(error.message,'error');}finally{loading(button,false);}});
 
-  logoutBtn.addEventListener('click', () => {
-    setSession('');
-    location.replace('course-portal.html?method=line&role=teacher');
-  });
   document.getElementById('payrollMonth').min = PAYROLL_MIN_MONTH;
   document.getElementById('payrollMonth').value = payrollMonth;
 

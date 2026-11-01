@@ -106,7 +106,7 @@
       `<h1>${escapeHtml(heading)}</h1>`,
       `<p>${escapeHtml(note)}</p>`,
       busy ? '<p class="teacher-more-auth-boundary-note">不需要重新輸入舊系統帳號。</p>' : '',
-      busy ? '' : '<div class="teacher-more-auth-boundary-actions"><a href="teacher-course-portal.html">返回老師課務</a><button class="secondary" type="button" data-teacher-auth-retry>重新確認</button></div>',
+      busy ? '' : '<div class="teacher-more-auth-boundary-actions"><a href="teacher-course-portal.html">返回</a><button class="secondary" type="button" data-teacher-auth-retry>重新確認</button></div>',
       '</section>'
     ].join('');
   }

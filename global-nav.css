@@ -54,14 +54,14 @@
 .yz-nav-logout:active{background:#a93631!important}
 .yz-nav-btn:focus-visible{outline:3px solid rgba(92,226,175,.35);outline-offset:2px}
 
-/* 老師課務：所有頁面固定使用相同、較精簡的返回／登出列。 */
+/* 老師課務：所有頁面固定使用相同、單一返回列。 */
 .yz-global-nav.yz-teacher-nav{
   position:sticky;
   top:6px;
   width:min(calc(100% - 20px),760px);
   margin:8px auto 0;
   padding:5px;
-  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  grid-template-columns:minmax(0,1fr);
   gap:6px;
   background:rgba(247,250,248,.94);
   border:1px solid #d8e4de;

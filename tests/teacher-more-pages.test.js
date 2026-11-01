@@ -38,7 +38,7 @@ test('teacher other pages share the compact utility theme and explicit auth boun
     assert.match(source, /teacher-more-pages\.css\?v=20260808-announcement-layout-v1/);
     if (file === 'contract.html') {
       assert.match(source, /firebase-functions-compat\.js/);
-      assert.match(source, /teacher-contract\.js\?v=20260919-taiwan-v2/);
+      assert.match(source, /teacher-contract\.js\?v=20261101-teacher-return/);
       assert.doesNotMatch(source, /teacher-more-auth-bridge\.js|blockIfPortalOnly/);
     } else if (file === 'profile.html') {
       assert.match(source, /teacher-more-auth-bridge\.js\?v=[^"\s]+/);
@@ -278,7 +278,7 @@ test('media and inquiry regressions stay fixed', () => {
   assert.match(goods, /teacherRecordCard_\(row,index,true\)/);
 });
 
-test('teacher utility pages share one compact back and logout header', () => {
+test('teacher utility pages share one compact return header', () => {
   [
     'announcements.html', 'task.html', 'teacher-goods.html', 'forms-hub.html',
     'teacher-profile.html', 'contract.html', 'gift-point-card.html',
@@ -288,7 +288,7 @@ test('teacher utility pages share one compact back and logout header', () => {
   });
   const nav = read('global-nav.js');
   const css = read('global-nav.css');
-  assert.match(nav, /back\.textContent='回老師課務'/);
+  assert.match(nav, /back\.textContent='返回'/);
   assert.match(nav, /course-portal\.html\?method=line&role=teacher/);
   assert.match(css, /\.yz-global-nav\.yz-teacher-nav/);
   assert.match(css, /min-height:40px/);

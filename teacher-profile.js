@@ -446,7 +446,6 @@
   }
 
   $('profileBackBtn').addEventListener('click', goBack);
-  $('profileLogoutBtn').addEventListener('click', logout);
   $('profileErrorBackBtn').addEventListener('click', goBack);
   $('profileRetryBtn').addEventListener('click', load);
   $('profileCopyAddress').addEventListener('click', function () { $('profileMailingAddress').value = $('profileHouseholdAddress').value; });

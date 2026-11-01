@@ -52,9 +52,9 @@
     .announcement-toolbar-actions{display:none!important}
 
   </style>
-  <link rel="stylesheet" href="global-nav.css?v=20260808-teacher-nav-v1">
+  <link rel="stylesheet" href="global-nav.css?v=20261101-teacher-return">
   <link rel="stylesheet" href="teacher-more-pages.css?v=20260808-announcement-layout-v1">
-  <script src="teacher-more-auth-bridge.js?v=20261024-session-stability-v1"></script>
+  <script src="teacher-more-auth-bridge.js?v=20261101-teacher-return"></script>
 <script>
     const embeddedTeacher = new URLSearchParams(location.search).get('embedded') === 'teacher';
     if (embeddedTeacher) { const style=document.createElement('style'); style.textContent='.yz-global-nav{display:none!important}body{padding-top:0!important}'; document.head.appendChild(style); }
@@ -117,7 +117,7 @@
     async function loadAnnouncementHistory(){const box=qs('#historyList'); box.innerHTML='<div class="empty">讀取中...</div>'; try{const payload=typeof buildHistoryQueryPayload_==='function'?buildHistoryQueryPayload_({userId:currentUser.id},'#historyStart','#historyEnd'):{userId:currentUser.id,historyMode:'是'}; const r=await api('getAnnouncements',payload); if(!r.ok)throw new Error(r.message||'讀取失敗'); const rows=r.rows||[]; box.innerHTML=rows.length?rows.map(rowHtml).join(''):'<div class="empty">這個日期區間沒有兩週前的公告。</div>'}catch(e){box.innerHTML='<div class="empty">無法讀取歷史公告。</div>'}}
     function initPage(){if(window.YZTeacherMoreAuth&&window.YZTeacherMoreAuth.blockIfPortalOnly({title:'公告'}))return;fillHeader();currentUser=requireLogin();if(!currentUser)return;if(typeof enforceHistoryDateRange_==='function')enforceHistoryDateRange_('#historyStart','#historyEnd');loadAnnouncements();if(typeof activateHistoryColoring_==='function')activateHistoryColoring_('#historyList');}
   </script>
-  <script src="global-nav.js?v=20260808-teacher-nav-v1"></script>
+  <script src="global-nav.js?v=20261101-teacher-return"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
   <script src="internal-workspace-routes.js?v=20261031-mobile1"></script>
   <script src="internal-workspace.js?v=20261031-mobile1"></script>

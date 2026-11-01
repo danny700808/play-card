@@ -155,7 +155,6 @@
   }
 
   $('contractBackBtn').addEventListener('click', () => { global.location.href = 'teacher-course-portal.html'; });
-  $('contractLogoutBtn').addEventListener('click', logout);
   $('contractOpenProfile').addEventListener('click', () => { global.location.href = 'teacher-profile.html'; });
   $('contractClearSign').addEventListener('click', clearSign);
   $('contractRefreshPreview').addEventListener('click', renderPreview);

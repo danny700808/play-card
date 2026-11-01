@@ -6,7 +6,7 @@
   <title>我的資料｜老師課務</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="teacher-more-pages.css?v=20260808-announcement-layout-v1">
-  <link rel="stylesheet" href="global-nav.css?v=20260808-teacher-nav-v1">
+  <link rel="stylesheet" href="global-nav.css?v=20261101-teacher-return">
   <style>
     :root{--profile-green:#1f6b4f;--profile-soft:#edf7f2}
     body{background:#eef4f1;padding-bottom:calc(30px + env(safe-area-inset-bottom))}
@@ -61,13 +61,12 @@
   <script src="config.js?v=20260919-taiwan-storage-v3"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="teacher-more-auth-bridge.js?v=20261024-session-stability-v1"></script>
+  <script src="teacher-more-auth-bridge.js?v=20261101-teacher-return"></script>
 </head>
 <body>
   <main class="teacher-profile-shell">
     <nav class="yz-global-nav yz-teacher-nav" data-yz-teacher-nav aria-label="頁面操作">
-      <button class="yz-nav-btn yz-nav-back" type="button" id="profileBackBtn">回老師課務</button>
-      <button class="yz-nav-btn yz-nav-logout" type="button" id="profileLogoutBtn">登出</button>
+      <button class="yz-nav-btn yz-nav-back" type="button" id="profileBackBtn">返回</button>
     </nav>
 
     <section class="profile-card">
@@ -166,10 +165,10 @@
       <p class="profile-subtitle" id="profileErrorText"></p>
       <div class="form-actions">
         <button class="secondary-action" id="profileRetryBtn" type="button">重新讀取</button>
-        <button class="primary-action" id="profileErrorBackBtn" type="button">回老師課務</button>
+        <button class="primary-action" id="profileErrorBackBtn" type="button">返回</button>
       </div>
     </section>
   </main>
-  <script src="teacher-profile.js?v=20261031-bank-input"></script>
+  <script src="teacher-profile.js?v=20261101-teacher-return"></script>
 </body>
 </html>

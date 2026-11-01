@@ -129,8 +129,9 @@
     var back=nav.querySelector('[data-yz-nav-back]');
     var logout=nav.querySelector('[data-yz-nav-logout]');
     if(teacherPortalNav){
+      if(logout){logout.remove();logout=null;}
       if(back){
-        back.textContent='回老師課務';
+        back.textContent='返回';
         back.addEventListener('click',function(){location.href='teacher-course-portal.html';});
       }
     }else if(file==='portal.html'){

@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
   <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20261101-lesson-fit-v2">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-two-path-v1">
-  <link rel="stylesheet" href="global-nav.css?v=20260808-teacher-nav-v1">
+  <link rel="stylesheet" href="global-nav.css?v=20261101-teacher-return">
 <link rel="stylesheet" href="course-history-view.css?v=20260912-half-hour-v1">
 <style>.teacher-reminder-form{grid-column:1/-1;display:grid;gap:14px}.teacher-reminder-form label{display:flex;align-items:center;gap:10px;min-height:56px;padding:10px;border:1px solid #d6e4dd;border-radius:12px;font-size:16px;line-height:1.6}.teacher-reminder-form input[type=checkbox]{flex:0 0 22px;width:22px;height:22px;margin:0;accent-color:#24735c}.teacher-reminder-form p{margin:0;line-height:1.6}</style>
 <style>.teacher-followup-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,110px));gap:8px;margin-bottom:10px}.teacher-course-app .teacher-followup-tabs .btn{width:100%;min-height:44px;margin:0;padding:8px 10px;background:#fff;color:var(--ink);border:1px solid var(--line);font-size:14px;font-weight:800;line-height:1.4}</style>
@@ -128,7 +128,7 @@
   <div class="teacher-more-backdrop hidden" id="teacherMoreBackdrop" aria-hidden="true">
     <section class="teacher-more-sheet" role="dialog" aria-modal="true" aria-labelledby="teacherMoreTitle">
       <div class="teacher-more-handle" aria-hidden="true"></div>
-      <div class="section-title"><div><h2 id="teacherMoreTitle">其他</h2><p class="muted">較少使用的老師功能集中在這裡。</p></div><button class="btn" id="closeTeacherMore" type="button">關閉</button></div>
+      <div class="section-title"><div><h2 id="teacherMoreTitle">其他</h2><p class="muted">較少使用的老師功能集中在這裡。</p></div><button class="btn" id="closeTeacherMore" type="button">返回</button></div>
       <div class="teacher-more-grid">
         <a href="dashboard.html?preview=employee&amp;ui=20261031-mobile4" id="teacherMobilePreview" hidden style="display:none"><span class="teacher-more-icon">預</span><b>員工手機版檢視</b></a>
         <a href="announcements.html" id="teacherAnnouncementLink" data-teacher-seen-kind="announcements"><span class="teacher-more-icon">告</span><b>公告</b><small>最新公告與通知</small><em class="teacher-item-badge hidden" id="teacherAnnouncementBadge" aria-label="有公告可查看">!</em></a>
@@ -139,7 +139,6 @@
         <a href="contract.html" id="teacherContractLink"><span class="teacher-more-icon">約</span><b>合約</b><small>查看與簽署合約</small><em class="teacher-item-badge hidden" id="teacherContractBadge" aria-label="有待簽合約">!</em></a>
         <a href="#reminders" id="teacherReminderLink"><span class="teacher-more-icon">醒</span><b>提醒設定</b><small>課程與未簽到提醒</small></a>
       </div>
-      <button class="btn teacher-more-logout" id="logoutBtn" type="button">登出</button>
     </section>
   </div>
 
@@ -192,7 +191,7 @@
   <script src="teacher-operation-state.js?v=20260915-teacher-speed-v1"></script>
   <script src="payroll-payout-view.js?v=20261101-weekend-note-v1"></script>
   <script src="class-closure-banner.js?v=20261024-v2"></script>
-  <script src="teacher-course-portal-v8.js?v=20261101-lesson-fit-v2"></script>
+  <script src="teacher-course-portal-v8.js?v=20261101-teacher-return"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="teacher-personal-entry.js?v=20261031-mobile2"></script>
 
