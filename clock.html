@@ -747,7 +747,7 @@
           ${correctionText}
           ${pendingText}
           <div class="correction-box hidden" data-missing="${x.missing?'1':''}" data-schedule="${escapeHtml(JSON.stringify(x.scheduleSnapshot||{}))}" id="correction-${escapeHtml(x.id)}">
-            <div class="readonly-line">原紀錄：${escapeHtml(x.date)} ${escapeHtml((x.time || x.expectedTime || '').slice(0,5))}｜${escapeHtml(x.actionName)}｜${escapeHtml(x.clockType)}</div>
+            <div class="readonly-line">${x.missing?'班表時間':'原紀錄'}：${escapeHtml(x.date)} ${escapeHtml((x.time || x.expectedTime || '').slice(0,5))}｜${escapeHtml(x.actionName)}｜${escapeHtml(x.clockType)}</div>
             <div class="grid" style="margin-top:10px">
               <div class="field">
                 <label>修正日期</label>

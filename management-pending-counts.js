@@ -48,16 +48,17 @@
    const user=root.getUser();if(!user||!root.hasSettingsZoneAccess(user))return;
    status.textContent='待處理數字讀取中…';await root.ensureHrSession(user);
    const roster=await root.api('getEmployeeManagementData',{userId:user.id,statusMode:'all'});if(!roster||roster.ok===false||!Array.isArray(roster.rows))throw Error('人員分類讀取失敗');
-   const request=async(action)=>{const r=await root.api(action,{userId:user.id});if(!r||r.ok===false||!Array.isArray(r.rows||r.list))throw Error(action);return r.rows||r.list;};
+   const request=async(action)=>{const r=await root.api(action,{userId:user.id});if(!r||r.ok===false||!Array.isArray(r.rows||r.list))throw Error(r?.message||action);return r.rows||r.list;};
    const server=async(name)=>{const r=await root.YZProtectedData.call(name,{});if(!Array.isArray(r.rows))throw Error(name);return r.rows;};
    const readCollection=async name=>(await root.firebase.firestore().collection(name).get()).docs.map(d=>({__id:d.id,...d.data()}));
    const rentalSource=async()=>{const [applications,contracts]=await Promise.all([readCollection('rentalApplications'),readCollection('rentalContracts')]);const waiting=new Set(['待審核','待店家確認','待處理','客人已送出','待付款確認','待店家確認成立','customer_submitted','pending_shop_confirm','已簽署','pending']);return applications.map(r=>({...r,caseKey:r.applicationId||r.__id,needsReview:waiting.has(clean(r.status))})).concat(contracts.map(r=>({...r,caseKey:r.applicationId||('contract:'+ (r.contractId||r.__id)),needsReview:waiting.has(clean(r.status))||!!(r.pendingRenewal&&Object.keys(r.pendingRenewal).length)})));};
-   const results=await Promise.allSettled([request('getPendingLeaveApprovals'),request('getPendingClockCorrections'),root.firebase.firestore().collection('temporaryAttendanceRequests').get().then(s=>s.docs.map(d=>({__id:d.id,...d.data()}))),server('personDataAdminProfileChangeInventory'),request('getPendingRegistrations'),server('personDataAdminContractInventory'),readCollection('certificateApplications'),request('getTeacherApplicationsAdmin'),rentalSource(),readCollection('teacherGoodsInquiry')]);
-   const sources=Object.fromEntries(kinds.concat(['certificate','application','rental','goods']).map((kind,i)=>[kind,results[i].status==='fulfilled'?results[i].value:null]));
-   const counts=countsFor(sources,roster.rows,root.PersonnelApprovalScope);
-   for(const [id,count] of Object.entries(counts))root.InternalManagementTree.setNodeCount(id,count);
-   root.InternalManagementTree.setCount('badge-approval',counts.approvals);
-   const failed=results.some(r=>r.status==='rejected')||counts.__failed;status.textContent=failed?'部分待處理數字未能讀取，請重新整理。':'';last=Date.now();
+   const jobs=[request('getPendingLeaveApprovals'),request('getPendingClockCorrections'),root.firebase.firestore().collection('temporaryAttendanceRequests').get().then(s=>s.docs.map(d=>({__id:d.id,...d.data()}))),server('personDataAdminProfileChangeInventory'),request('getPendingRegistrations'),server('personDataAdminContractInventory'),readCollection('certificateApplications'),request('getTeacherApplicationsAdmin'),rentalSource(),readCollection('teacherGoodsInquiry')];
+   const allKinds=kinds.concat(['certificate','application','rental','goods']),labels=['請假','打卡','臨時出勤','個資','入職','老師合約','證明','應聘','租賃','老師詢價'];
+   const sources=Object.fromEntries(allKinds.map(kind=>[kind,null]));
+   const paintCounts=()=>{const counts=countsFor(sources,roster.rows,root.PersonnelApprovalScope);for(const[id,count]of Object.entries(counts))root.InternalManagementTree.setNodeCount(id,count);root.InternalManagementTree.setCount('badge-approval',counts.approvals);};
+   const results=await Promise.allSettled(jobs.map((job,i)=>job.then(rows=>{sources[allKinds[i]]=rows;paintCounts();return rows;})));
+   paintCounts();const errors=results.flatMap((r,i)=>r.status==='rejected'?[labels[i]+'：'+(r.reason?.message||'讀取失敗')]:[]);
+   status.textContent=errors.length?'待審數字未確認｜'+errors.join('；'):'';last=Date.now();
   }catch(e){status.textContent='待處理數字讀取失敗，請重新整理。';for(const id of ['people','staff','parttime','external'])root.InternalManagementTree.setNodeCount(id,null);}finally{busy=false;}
  }
  root.PersonalPendingCounts={refresh};root.addEventListener('load',refresh);root.addEventListener('focus',()=>{if(Date.now()-last>30000)refresh();});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-last>30000)refresh();});
