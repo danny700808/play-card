@@ -197,9 +197,9 @@ service cloud.firestore {
       allow read: if collectionId == 'rentalTemplateSettings';
     }
     match /clockRecords/{documentId} {
-      allow create: if consistentOwner(request.resource.data) && noReviewFields(request.resource.data)
-        && request.resource.data.get('status', '') in ['正常','遲到','早退','補打卡']
-        && request.resource.data.get('clockType','標準打卡') in ['標準打卡','補打卡'];
+      // Employee punches must pass server identity/time/company-network checks.
+      // Approved corrections retain the existing manager-only write rule above.
+      allow create: if false;
     }
     match /parttimeRecords/{documentId} {
       allow create: if consistentOwner(request.resource.data) && noReviewFields(request.resource.data) && ordinaryParttime(request.resource.data);

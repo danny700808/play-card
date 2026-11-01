@@ -43,9 +43,10 @@ test('normal self-service requests work but cannot target another employee or se
   await assertFails(setDoc(doc(staff.firestore(),'parttimeRecords/self-approved'),{employeeId:'e1',status:'已核准'}));
   await assertSucceeds(updateDoc(request,{status:'已刪除'}));
 });
-test('normal clock transaction can inspect its new document and atomically create it',async()=>{
+test('employees cannot bypass server clock checks via direct Firestore writes',async()=>{
   const database=staff.firestore(),target=doc(database,'clockRecords/CLK_e1_20260914');
-  await assertSucceeds(runTransaction(database,async tx=>{const old=await tx.get(target);assert.equal(old.exists(),false);tx.set(target,{employeeId:'e1',status:'正常',clockType:'標準打卡'});}));
+  await assertFails(runTransaction(database,async tx=>{const old=await tx.get(target);assert.equal(old.exists(),false);tx.set(target,{employeeId:'e1',status:'正常',clockType:'標準打卡'});}));
+  await assertSucceeds(setDoc(doc(manager.firestore(),'clockRecords/CLK_e1_20260914'),{employeeId:'e1',status:'正常',clockType:'標準打卡'}));
   await assertFails(getDoc(doc(other.firestore(),'clockRecords/CLK_e1_20260914')));
 });
 test('the actual browser compatibility wrapper preserves SDK transactions and private query results',async()=>{
@@ -53,7 +54,7 @@ test('the actual browser compatibility wrapper preserves SDK transactions and pr
   const raw=staff.firestore(),calls=[],window={APP_CONFIG:{FIREBASE_CONFIG:{projectId:'demo-youzi-security'}},YZFirebase:{handleApi:async()=>null},localStorage:{getItem:()=>null},firebase:{auth:()=>({authStateReady:async()=>{},currentUser:{uid:'staff',getIdToken:async()=>'test',getIdTokenResult:async()=>({claims:own})}}),firestore:{Timestamp:require('firebase/compat/app').default.firestore.Timestamp}}};
   vm.runInNewContext('// Protected legacy employee reads:'+source,{window,setTimeout,clearTimeout,AbortController,fetch:async(url,options)=>{calls.push(JSON.parse(options.body));return {ok:true,json:async()=>({result:{rows:[{id:'later',data:{employeeId:'e1',createdAt:{_seconds:20,_nanoseconds:0}}},{id:'earlier',data:{employeeId:'e1',createdAt:{_seconds:10,_nanoseconds:0}}}]}})};}});
   const wrapped=window.YZProtectedData.wrap(raw),target=wrapped.collection('clockRecords').doc('CLK_proxy');
-  await assertSucceeds(wrapped.runTransaction(async tx=>{const old=await tx.get(target);assert.equal(old.exists,false);tx.set(target,{employeeId:'e1',status:'正常',clockType:'標準打卡'});}));
+  await assertFails(wrapped.runTransaction(async tx=>{const old=await tx.get(target);assert.equal(old.exists,false);tx.set(target,{employeeId:'e1',status:'正常',clockType:'標準打卡'});}));
   const rows=await wrapped.collection('clockRecords').where('employeeId','==','e1').orderBy('createdAt','desc').limit(1).get();assert.equal(rows.docs[0].id,'later');assert.equal(rows.docs[0].data().createdAt.toMillis(),20000);assert.equal(calls.length,1);
 });
 test('ordinary parttime submissions can be corrected without acquiring approval powers',async()=>{

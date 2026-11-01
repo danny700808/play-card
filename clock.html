@@ -142,7 +142,7 @@
       <input type="hidden" id="selectedScheduleKey" value="">
       <div class="field">
         <label>打卡方式</label>
-        <div id="companyNetworkHint" class="clock-network-hint">上班打卡前，請先連接公司 Wi-Fi。</div>
+        <div id="companyNetworkHint" class="clock-network-hint">上班打卡必須連接公司 Wi-Fi；下班不限網路。</div>
         <div class="clock-mode-grid">
           <button class="clock-mode-btn" type="button" id="modeStandardBtn" onclick="selectClockMode('標準打卡')">標準打卡</button>
           <button class="clock-mode-btn" type="button" id="modeSpecialBtn" onclick="selectClockMode('特殊打卡')">特殊打卡</button>
@@ -222,7 +222,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20261101-absence-actions-v1"></script>
+  <script src="firebase-client.js?v=20261101-protected-clock-v1"></script>
   <script src="app.js?v=20261101-attendance-revision-v1"></script>
   <script>
 
@@ -527,7 +527,7 @@
       const suffix = '';
       if(mode === '標準打卡'){
         qs('#clockActionTitle').textContent = '標準打卡';
-        qs('#clockActionNote').textContent = '上班請連接公司 Wi-Fi；下班不限網路。' + suffix;
+        qs('#clockActionNote').textContent = '上班必須連接公司 Wi-Fi；下班不限網路。' + suffix;
       }else if(mode === '特殊打卡'){
         qs('#clockActionTitle').textContent = '特殊打卡';
         qs('#clockActionNote').textContent = '有班表但因特殊狀況無法使用標準打卡時使用；送出時需填寫原因並送主管審核。' + suffix;
@@ -1013,7 +1013,7 @@
     }
 
     function needCompanyIp(payload){
-      return payload && payload.clockType === '標準打卡' && String(payload.actionName || '').indexOf('上班') >= 0;
+      return payload && String(payload.actionName || '').indexOf('上班') >= 0;
     }
 
     async function getPublicIpCached(timeoutMs, forceRefresh){
@@ -1107,21 +1107,10 @@
         progress.set(24, '確認班表中');
 
         if(needCompanyIp(payload)){
-          progress.set(36, '偵測公司 Wi‑Fi IP中');
-          setMsg(msg, '正在偵測公司 Wi‑Fi IP...');
-          payload.clientIp = await getPublicIpCached(2800);
-          const allowedIp = companyClockIp();
-          if(!payload.clientIp){
-            progress.fail('打卡失敗');
-            setMsg(msg, '無法取得外網 IP，請確認已連上公司 Wi‑Fi 後再試。', true);
-            return;
-          }
-          if(allowedIp && payload.clientIp !== allowedIp){
-            progress.fail('打卡失敗');
-            setMsg(msg, '目前偵測外網 IP：' + payload.clientIp + '，不是公司指定 Wi‑Fi IP（' + allowedIp + '），無法上班打卡。', true);
-            return;
-          }
-          setMsg(msg, '目前偵測外網 IP：' + payload.clientIp + '，正在寫入打卡資料...');
+          progress.set(36, '確認公司 Wi-Fi');
+          setMsg(msg, '正在確認公司 Wi-Fi…');
+          await YZProtectedData.call('employeeSelfService',{action:'clock-network'});
+          setMsg(msg, '已確認公司 Wi-Fi，正在打卡…');
         }else if(mode === '標準打卡' && String(actionName || '').indexOf('下班') >= 0){
           // 下班不限制公司 Wi‑Fi，但仍保留當下外網 IP，供主管日後查核來源。
           progress.set(36, '記錄下班網路中');
