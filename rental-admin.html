@@ -377,6 +377,7 @@
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
       if(isActive){
+        b('','openPaidRenewal()','登記已收款續租');
         b('','sendRenewalReturnLink()','傳送續約 / 退租連結給客人');
         b('secondary','printRentalContract()','預覽 / 列印');
         deleteWholeCase();
@@ -1344,6 +1345,56 @@ ${url}
         selected=Object.assign({__id:id}, updated||{});
         renderContract(selected);
       }catch(e){ R.toast(e.message||String(e), false); }
+    };
+
+
+    function paidRenewalDateAdd(day,days){
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(day))throw Error('日期格式不正確');
+      const d=new Date(day+'T00:00:00Z');
+      if(!Number.isFinite(d.getTime())||d.toISOString().slice(0,10)!==day)throw Error('日期不正確');
+      d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);
+    }
+    function paidRenewalPatch(c,input,now){
+      const entries=Array.isArray(c.renewalEntries)?c.renewalEntries.slice():[];
+      if(entries.some(e=>e.recordId===input.recordId))return null;
+      if(!['租賃中','租用中','已成立','active','待配送 / 待安裝','到期提醒中'].includes(c.status)||c.pendingRenewal?.startDate||c.returnRequest?.status)throw Error('案件狀態已變更，請重新開啟契約。');
+      if(c.endDate!==input.expectedEnd)throw Error('租期已更新，請重新開啟，避免重複登記。');
+      const periods=Number(input.periods),fee=Number(input.fee),periodDays=Number(c.periodDays||90);
+      if(!Number.isInteger(periods)||periods<1||periods>3||!Number.isFinite(fee)||fee<=0||!Number.isInteger(periodDays)||periodDays<1)throw Error('請填寫有效期數及已收金額。');
+      const receivedDate=paidRenewalDateAdd(input.receivedDate,0);
+      const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+      if(receivedDate>today)throw Error('收款日不可晚於今天。');
+      const startDate=paidRenewalDateAdd(c.endDate,1),endDate=paidRenewalDateAdd(startDate,periods*periodDays-1);
+      const counts=internalRentalCountSnapshot(c);
+      if(counts.current===null||!counts.assetName)throw Error('請先補齊內部設備識別與初租前次數。');
+      const entry={recordId:input.recordId,renewalNo:entries.length+1,method:'第 '+(entries.length+1)+' 次續約',periods,startDate,endDate,days:(periods*periodDays)+' 天',rentFee:fee,incomeAmount:fee,incomeRecognizedAt:receivedDate,receivedAt:receivedDate,incomeReceived:true,incomeSource:'admin-paid-renewal',paymentMethod:input.paymentMethod||'未註明',note:'第 '+(entries.length+2)+' 次租用；已收款 '+fee.toLocaleString('zh-TW')+' 元（'+receivedDate+'）',internalRentalCountBefore:counts.current,internalRentalCountAdd:periods,internalRentalCountAfter:counts.current+periods,confirmedAt:now};
+      entries.push(entry);
+      const total=entries.reduce((sum,e)=>sum+Math.max(0,R.num(e.incomeAmount!==undefined&&e.incomeAmount!==null&&e.incomeAmount!==''?e.incomeAmount:e.rentFee)),0);
+      const initial=c.rentalIncomeAmount!==undefined&&c.rentalIncomeAmount!==null&&R.clean(c.rentalIncomeAmount)!==''?Math.max(0,R.num(c.rentalIncomeAmount)):Math.max(0,R.num(c.rentFee)+R.num(c.shippingFee));
+      return {status:'租賃中',initialStartDate:c.initialStartDate||c.startDate||c.officialStartDate||'',initialEndDate:c.initialEndDate||c.officialEndDate||c.endDate,endDate,officialEndDate:endDate,currentEndDate:endDate,renewalEntries:entries,renewalIncomeAmountTotal:total,rentalIncomeTotalAmount:initial+total,latestRenewalIncomeAmount:fee,latestRenewalIncomeRecognizedAt:receivedDate,latestRenewalIncomeReceived:true,latestRenewalIncomeSource:'admin-paid-renewal',internalRentalCountRenewalPeriods:counts.renewals+periods,internalRentalCountCurrent:counts.current+periods,internalRentalCountAfter:counts.current+periods,internalRentalCountFormula:counts.before+' + '+counts.initial+' + '+(counts.renewals+periods)+' = '+(counts.current+periods),internalRentalCountUpdatedAt:now,latestRenewalConfirmedAt:now,updatedAtText:now};
+    }
+    window.openPaidRenewal=async function(){
+      try{
+        const id=R.val('contractId');if(!id)throw Error('請先選擇正式契約。');
+        const c=await R.get('rentalContracts',id);if(!c)throw Error('找不到契約。');
+        document.getElementById('paidRenewalDialog')?.remove();
+        const dialog=document.createElement('dialog');dialog.id='paidRenewalDialog';dialog.style.cssText='border:1px solid #ccd7d1;border-radius:18px;padding:24px;max-width:520px;width:90vw';
+        const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+        dialog.innerHTML='<h2>登記已收款續租</h2><p>'+R.esc(c.customerName)+'｜原到期日 '+R.esc(c.endDate)+'</p><p>保留原契約，新增續租與收入紀錄。此操作不發送 LINE 或 Email。</p><label>續租期數<select id="paidPeriods"><option value="1">1 期</option><option value="2">2 期</option><option value="3">3 期</option></select></label><p id="paidDates"></p><label>已收金額<input id="paidAmount" type="number" min="1" required></label><label>收款日期<input id="paidReceivedDate" type="date" value="'+today+'" max="'+today+'" required></label><label>付款方式<select id="paidMethod"><option>未註明</option><option>匯款</option><option>現金</option><option>其他</option></select></label><p id="paidError" role="alert"></p><div class="btn-row"><button type="button" class="btn" id="paidSave">儲存已收款續租紀錄</button><button type="button" class="btn secondary" id="paidCancel">取消</button></div>';
+        document.body.appendChild(dialog);
+        const q=s=>dialog.querySelector(s),recordId=crypto.randomUUID();
+        function preview(){const start=paidRenewalDateAdd(c.endDate,1),days=Number(q('#paidPeriods').value)*Number(c.periodDays||90);q('#paidDates').textContent='續租期間：'+start+' ～ '+paidRenewalDateAdd(start,days-1)+'（'+days+' 天）';}
+        q('#paidPeriods').onchange=preview;preview();q('#paidCancel').onclick=()=>dialog.close();
+        q('#paidSave').onclick=async()=>{
+          const button=q('#paidSave');if(button.disabled)return;button.disabled=true;q('#paidCancel').disabled=true;dialog.oncancel=e=>e.preventDefault();
+          try{
+            const input={recordId,expectedEnd:c.endDate,periods:q('#paidPeriods').value,fee:q('#paidAmount').value,receivedDate:q('#paidReceivedDate').value,paymentMethod:q('#paidMethod').value};
+            const ref=R.db().collection('rentalContracts').doc(id);
+            await R.db().runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw Error('契約不存在');const patch=paidRenewalPatch(snap.data(),input,R.nowText());if(patch)tx.set(ref,patch,{merge:true});});
+            dialog.close();await loadAll();selected=Object.assign({__id:id},await R.get('rentalContracts',id));renderContract(selected);R.toast('已登記續租及收款，狀態已改為租賃中；未發送通知。',true);
+          }catch(error){q('#paidError').textContent=error.message||String(error);}finally{button.disabled=false;q('#paidCancel').disabled=false;dialog.oncancel=null;}
+        };dialog.showModal();
+      }catch(error){R.toast(error.message||String(error),false);}
     };
 
     window.completeReturn=async function(){ const id=R.val('contractId'); if(!id) return R.toast('請先儲存合約。', false); if(!confirm('確認已收回設備並完成退租？')) return; if(!confirm('再次確認：此操作會將契約標記為已退租，確定繼續？')) return; try{ await R.call('rentalCompleteReturnHttp',{contractId:id}); R.toast('已完成退租並通知客人。', true); await loadAll(); }catch(e){ R.toast(e.message||String(e), false); } };
