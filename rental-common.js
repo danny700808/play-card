@@ -48,6 +48,7 @@
     const text=await res.text(); let json={};
     try{ json=text?JSON.parse(text):{}; }catch(e){ json={ok:false,message:text||'回傳不是 JSON'}; }
     if(!res.ok || json.ok===false) throw new Error(json.message || json.error || ('API '+name+' '+res.status));
+    if(name==='rentalSignContractHttp'&&payload&&payload.customerIdNumber){rentalIdentityValues.set(clean(payload.contractId||payload.id)+'|'+clean(payload.token||payload.signToken),normalizeRentalIdentity(payload.customerIdNumber));}
     return json;
   }
   const managerReadCollections = new Set(['rentalApplications','rentalContracts']);
