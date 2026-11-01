@@ -557,6 +557,20 @@
     for(let i=0;i<6;i+=2){const sum=scores[i]+scores[i+1];widths.push(pairWidth*scores[i]/sum,pairWidth*scores[i+1]/sum);}
     widths.push(widths[4]);return widths;
   }
+  function fitLessonNames(grid) {
+    if (!grid) return;
+    const lines = [...grid.querySelectorAll('.lesson-student-subject')];
+    lines.forEach(line => { line.style.fontSize = '12px'; });
+    const sizes = lines.map(line => {
+      const text = line.firstElementChild;
+      const width = text ? text.getBoundingClientRect().width : 0;
+      return width > 0 && line.clientWidth > 0
+        ? Math.min(12, Math.floor(1200 * Math.max(1, line.clientWidth - 1) / width) / 100)
+        : 12;
+    });
+    lines.forEach((line, index) => { line.style.fontSize = `${sizes[index]}px`; });
+  }
+
   function updateWeekViewport() {
     const grid = document.getElementById('weekGrid');
     const scroll = grid && grid.parentElement;
@@ -566,6 +580,7 @@
         grid.style.removeProperty('--teacher-day-width');
         grid.style.removeProperty('--teacher-time-column');
         grid.style.removeProperty('grid-template-columns');
+        fitLessonNames(grid);
       }
       return;
     }
@@ -578,6 +593,7 @@
     grid.style.setProperty('--teacher-day-width', `${dayWidth}px`);
     const weights = JSON.parse(grid.dataset.dayWeights || '[1,1,1,1,1,1,1]');
     grid.style.gridTemplateColumns = `${stickyWidth}px ${balancedDayWidths(weights, dayWidth*2).map(width=>`${width}px`).join(' ')}`;
+    fitLessonNames(grid);
   }
 
   let weekGesture = null;
@@ -679,6 +695,8 @@
       stateLabel,
       status === 'pending_conflict' ? event.pendingReason : ''
     ].filter(Boolean).join('・');
+    const roomCharacters = Array.from(clean(event.roomName));
+    const shortRoom = roomCharacters.slice(0, 5).join('') + (roomCharacters.length > 5 ? '…' : '');
     const portalAction = clean(event.portalAction);
     const eventType = clean(event.type).toLowerCase();
     const visualType = (
@@ -703,7 +721,7 @@
       groupLabel ? 'group-lesson' : '',
       conflict ? 'conflict-lesson' : ''
     ].filter(Boolean).join(' ');
-    return `<button class="${classes}" type="button" data-event="${escapeHtml(event.id)}"><span class="lesson-time">${escapeHtml(event.startTime)}～${escapeHtml(event.endTime)}${groupLabel ? `<em>${groupLabel}</em>` : ''}</span><strong class="lesson-student-subject">${escapeHtml(names)}${event.subjectName ? `・${escapeHtml(event.subjectName)}` : ''}</strong><small class="lesson-room-status">${escapeHtml(details)}</small></button>`;
+    return `<button class="${classes}" type="button" data-event="${escapeHtml(event.id)}"><span class="lesson-time">${escapeHtml(event.startTime)}～${escapeHtml(event.endTime)}${groupLabel ? `<em>${groupLabel}</em>` : ''}</span><strong class="lesson-student-subject"><span>${escapeHtml(names)}${event.subjectName ? `・${escapeHtml(event.subjectName)}` : ''}</span></strong><small class="lesson-room-status" title="${escapeHtml(details)}"><span class="lesson-room-name">${escapeHtml(shortRoom)}</span>${stateLabel ? `<span class="lesson-state">${shortRoom ? '・' : ''}${escapeHtml(stateLabel)}</span>` : ''}</small></button>`;
   }
 
   function overlapGroups(rows) {

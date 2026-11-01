@@ -45,11 +45,12 @@ test('signed-in lesson cards show only signed-in status regardless of duration',
   const context = {clean:v=>String(v||''),teacherOperations:{busy:()=>false},operationKey:()=>'',escapeHtml:v=>String(v||'')};
   vm.createContext(context); vm.runInContext(fn+';this.render=lessonCard',context);
   for (const status of ['attended','checked_in','present']) for (const duration of [30,60,90]) {
-    const event = {id:'a',status,studentNames:['學生'],subjectName:'木吉他',roomName:'教室三',attendanceDurationMinutes:duration,attendanceDeductUnits:duration/30};
+    const event = {id:'a',status,studentNames:['學生'],subjectName:'木吉他',roomName:'5號鋼琴&表演教室',attendanceDurationMinutes:duration,attendanceDeductUnits:duration/30};
     const before = JSON.stringify(event), html = context.render(event,false);
     assert.match(html,/已簽到/); assert.doesNotMatch(html,/已上課|分鐘|扣\d+格/);
     assert.equal(JSON.stringify(event),before);
-    assert.match(html,/<strong class="lesson-student-subject">學生・木吉他<\/strong><small class="lesson-room-status">教室三/);
+    assert.match(html,/<strong class="lesson-student-subject"><span>學生・木吉他<\/span><\/strong>/);
+    assert.match(html,/<span class="lesson-room-name">5號鋼琴&…<\/span><span class="lesson-state">・已簽到<\/span>/);
   }
   for (const [status,label] of [['leave','請假'],['absent','曠課'],['cancelled','已取消']])
     assert.ok(context.render({status},false).includes(label));
