@@ -7533,10 +7533,10 @@
   }
   async function effectiveScheduleInfo(employeeId,dateKey,options){
     options=options||{};
-    const employee=await activeEmployeeMaster(employeeId);
+    const employee=options.employee||await activeEmployeeMaster(employeeId);
     if(!employee)return{ok:true,employeeId,date:dateKey,hasSchedule:false,okToClock:false,originalSchedules:[],schedules:[],schedule:null,scheduleText:'',allowedClockTypes:[],message:'這個人員主檔不存在或未啟用，不會讀取舊班表。',clockRecords:[],temporaryAttendanceBlocks:[],attendanceFlowVersion:VERSION};
-    const base=await baseScheduleInfo(employeeId,dateKey); const rawSchedules=(base.schedules||[]).filter(s=>Number.isFinite(minutes(s.startTime))&&Number.isFinite(minutes(s.endTime))&&minutes(s.endTime)>minutes(s.startTime));
-    let leaveRows=await rowsByEmployee('leaveRequests',employeeId).catch(()=>[]);
+    const base=options.base||await baseScheduleInfo(employeeId,dateKey); const rawSchedules=(base.schedules||[]).filter(s=>Number.isFinite(minutes(s.startTime))&&Number.isFinite(minutes(s.endTime))&&minutes(s.endTime)>minutes(s.startTime));
+    let leaveRows=options.leaveRows||await rowsByEmployee('leaveRequests',employeeId).catch(()=>[]);
     const leaves=leaveRows.map(normalizeLeave);
     const requested=leaveIntervalsForDate(leaves.filter(l=>isActiveRow(l.raw)),dateKey);
     if(Array.isArray(options.additionalApprovedLeaves)) options.additionalApprovedLeaves.forEach(l=>leaves.push(Object.assign({},l&&l.segments?l:normalizeLeave(l),{status:APPROVED})));
@@ -7549,7 +7549,7 @@
       pieces.forEach((p,i)=>schedules.push(decorateEffectiveSchedule(raw,dateKey,p[0],p[1],i,pieces.length,blocks,pending)));
     });
     schedules.sort((a,b)=>minutes(a.startTime)-minutes(b.startTime)||minutes(a.endTime)-minutes(b.endTime));
-    let records=[],temporaryBlocks=[]; if(options.includeClockState!==false){ const attendanceRows=await Promise.all([clockRows(employeeId,dateKey),rowsByEmployee('temporaryAttendanceRequests',employeeId).catch(()=>[])]); records=attendanceRows[0]; temporaryBlocks=temporaryAttendanceBlocksForDate(attendanceRows[1],dateKey); const covered=leaveCoveredClockIds({fullyCoveredSchedules:fullyCovered,originalSchedules:rawSchedules,clockRecords:records}); assignRecords(schedules,records.filter(r=>!isIndependentTemporaryClock(r)&&!covered.has(r.id))); const approvedTemporary=temporaryBlocks.filter(r=>r.status===APPROVED),pendingTemporary=temporaryBlocks.filter(r=>r.status===PENDING); schedules.forEach(s=>{ const start=minutes(s.startTime),end=minutes(s.endTime); s.approvedTemporaryAttendanceBlocks=approvedTemporary.filter(r=>rangesOverlap(start,end,r.start,r.end)); s.pendingTemporaryAttendanceBlocks=pendingTemporary.filter(r=>rangesOverlap(start,end,r.start,r.end)); s.attendanceSatisfiedByTemporary=intervalCoveredByBlocks(start,end,s.approvedTemporaryAttendanceBlocks); s.attendancePendingTemporary=!s.attendanceSatisfiedByTemporary&&intervalCoveredByBlocks(start,end,s.approvedTemporaryAttendanceBlocks.concat(s.pendingTemporaryAttendanceBlocks)); if(s.attendanceSatisfiedByTemporary){s.canClockInNow=false;s.canClockOutNow=false;s.statusText='此班段已有另筆核准臨時出勤紀錄，不列為缺勤。';}else if(s.attendancePendingTemporary)s.statusText+='｜另有臨時出勤待審核'; }); }
+    let records=[],temporaryBlocks=[]; if(options.includeClockState!==false){ const attendanceRows=await Promise.all([options.clockRecords?options.clockRecords.filter(r=>r.date===dateKey):clockRows(employeeId,dateKey),options.temporaryRows||rowsByEmployee('temporaryAttendanceRequests',employeeId).catch(()=>[])]); records=attendanceRows[0]; temporaryBlocks=temporaryAttendanceBlocksForDate(attendanceRows[1],dateKey); const covered=leaveCoveredClockIds({fullyCoveredSchedules:fullyCovered,originalSchedules:rawSchedules,clockRecords:records}); assignRecords(schedules,records.filter(r=>!isIndependentTemporaryClock(r)&&!covered.has(r.id))); const approvedTemporary=temporaryBlocks.filter(r=>r.status===APPROVED),pendingTemporary=temporaryBlocks.filter(r=>r.status===PENDING); schedules.forEach(s=>{ const start=minutes(s.startTime),end=minutes(s.endTime); s.approvedTemporaryAttendanceBlocks=approvedTemporary.filter(r=>rangesOverlap(start,end,r.start,r.end)); s.pendingTemporaryAttendanceBlocks=pendingTemporary.filter(r=>rangesOverlap(start,end,r.start,r.end)); s.attendanceSatisfiedByTemporary=intervalCoveredByBlocks(start,end,s.approvedTemporaryAttendanceBlocks); s.attendancePendingTemporary=!s.attendanceSatisfiedByTemporary&&intervalCoveredByBlocks(start,end,s.approvedTemporaryAttendanceBlocks.concat(s.pendingTemporaryAttendanceBlocks)); if(s.attendanceSatisfiedByTemporary){s.canClockInNow=false;s.canClockOutNow=false;s.statusText='此班段已有另筆核准臨時出勤紀錄，不列為缺勤。';}else if(s.attendancePendingTemporary)s.statusText+='｜另有臨時出勤待審核'; }); }
     const approvedAll=rawSchedules.length>0&&schedules.length===0;
     const message=!rawSchedules.length?'今天沒有排班，如主管臨時安排出勤，請使用「臨時出勤申請」。':approvedAll?'今天原有班表已被核准請假完整覆蓋，不需要打卡。':`今日有效出勤班段共 ${schedules.length} 段。`;
     return Object.assign({},base,{
@@ -7698,7 +7698,7 @@
     return mergeRows([].concat(...(chunks.length?await Promise.all(chunks):[]))).filter(r=>statusOf(r)===PENDING);
   }
   function correctionNorm(r){ return {requestId:clean(r.requestId||r.__id),requestKind:clean(r.requestKind||r['申請種類']||'recordCorrection'),employeeId:clean(r.employeeId||r['員工ID']),name:clean(r.name||r['姓名']),email:lower(r.email||r.Email),correctDate:dateText(r.correctDate||r['修正日期']),correctTime:timeText(r.correctTime||r['修正時間']),correctAction:clean(r.correctAction||r['修正動作']),correctionType:clean(r.correctionType||r['修正打卡方式']||'標準打卡'),originalRecordId:clean(r.originalRecordId||r['原始紀錄ID']),scheduleKey:clean(r.scheduleKey),originalScheduleKey:clean(r.originalScheduleKey),scheduleStartTime:shortTime(r.scheduleStartTime),scheduleEndTime:shortTime(r.scheduleEndTime),actualClockInTime:shortTime(r.actualClockInTime||r['實際上班時間']),reason:clean(r.reason||r['修正原因']),raw:r}; }
-  function clockDocFromCorrection(c,s,recordId){ const state=attendanceState(c.correctAction,c.correctionType,c.correctTime,s,true); return {
+  function clockDocFromCorrection(c,s,recordId){ const state=attendanceState(c.correctAction,c.correctionType,c.correctTime,s,c.requestKind!=='missingClock'); return {
     recordId,'紀錄ID':recordId,employeeId:c.employeeId,'員工ID':c.employeeId,name:c.name,'姓名':c.name,email:c.email,clockDate:c.correctDate,'打卡日期':c.correctDate,clockTime:c.correctTime,'打卡時間':c.correctTime,
     actionName:c.correctAction,'打卡動作':c.correctAction,clockType:c.correctionType||'標準打卡','打卡方式':c.correctionType||'標準打卡',status:state.status,'狀態':state.status,lateMinutes:state.lateMinutes,finalLateMinutes:state.lateMinutes,'遲到分鐘':state.lateMinutes,earlyLeaveMinutes:state.earlyLeaveMinutes,'早退分鐘':state.earlyLeaveMinutes,
     note:`核准：${c.reason}`,'備註':`核准：${c.reason}`,sourceIp:'主管核准','來源IP':'主管核准',isSupplement:c.requestKind!=='specialClock'&&c.requestKind!=='earlyLeave',scheduleLinked:true,sourceType:c.requestKind==='earlyLeave'?'approvedEarlyLeave':'approvedClockCorrection',earlyLeaveApproved:c.requestKind==='earlyLeave',scheduleKey:s.scheduleKey,effectiveSegmentKey:s.scheduleKey,originalScheduleKey:s.originalScheduleKey,
@@ -7797,6 +7797,39 @@
     await batch.commit(); return{ok:true,effectiveHours:total};
   }
 
+  function missingRowsForDay(info,corrections,today){
+    if(info.date>today)return [];
+    const rows=[];
+    for(const s of info.schedules||[]){
+      for(const action of ['上班打卡','下班打卡']){
+        const isIn=action==='上班打卡',expectedTime=isIn?s.startTime:s.endTime,boundary=minutes(expectedTime);
+        if(isIn?s.hasClockIn:s.hasClockOut)continue;
+        if((info.approvedTemporaryAttendanceBlocks||[]).some(b=>temporaryBlockCoversPunch(b,action,boundary)))continue;
+        const pending=corrections.find(c=>statusOf(c)===PENDING&&dateText(c.correctDate||c['修正日期'])===info.date&&clean(c.correctAction||c['修正動作'])===action&&[s.scheduleKey,s.originalScheduleKey].includes(clean(c.scheduleKey||c.originalScheduleKey)));
+        const pendingLeave=(info.pendingLeaveBlocks||[]).some(b=>b.start<=boundary&&b.end>=boundary);
+        const pendingTemporary=(info.pendingTemporaryAttendanceBlocks||[]).some(b=>temporaryBlockCoversPunch(b,action,boundary));
+        const due=info.date<today||nowMinutes()>=boundary;
+        rows.push({id:'MISSING_'+s.scheduleKey+'_'+(isIn?'IN':'OUT'),date:info.date,time:'',expectedTime,actionName:action,clockType:'標準打卡',missing:true,status:pending?'待主管審核':pendingLeave?'請假待審':pendingTemporary?'臨時出勤待審':info.date<today?'缺卡':'尚未打卡',pendingCorrection:!!pending,canModify:due&&!pending&&!pendingLeave&&!pendingTemporary,scheduleKey:s.scheduleKey,originalScheduleKey:s.originalScheduleKey,scheduleSnapshot:s});
+      }
+    }
+    return rows;
+  }
+  async function attendanceHistoryWithMissing(payload,rows){
+    const employeeId=employeeIdFrom(payload),start=dateText(payload.startDate),end=dateText(payload.endDate),today=localDateKey(new Date());
+    if(!start||!end||start>end)throw Error('請選擇查詢月份。');
+    const dates=[];for(let date=start;date<=end;date=addDays(date,1)){if(dates.length>=31)throw Error('每次最多查詢一個月。');dates.push(date);}
+    const employee=await activeEmployeeMaster(employeeId);if(!employee)return rows;
+    const months=[...new Set(dates.map(d=>d.slice(0,7)))];
+    const [monthly,leaveRows,clockData,temporaryRows,corrections]=await Promise.all([Promise.all(months.map(month=>previousHandle('getMonthlySchedule',{userId:employeeId,month}))),rowsByEmployee('leaveRequests',employeeId),rowsByEmployee('clockRecords',employeeId),rowsByEmployee('temporaryAttendanceRequests',employeeId),rowsByEmployee('clockCorrections',employeeId)]);
+    if(monthly.some(r=>!r||r.ok===false))throw Error('班表讀取失敗，無法核對缺卡。');
+    const schedules=monthly.flatMap(r=>r.rows||[]),clockRecords=clockData.filter(isActiveRow).map(normalizeClock),extra=[];
+    for(const date of dates){if(date>today)continue;const base={ok:true,date,schedules:schedules.filter(s=>dateText(s.date||s.scheduleDate)===date)};if(!base.schedules.length)continue;
+      const info=await effectiveScheduleInfo(employeeId,date,{employee,base,leaveRows,clockRecords,temporaryRows});
+      extra.push(...missingRowsForDay(info,corrections,today).filter(r=>!rows.some(x=>x.date===r.date&&x.actionName===r.actionName&&x.pendingCorrection&&clean(x.scheduleKey)===r.scheduleKey)));
+    }
+    return rows.concat(extra).sort((a,b)=>b.date.localeCompare(a.date)||String(a.time||a.expectedTime).localeCompare(String(b.time||b.expectedTime)));
+  }
+
   async function getClockIssues(payload){
     const employeeId=employeeIdFrom(payload); if(!employeeId)return{ok:false,message:'缺少員工資料',rows:[]}; const dates=[localDateKey(new Date()),addDays(localDateKey(new Date()),-1)]; const corrections=(await rowsByEmployee('clockCorrections',employeeId).catch(()=>[])).filter(r=>statusOf(r)===PENDING); const issues=[];
     for(const dateKey of dates){ const info=await effectiveScheduleInfo(employeeId,dateKey,{includeClockState:true}); const activeTemporary=(info.temporaryAttendanceBlocks||[]).filter(r=>r.status===PENDING||r.status===APPROVED); for(const s of info.schedules||[]){ const due=[]; const datePast=dateKey<localDateKey(new Date()),now=nowMinutes(); if(!s.hasClockIn&&(datePast||now>=minutes(s.startTime)+5)&&!activeTemporary.some(r=>temporaryBlockCoversPunch(r,'上班打卡',minutes(s.startTime))))due.push('上班打卡'); if(!s.hasClockOut&&(datePast||now>=minutes(s.endTime)+5)&&!activeTemporary.some(r=>temporaryBlockCoversPunch(r,'下班打卡',minutes(s.endTime))))due.push('下班打卡'); if(!due.length)continue;
@@ -7808,6 +7841,18 @@
   }
 
   async function submitCorrectionLink(payload){
+    if(payload&&payload.requestKind==='missingClock'){
+      const date=dateText(payload.correctDate),employeeId=employeeIdFrom(payload);
+      if(!date||date>localDateKey(new Date()))return{ok:false,message:'只能補登今天或之前的出勤。'};
+      const info=await effectiveScheduleInfo(employeeId,date,{includeClockState:true});
+      const s=(info.schedules||[]).find(s=>s.scheduleKey===clean(payload.scheduleKey));
+      if(!s)return{ok:false,message:'這個班段已調整或已核准請假，請重新整理紀錄。'};
+      const action=clean(payload.correctAction),isIn=action==='上班打卡';
+      if(!['上班打卡','下班打卡'].includes(action))return{ok:false,message:'請選擇上班或下班打卡。'};
+      if(isIn?s.hasClockIn:s.hasClockOut)return{ok:false,message:'這個班段已有打卡紀錄，請重新整理。'};
+      if(s.attendanceSatisfiedByTemporary)return{ok:false,message:'這個班段已有核准的臨時出勤，不需重複補卡。'};
+      payload={...payload,originalScheduleKey:s.originalScheduleKey,scheduleSnapshot:s,scheduleStartTime:s.startTime,scheduleEndTime:s.endTime};
+    }
     const res=typeof previousHandle==='function'?await previousHandle('submitClockCorrection',payload||{}):null; const linked=payload&&(payload.relatedLeaveRequestId||payload.caseId); if(res&&res.requestId&&linked){ await setDoc('clockCorrections',res.requestId,{relatedLeaveRequestId:clean(payload.relatedLeaveRequestId),caseId:clean(payload.caseId),attendanceCaseId:clean(payload.caseId),managedByLeaveApproval:true,updatedAt:serverTs(),source:VERSION},true); if(!res.ok)return Object.assign({},res,{ok:true,message:'既有補打卡申請已綁定到這張事後補假，主管會在請假簽核一次處理。'}); } return res;
   }
   async function pendingCorrections(payload){
@@ -7852,7 +7897,12 @@
     payload=payload||{}; const id=clean(payload.requestId); if(!id)return{ok:false,message:'缺少修正申請ID。'}; const raw=await findDirectOrQuery('clockCorrections',id,'requestId'); if(!raw)return{ok:false,message:'找不到修正申請。'}; if(statusOf(raw)!==PENDING)return{ok:false,message:'這筆申請已處理過。'};
     const related=clean(raw.relatedLeaveRequestId); if(related){ const l=await findDirectOrQuery('leaveRequests',related,'requestId'); if(l&&statusOf(l)===PENDING)return{ok:false,message:'這筆補打卡與事後補假屬於同一案件，請到「請假簽核」一次處理。'}; }
     const c=correctionNorm(raw),reviewer=currentUser(); if(!approve){ await db().runTransaction(async tx=>{ const ref=db().collection('clockCorrections').doc(raw.__id||id),snap=await tx.get(ref); if(!snap.exists||statusOf(snap.data())!==PENDING)throw new Error('這筆申請已被處理。'); tx.set(ref,{status:REJECTED,'狀態':REJECTED,rejectReason:clean(payload.rejectReason),reviewedAt:serverTs(),reviewedBy:clean(reviewer.id||reviewer.employeeId),updatedAt:serverTs(),source:VERSION},{merge:true}); }); await queueNotification('clock','employee',{employeeId:c.employeeId,email:c.email,notificationMessage:`【打卡修正審核結果】\n${c.correctDate} ${c.correctAction} ${c.correctTime} 未核准。${clean(payload.rejectReason)?'\n原因：'+clean(payload.rejectReason):''}`}); return{ok:true,message:'已駁回。'}; }
-    const info=await effectiveScheduleInfo(c.employeeId,c.correctDate,{includeClockState:false}),s=chooseEffectiveSchedule(info,c.scheduleKey||c.originalScheduleKey,c.correctAction,c.correctTime)||{scheduleKey:c.scheduleKey,originalScheduleKey:c.originalScheduleKey||c.scheduleKey,startTime:c.scheduleStartTime,endTime:c.scheduleEndTime}; const recordId=`CLK_COR_${safeId(c.requestId)}`;
+    const info=await effectiveScheduleInfo(c.employeeId,c.correctDate,{includeClockState:true}),s=chooseEffectiveSchedule(info,c.scheduleKey||c.originalScheduleKey,c.correctAction,c.correctTime)||{scheduleKey:c.scheduleKey,originalScheduleKey:c.originalScheduleKey||c.scheduleKey,startTime:c.scheduleStartTime,endTime:c.scheduleEndTime}; const recordId=`CLK_COR_${safeId(c.requestId)}`;
+    if(c.requestKind==='missingClock'){
+      const current=(info.schedules||[]).find(row=>row.scheduleKey===c.scheduleKey||row.originalScheduleKey===(c.originalScheduleKey||c.scheduleKey));
+      if(!current||current.attendanceSatisfiedByTemporary)return{ok:false,message:'班段已被請假或臨時出勤取代，請重新確認後處理。'};
+      if(c.correctAction.includes('上班')?current.hasClockIn:current.hasClockOut)return{ok:false,message:'這個班段已有打卡紀錄，請駁回重複申請。'};
+    }
     try{ await db().runTransaction(async tx=>{ const cRef=db().collection('clockCorrections').doc(raw.__id||id),cSnap=await tx.get(cRef); if(!cSnap.exists||statusOf(cSnap.data())!==PENDING)throw new Error('這筆申請已被處理。'); let targetRef,targetSnap;
         if(c.requestKind==='recordCorrection'&&c.originalRecordId){ targetRef=db().collection('clockRecords').doc(c.originalRecordId); targetSnap=await tx.get(targetRef); if(!targetSnap.exists)throw new Error('找不到原始打卡紀錄。'); if(!isActiveRow(targetSnap.data()))throw new Error('此打卡已停用或由核准請假取代，不能修正。'); }
         else{ targetRef=db().collection('clockRecords').doc(recordId); targetSnap=await tx.get(targetRef); }
@@ -7986,7 +8036,9 @@
     if(a==='getLeaveReplacementImpact')return getLeaveReplacementImpact(payload||{});
     if(a==='getClockHistoryRange'||a==='getEditableClockHistory'){
       const result=await previousHandle(a,payload||{});
-      return {...result,rows:(result.rows||[]).filter(r=>isActiveRow(r.raw||r)).map(r=>({...r,canModify:!r.pendingCorrection}))};
+      let rows=(result.rows||[]).filter(r=>isActiveRow(r.raw||r)).map(r=>({...r,canModify:!r.pendingCorrection}));
+      if(payload&&payload.includeMissing===true)rows=await attendanceHistoryWithMissing(payload,rows);
+      return {...result,rows};
     }
     if(a==='getMonthlySchedule'){ const employeeId=employeeIdFrom(payload); if(!await activeEmployeeMaster(employeeId))return{ok:true,rows:[]}; return previousHandle(a,payload); }
     if(a==='getTodaySchedule'||a==='getTodayClockSchedule')return await effectiveScheduleInfo(employeeIdFrom(payload),dateText(payload&&(payload.date||payload.clockDate))||localDateKey(new Date()),{includeClockState:true});

@@ -69,3 +69,24 @@ test('approved correction clears stale late payroll minutes and cannot restore l
   else {assert.equal(row.status,'正常');assert.equal(row.lateMinutes,0);assert.equal(row.finalLateMinutes,0);assert.equal(row.clockTime,'17:59');}
  }
 });
+
+
+test('scheduled blank days show both missing punches without creating records, and exclude leave/temporary coverage',()=>{
+ const c=context();Object.assign(c,{PENDING:'待審核',nowMinutes:()=>12*60,statusOf:r=>r.status,temporaryBlockCoversPunch:(b,a,t)=>b.start<=t&&b.end>=t});
+ vm.runInContext(source.slice(source.indexOf('  function missingRowsForDay('),source.indexOf('  async function attendanceHistoryWithMissing(')),c);
+ const day={date:'2026-10-30',schedules:[{...shift,originalScheduleKey:'shift-a'}]};
+ const rows=c.missingRowsForDay(day,[],'2026-11-01');assert.equal(rows.length,2);assert(rows.every(r=>r.status==='缺卡'&&r.canModify&&r.missing));assert.equal(rows[0].time,'');
+ assert.equal(c.missingRowsForDay({...day,schedules:[]},[],'2026-11-01').length,0);
+ assert.equal(c.missingRowsForDay({...day,date:'2026-11-02'},[],'2026-11-01').length,0);
+ const pending=c.missingRowsForDay(day,[{status:'待審核',correctDate:day.date,correctAction:'上班打卡',scheduleKey:'shift-a'}],'2026-11-01');assert(pending[0].pendingCorrection);assert.equal(pending[0].canModify,false);
+ const temporary=c.missingRowsForDay({...day,approvedTemporaryAttendanceBlocks:[{start:18*60,end:21*60}]},[],'2026-11-01');assert.equal(temporary.length,0);
+ const leavePending=c.missingRowsForDay({...day,pendingLeaveBlocks:[{start:18*60,end:21*60}]},[],'2026-11-01');assert(leavePending.every(r=>!r.canModify&&r.status==='請假待審'));
+});
+
+test('missing punches share one daily card and submit a missingClock approval rather than edit a nonexistent record',async()=>{
+ const {dom,w}=page('clock.html','function renderHistoryRow');w.pendingAutoReturnText=()=>'';w.startActionButtonProgress=()=>({done(){},fail(){}});w.loadEditableHistory=async()=>{};let sent;
+ w.api=async(action,payload)=>{sent={action,payload};return{ok:true,message:'送出'};};
+ w.renderIntoList('#editableList',[{id:'missing-in',date:'2026-10-30',missing:true,expectedTime:'18:00',actionName:'上班打卡',clockType:'標準打卡',status:'缺卡',canModify:true,scheduleSnapshot:shift}],false);
+ const box=w.qs('.correction-box');box.querySelector('.js-correct-reason').value='忘記打卡';await w.submitInlineCorrection('missing-in',box,box.querySelector('.js-submit-correction'));
+ assert.equal(sent.payload.requestKind,'missingClock');assert.equal(sent.payload.originalRecordId,'');assert.equal(sent.payload.correctTime,'18:00');assert.equal(sent.payload.scheduleKey,'shift-a');dom.window.close();
+});

@@ -220,7 +220,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20261101-attendance-revision-v1"></script>
+  <script src="firebase-client.js?v=20261101-missing-clock-v1"></script>
   <script src="app.js?v=20261101-attendance-revision-v1"></script>
   <script>
 
@@ -686,7 +686,7 @@
 
     function renderPendingReviewRow(x){
       const title = pendingReviewTitle(x);
-      const dt = [x.date || '', (x.time || '').slice(0,5)].filter(Boolean).join(' ');
+      const dt = [x.date || '', (x.time || x.expectedTime || '').slice(0,5)].filter(Boolean).join(' ');
       const schedule = (x.scheduleStartTime || x.scheduleEndTime) ? ('班表：' + (x.scheduleStartTime || '--:--') + ' - ' + (x.scheduleEndTime || '--:--')) : '';
       const action = [x.actionName || '', x.clockType || ''].filter(Boolean).join('｜');
       const reason = x.note ? ('原因：' + x.note) : '';
@@ -728,7 +728,7 @@
       const originalText = x.originalRef ? `<div class="muted" style="margin-top:6px">原始紀錄：${escapeHtml(x.originalRef)}</div>` : '';
       const correctionText = x.status === '補打卡' ? '<div class="muted" style="margin-top:6px">此筆為補登／修正核准後的正式紀錄。</div>' : '';
       const pendingText = x.pendingCorrection ? `<div class="pending-status-line"><strong>已送出修正申請待主管審核</strong>${escapeHtml(pendingAutoReturnText())}</div>` : '';
-      const canFix = !readonly
+      const canFix = !readonly&&(!x.missing||x.canModify||x.pendingCorrection)
         ? (x.pendingCorrection
           ? `<button class="btn mini-btn secondary" type="button" disabled>待主管審核</button>`
           : `<button class="btn mini-btn js-open-correction" data-id="${escapeHtml(x.id)}">修正打卡時間</button>`)
@@ -737,8 +737,8 @@
         <div class="clock-item">
           <div class="clock-punch-header">
             <div class="clock-punch-info">
-              <strong>${isLate?'<span class="clock-late-badge">遲到</span> ':''}${escapeHtml(x.actionName || '打卡')} ${escapeHtml(x.time)}</strong>
-              <div class="clock-punch-meta"><span class="tag ${x.status === '補打卡' ? 'subtle' : ''}">${escapeHtml(isLate?lateText:(x.statusLabel || x.status || ''))}</span>${x.clockType&&x.clockType!=='標準打卡'?'<span>'+escapeHtml(x.clockType)+'</span>':''}</div>
+              <strong>${isLate?'<span class="clock-late-badge">遲到</span> ':''}${escapeHtml(x.actionName || '打卡')} ${escapeHtml(x.time||(x.missing?'未打卡':''))}</strong>
+              <div class="clock-punch-meta"><span class="tag ${x.status==='缺卡'?'clock-late-badge':''} ${x.status === '補打卡' ? 'subtle' : ''}">${escapeHtml(isLate?lateText:(x.statusLabel || x.status || ''))}</span>${x.clockType&&x.clockType!=='標準打卡'?'<span>'+escapeHtml(x.clockType)+'</span>':''}</div>
             </div>
             ${canFix}
           </div>
@@ -746,16 +746,16 @@
           ${originalText}
           ${correctionText}
           ${pendingText}
-          <div class="correction-box hidden" id="correction-${escapeHtml(x.id)}">
-            <div class="readonly-line">原紀錄：${escapeHtml(x.date)} ${escapeHtml((x.time || '').slice(0,5))}｜${escapeHtml(x.actionName)}｜${escapeHtml(x.clockType)}</div>
+          <div class="correction-box hidden" data-missing="${x.missing?'1':''}" data-schedule="${escapeHtml(JSON.stringify(x.scheduleSnapshot||{}))}" id="correction-${escapeHtml(x.id)}">
+            <div class="readonly-line">原紀錄：${escapeHtml(x.date)} ${escapeHtml((x.time || x.expectedTime || '').slice(0,5))}｜${escapeHtml(x.actionName)}｜${escapeHtml(x.clockType)}</div>
             <div class="grid" style="margin-top:10px">
               <div class="field">
                 <label>修正日期</label>
-                <input type="date" class="js-correct-date" value="${escapeHtml(x.date)}">
+                <input type="date" class="js-correct-date" value="${escapeHtml(x.date)}" ${x.missing?'readonly':''}>
               </div>
               <div class="field">
                 <label>正確打卡時間</label>
-                <input type="time" class="js-correct-time" value="${escapeHtml((x.time || '').slice(0,5))}">
+                <input type="time" class="js-correct-time" value="${escapeHtml((x.time || x.expectedTime || '').slice(0,5))}">
               </div>
             </div>
             <input type="hidden" class="js-correct-action" value="${escapeHtml(x.actionName)}">
@@ -774,7 +774,7 @@
     function renderIntoList(targetSel, rows, readonly){
       const list = qs(targetSel);
       const dates=[...new Set((rows||[]).map(row=>row.date))].sort().reverse();
-      list.innerHTML=dates.map(date=>'<section class="item clock-day"><h3>'+escapeHtml(date)+'</h3>'+(rows||[]).filter(row=>row.date===date).sort((a,b)=>String(a.time).localeCompare(String(b.time))).map(row=>renderHistoryRow(row,readonly)).join('')+['上班','下班'].filter(action=>!(rows||[]).some(row=>row.date===date&&String(row.actionName).includes(action))).map(action=>'<div class="clock-line muted">'+action+'打卡：尚無紀錄</div>').join('')+'</section>').join('')||'<div class="muted">尚無資料</div>';
+      list.innerHTML=dates.map(date=>'<section class="item clock-day"><h3>'+escapeHtml(date)+'</h3>'+(rows||[]).filter(row=>row.date===date).sort((a,b)=>String(a.time||a.expectedTime).localeCompare(String(b.time||b.expectedTime))).map(row=>renderHistoryRow(row,readonly)).join('')+['上班','下班'].filter(action=>!(rows||[]).some(row=>row.date===date&&String(row.actionName).includes(action))).map(action=>'<div class="clock-line muted">'+action+'打卡：尚無紀錄</div>').join('')+'</section>').join('')||'<div class="muted">尚無資料</div>';
       if(!readonly) bindCorrectionActions();
     }
 
@@ -784,7 +784,7 @@
       const oldClockHomeLink = qs('#clockHomeLink');
       if(oldClockHomeLink){ oldClockHomeLink.href = userHomeHref(user); oldClockHomeLink.textContent = userHomeLabel(user); }
       const endDate=EmployeeMonthView.today(),startDate=addDaysForClockRange_(endDate,-2);
-      const r = await api('getClockHistoryRange', {userId:user.id,startDate,endDate});
+      const r = await api('getClockHistoryRange', {userId:user.id,startDate,endDate,includeMissing:true});
       const rows = r.rows || [];
       renderPendingReviewList(rows);
       renderIntoList('#editableList', rows.filter(x => !isPendingReviewRow(x)), false);
@@ -796,7 +796,7 @@
       if(!user) return;
       const {startDate,endDate}=clockMonthControl.get();
       try {
-        const r = await api('getClockHistoryRange', { userId:user.id, startDate, endDate });
+        const r = await api('getClockHistoryRange', { userId:user.id, startDate, endDate, includeMissing:true });
         setMsg(qs('#rangeMsg'), r.message || ((r.rows || []).length ? '' : '尚無資料'), !r.ok);
         renderIntoList('#rangeList', r.rows || [], false);
 
@@ -836,7 +836,8 @@
       }
       const progress = startActionButtonProgress(btn, { label:'送出中', startPct:20, maxPct:80, steps:[20,40,60,80], interval:160 });
       try {
-        const r = await api('submitClockCorrection', { userId:user.id, originalRecordId:recordId, correctDate, correctTime, correctAction, correctionType, reason });
+        const missing=box.dataset.missing==='1',schedule=JSON.parse(box.dataset.schedule||'{}');
+        const r = await api('submitClockCorrection', { userId:user.id,requestKind:missing?'missingClock':'recordCorrection',originalRecordId:missing?'':recordId,correctDate,correctTime,correctAction,correctionType,reason,...(missing?{scheduleKey:schedule.scheduleKey,scheduleStartTime:schedule.startTime,scheduleEndTime:schedule.endTime,scheduleSnapshot:schedule}:{}) });
         setMsg(msg, r.message, !r.ok);
         if(r.ok){
           progress.done('已送出');

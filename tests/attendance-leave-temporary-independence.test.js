@@ -57,6 +57,6 @@ test('manager and audit screens explain and display the independent records', ()
   assert.match(auditPage, /rejectedLeaves/);
   assert.match(auditPage, /獨立臨時出勤紀錄/);
   for (const page of [employeePage, adminPage, auditPage, fs.readFileSync('leave.html', 'utf8'), fs.readFileSync('clock.html', 'utf8')]) {
-    assert.match(page, /firebase-client\.js\?v=(?:20260919-taiwan-v2|20261101-month-view-v1|20261101-attendance-revision-v1)/);
+    assert.match(page, /firebase-client\.js\?v=(?:20260919-taiwan-v2|20261101-month-view-v1|20261101-attendance-revision-v1|20261101-missing-clock-v1)/);
   }
 });

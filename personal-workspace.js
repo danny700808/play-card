@@ -52,13 +52,13 @@
  function monthRange(month){const [y,m]=month.split('-').map(Number);return {startDate:month+'-01',endDate:month+'-'+new Date(Date.UTC(y,m,0)).getUTCDate()};}
  function attendanceDayRows(records){
   const days=new Map();for(const r of records){const date=r.date||r.workDate||'';if(!days.has(date))days.set(date,[]);days.get(date).push(r);}
-  return [...days].sort((a,b)=>b[0].localeCompare(a[0])).map(([date,rows])=>'<section class="personal-day-record"><strong>'+esc(date)+'</strong>'+rows.sort((a,b)=>String(a.time||a.clockTime||'').localeCompare(String(b.time||b.clockTime||''))).map(r=>row((r.actionName||r.action||'打卡')+(r.clockType&&r.clockType!=='標準打卡'?' · '+r.clockType:''),(r.time||r.clockTime||'尚無紀錄')+(r.status==='遲到'||Number(r.lateMinutes)>0?' · 遲到':''))).join('')+'</section>');
+  return [...days].sort((a,b)=>b[0].localeCompare(a[0])).map(([date,rows])=>'<section class="personal-day-record"><strong>'+esc(date)+'</strong>'+rows.sort((a,b)=>String(a.time||a.clockTime||'').localeCompare(String(b.time||b.clockTime||''))).map(r=>row((r.actionName||r.action||'打卡')+(r.clockType&&r.clockType!=='標準打卡'?' · '+r.clockType:''),(r.time||r.clockTime||r.status||'尚無紀錄')+(r.status==='遲到'||Number(r.lateMinutes)>0?' · 遲到':''))).join('')+'</section>');
  }
  async function attendance(){
   body(card('',row(today(),'今日排班')+'<div id="todaySchedule" class="personal-value">讀取中…</div><div class="personal-grid" style="margin-top:12px">'+button('上／下班打卡','clock','primary')+button('補登／臨時出勤','temporary','soft')+'</div>')+actions([...(state.user.identityType==='parttime'?[['填寫工時','hours','時']]:[]),['請假申請','leave','假'],['打卡紀錄','clock','錄'],['我的班表','schedule-own','班']])+card('出勤紀錄',monthInput('attendanceMonth',attendanceMonth)+'<div id="recentAttendance">讀取中…</div>'));
   $('attendanceMonth').addEventListener('change',event=>{if(!event.target.value)return;attendanceMonth=event.target.value;generation++;attendance();});
   const version=generation,payload={userId:state.user.id};
-  const results=await Promise.allSettled([personalRead('getTodaySchedule',payload),personalRead('getClockHistoryRange',{...payload,...monthRange(attendanceMonth)})]);
+  const results=await Promise.allSettled([personalRead('getTodaySchedule',payload),personalRead('getClockHistoryRange',{...payload,...monthRange(attendanceMonth),includeMissing:true})]);
   if(version!==generation)return;
   const schedule=results[0];if(schedule.status==='fulfilled'&&schedule.value?.ok!==false){const r=schedule.value,rows=r.schedules||[];state.scheduleText=rows.length?rows.map(s=>[s.startTime,s.endTime].filter(Boolean).join(' — ')).join('／'):(r.startTime?[r.startTime,r.endTime].filter(Boolean).join(' — '):'今日無排班');$('todaySchedule').textContent=state.scheduleText;}else $('todaySchedule').textContent='班表讀取失敗';
   const recent=results[1];if(recent.status==='fulfilled'&&recent.value?.ok!==false){const rows=Array.isArray(recent.value)?recent.value:recent.value?.rows||[];state.clockRows=rows;state.clockHtml=foldRows(attendanceDayRows(rows));$('recentAttendance').innerHTML=state.clockHtml;}else $('recentAttendance').textContent='紀錄讀取失敗，請重新查詢。';

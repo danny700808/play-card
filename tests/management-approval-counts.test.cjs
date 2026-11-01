@@ -1,0 +1,7 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),counts=require('../management-pending-counts'),scope=require('../personnel-approval-scope');
+const empty={leave:[],clock:[],temporary:[],profile:[],registration:[],contract:[]};
+test('tree counts pending requests at leaves and ancestors, deduplicates rental cases and excludes completed work',()=>{
+ const r=counts.countsFor({...empty,clock:[{requestId:'c',employeeId:'p',status:'待審核'},{requestId:'linked',employeeId:'p',status:'待審核',managedByLeaveApproval:true}],temporary:[{requestId:'done',employeeId:'p',status:'已核准',pending:true}],certificate:[{requestId:'cert',employeeId:'p',status:'待主管審核',certificateType:'employment'}],application:[{applicationId:'a',status:'待審核'},{applicationId:'done',status:'已同意'}],rental:[{caseKey:'r',needsReview:true},{caseKey:'r',needsReview:true},{caseKey:'other',needsReview:false}],goods:[]},[{employeeId:'p',identityType:'parttime'}],scope);
+ assert.equal(r['parttime-clock'],1);assert.equal(r['approval-1'],1);assert.equal(r['parttime-temporary'],0);assert.equal(r['parttime-certificate'],1);assert.equal(r.parttime,2);assert.equal(r.forms,1);assert.equal(r['employment-review'],1);assert.equal(r.recruit,1);assert.equal(r.rental,1);assert.equal(r.people,3);assert.equal(r.root,4);
+ const failed=counts.countsFor({...empty,rental:null},[],scope);assert.equal(failed.rental,null);assert.equal(failed.root,null);assert.equal(failed.__failed,true);
+});
