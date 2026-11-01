@@ -30,5 +30,22 @@ test('manager can view a real employee snapshot and all edit buttons remain read
  w.document.querySelector('[data-tab=more]').click();w.document.querySelector('[data-action=profile]').click();assert.equal(w.document.querySelector('[name=mobilePhone]').value,'0912345678');w.document.getElementById('personalProfileForm').dispatchEvent(new w.Event('submit',{cancelable:true}));
  assert.equal(w.document.querySelector('#personalProfileForm button[type=submit]').disabled,true);w.document.getElementById('paymentMethod').value='cash';w.document.getElementById('paymentMethod').dispatchEvent(new w.Event('change'));assert.equal(w.document.getElementById('bankFields').hidden,true);assert.equal(writes,0);assert.equal(w.document.querySelectorAll('iframe').length,0);assert(!calls.includes('profile-submit'));assert(calls.includes('preview-month'));assert.equal(w.document.getElementById('previewRole'),null);assert.equal(model.sample,undefined);
  w.PersonalPreviewFrame={close(){},async open(options){assert.equal(options.page,'parttime.html');assert.equal(options.role,'employee');options.container.innerHTML='<iframe title=readonly-preview></iframe>';}};const delayed=[];w.api=()=>new Promise(resolve=>delayed.push(resolve));w.document.querySelector('[data-tab=attendance]').click();await new Promise(r=>setTimeout(r,5));w.document.querySelector('[data-action=hours]').click();delayed.forEach(resolve=>resolve({ok:true,rows:[],schedules:[]}));await new Promise(r=>setTimeout(r,10));assert(w.document.querySelector('iframe'),'late attendance reads must not replace the actual isolated page');
+ // Exercise the real preview toolbar for every attendance entry.
+ const protectedFetch=w.fetch;
+ w.fetch=async(url,options)=>options?.body?protectedFetch(url,options):{ok:true,text:async()=>'<html><head></head><body><h1>出勤表單</h1></body></html>'};
+ w.api=async()=>({ok:true,rows:[],schedules:[]});
+ w.eval(fs.readFileSync('personal-preview-frame.js','utf8'));
+ w.document.querySelector('[data-tab=attendance]').click();await new Promise(r=>setTimeout(r,5));
+ w.document.getElementById('attendanceMonth').value='2026-09';w.document.getElementById('attendanceMonth').dispatchEvent(new w.Event('change'));await new Promise(r=>setTimeout(r,5));
+ for(const key of ['temporary','hours','leave','clock','schedule-own']){
+  w.document.querySelector('[data-action="'+key+'"]').click();await new Promise(r=>setTimeout(r,15));
+  assert(w.document.querySelector('iframe'),key+' should open its form');
+  w.document.querySelector('.personal-frame-head button').click();await new Promise(r=>setTimeout(r,10));
+  assert.equal(w.document.querySelectorAll('iframe').length,0,key+' return must leave the form');
+  assert(w.document.getElementById('todaySchedule'),key+' return must restore attendance home');
+  assert.equal(w.document.querySelector('[data-tab=attendance]').getAttribute('aria-current'),'page');
+  assert.equal(w.document.getElementById('attendanceMonth').value,'2026-09','return preserves the selected history month');
+ }
+ assert.equal(writes,0);
  dom.window.close();
 });

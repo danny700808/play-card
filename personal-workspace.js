@@ -91,8 +91,8 @@
 
  async function previewFeature(key){
   const feature=key==='schedule-own'?['我的班表','clock.html']:key==='correction'?['修正打卡','clock.html']:features[key];if(!feature)return;
-  const employeeDocId=$('previewPerson').value;body('');
-  try{await PersonalPreviewFrame.open({container:$('personalBody'),page:feature[1],user:state.user,role:'employee',read:(method,payload)=>managerRead('preview-employee-read',{employeeDocId,method,payload})});}catch(e){status(e.message,true);}
+  const employeeDocId=$('previewPerson').value,returnTab=tab;body('');
+  try{await PersonalPreviewFrame.open({container:$('personalBody'),page:feature[1],user:state.user,role:'employee',onBack:()=>selectTab(returnTab),read:(method,payload)=>managerRead('preview-employee-read',{employeeDocId,method,payload})});}catch(e){status(e.message,true);}
  }
  async function rolePanel(role){
   if(realPreview){const employeeDocId=$('previewPerson').value;body('');try{await PersonalPreviewFrame.open({container:$('personalBody'),page:role==='teacher'?'teacher-course-portal.html':'room-booking.html?from=renter',user:state.user,role,read:(method,payload)=>managerRead('preview-role-read',{employeeDocId,role,method,payload})});}catch(e){status(e.message,true);}return;}

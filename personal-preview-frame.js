@@ -41,7 +41,7 @@
   const srcDescriptor=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'src');
   Object.defineProperty(HTMLIFrameElement.prototype,'src',{get:srcDescriptor.get,set(value){if(value&&value!=='about:blank'){send('navigate',{href:value});return;}srcDescriptor.set.call(this,value);}});
  }
- async function open({container,page,user,read,role='teacher'}){
+ async function open({container,page,user,read,role='teacher',onBack}){
   close();const channel=crypto.randomUUID();const frame=document.createElement('iframe');frame.className='personal-preview-frame';frame.title='人員實際手機畫面';frame.setAttribute('sandbox','allow-scripts');frame.setAttribute('referrerpolicy','no-referrer');
   container.replaceChildren();const toolbar=document.createElement('div');toolbar.className='personal-frame-head';const back=document.createElement('button');back.className='personal-btn';back.textContent='← 返回';toolbar.append(back);const status=document.createElement('span');status.setAttribute('role','status');toolbar.append(status);container.append(toolbar,frame);
   const history=[];let currentPage='',navigation=0,memoryStorage=null;
@@ -76,7 +76,7 @@
    if(message.kind!=='read')return;
    try{const result=await read(message.method,message.payload);if(active?.channel===channel)frame.contentWindow.postMessage({previewChannel:channel,id:message.id,result},'*');}catch(e){if(active?.channel===channel)frame.contentWindow.postMessage({previewChannel:channel,id:message.id,error:e.message},'*');}
   };
-  active={frame,listener,channel};window.addEventListener('message',listener);back.onclick=()=>navigate(history.pop()||page,false).catch(e=>status.textContent=e.message);await navigate(page,false);
+  active={frame,listener,channel};window.addEventListener('message',listener);back.onclick=()=>{if(active?.channel!==channel)return;if(typeof onBack==='function'){close();onBack();return;}navigate(history.pop()||page,false).catch(e=>status.textContent=e.message);};await navigate(page,false);
  }
  global.PersonalPreviewFrame={open,close};
 })(window);
