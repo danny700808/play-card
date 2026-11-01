@@ -275,6 +275,7 @@ function applyScheduledDateChoices(){
     select.innerHTML='<option value="">選擇排班日</option>'+dates.map(date=>'<option value="'+escapeHtml(date)+'">'+escapeHtml(date)+'</option>').join('');
     select.value=dates.includes(input.value)?input.value:'';
     input.replaceWith(select);
+    if(select.dataset.segmentStartDate){const label=document.querySelector('label[for="'+select.id+'"]');if(label)label.textContent='請假日期';}
     if(select.dataset.segmentEndDate)select.closest('.segment-field').hidden=true;
   });
 }
@@ -751,6 +752,7 @@ async function refreshScheduleSegmentContext(segmentId){
       return;
     }
     box.className = 'segment-context is-ok';
+    if(isParttimeLeaveUser()){box.innerHTML='<strong>可申請整天請假</strong><div>'+results.filter(r=>r.ok).map(r=>escapeHtml(r.date+' '+r.text)).join('<br>')+'</div>';return;}
     const rows = leaveBuildDayRows(results);
     box.innerHTML = `<strong>可送出整天請假</strong><div>${escapeHtml(leaveBuildRangeSummary(results))}</div>${rows}<div style="margin-top:6px">送出時只會建立有班日期的請假；無班日期會自動略過，不需要一天一天拆開申請。</div>`;
   }catch(err){
