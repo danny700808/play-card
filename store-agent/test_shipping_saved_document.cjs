@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const model=require('./shipping-ui/model.js');
-function harness(overrides={},rejectSaved=false){
+function harness(overrides={},rejectSaved=false,reconciledTracking=''){
   const elements=new Map(),calls=[];
   function element(id){
     if(!elements.has(id))elements.set(id,{
@@ -22,8 +22,12 @@ function harness(overrides={},rejectSaved=false){
       if(rejectSaved)throw Error('舊文件與目前訂單尚未確認一致。');
       return {label:'https://example.test/current.pdf'};
     }
-    if(path==='/api/preview')return {...row,action:'download',fingerprint:'current'};
-    if(path==='/api/process')return {ready:true};
+    if(path==='/api/preview')return {...row,action:row.canCreate?'create':'download',fingerprint:'current'};
+    if(path==='/api/process'){
+      await Promise.resolve();
+      if(reconciledTracking)Object.assign(row,{tracking:reconciledTracking,canCreate:false,canDownload:true,documentReady:true});
+      return {ready:true};
+    }
     if(path==='/api/orders')return {orders:[row],errors:{}};
     throw Error(path);
   }}};
@@ -75,6 +79,18 @@ test('a rejected saved document never silently creates or resubmits a shipment',
   assert.deepEqual(h.calls,['/api/document-link']);
   assert.match(h.element('documentStatus').textContent,/舊文件與目前訂單/);
   assert.equal(h.element('documentControls').hidden,true);
+});
+
+test('Coupang reconciled first request presents original tracking in the same shared dialog without printing',async()=>{
+  const h=harness({key:'Coupang:123',platform:'Coupang',channel:'酷澎',status:'INSTRUCT',
+    stage:'pending',carrierCode:'TWL_HCT',canCreate:true,canDownload:false,documentReady:false},false,'ORIGINAL');
+  await h.run();
+  assert.deepEqual(h.calls,['/api/preview','/api/process','/api/orders','/api/document-link']);
+  assert.equal(h.element('documentDialog').open,true);
+  assert.equal(h.element('documentControls').hidden,false);
+  assert.match(h.element('documentSummary').innerHTML,/ORIGINAL/);
+  assert.equal(h.element('openDocument').href,'https://example.test/current.pdf');
+  assert.equal(h.element('documentStatus').textContent,'貨運單已備妥。');
 });
 test('changed records do not take the saved-document shortcut',async()=>{
   const h=harness({handlingChanged:true});await h.run();

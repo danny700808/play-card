@@ -13,6 +13,7 @@ import importlib.util
 import json
 import sqlite3
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,8 @@ from shipping_payments import easystore_payment, coupang_payment, momo_payment
 TZ = timezone(timedelta(hours=8))
 CARRIERS = {"TWL_HCT": "新竹物流", "TWL_KERRY": "嘉里大榮",
             "TWL_FM": "全家", "TWL_711": "7-11"}
+CP_RECONCILE_SECONDS = 20
+CP_RECONCILE_ATTEMPTS = 6
 spec = importlib.util.spec_from_file_location("shipping_order_source",
                                             Path(__file__).parent / "lib/order_source.py")
 source = importlib.util.module_from_spec(spec)
@@ -586,10 +589,12 @@ class Workbench:
                         {"name": "蝦皮（經 EasyStore）", "status": "仍需至 EasyStore 確認", "detail": "已確認 EasyStore 可出貨及印蝦皮服務單；本工作台提供對應訂單入口，尚未一鍵接通。"},
                         {"name": "官網直購／LINE", "status": "已接訂單與包貨明細", "detail": "正式出貨及貨運單尚未接通；依原始來源分類，不與蝦皮匯入訂單混淆。"}]}
 
-    def fresh_cp(self, key):
+    def fresh_cp(self, key, *, timeout=None):
         if not key.startswith("Coupang:") or not key.split(":", 1)[1].isdigit():
             raise ShippingError("這個平台尚未接通貨運單服務。")
         cfg = self.config["coupang"]
+        if timeout is not None:
+            cfg = {**cfg, "request_timeout_seconds": timeout}
         box = key.split(":", 1)[1]
         payload = source.coupang_request(cfg, "GET",
             f"/v2/providers/openapi/apis/api/v5/vendors/{cfg['vendor_id']}/ordersheets/{box}")
@@ -714,6 +719,50 @@ class Workbench:
         self.mark_handled(key, "acquired")
         return result
 
+    def reconcile_cp(self, reviewed, options):
+        """Resolve an ambiguous arrange result using only bounded official GETs.
+
+        Never clear the durable creation reservation, even on read failures.
+        Only status/tracking may advance without a new packing review.
+        """
+        key = reviewed["key"]
+        deadline = time.monotonic() + CP_RECONCILE_SECONDS
+        self.event(key, "arrange-reconcile-started")
+        for attempt in range(CP_RECONCILE_ATTEMPTS):
+            remaining = deadline - time.monotonic()
+            if remaining < 2:
+                break
+            try:
+                # The transport uses separate connect/read timeouts. Reserve
+                # time for both, and never inherit the normal 60-second read.
+                fresh = self.fresh_cp(key, timeout=min(3, int(remaining / 2)))
+            except (requests.RequestException, TimeoutError, source.CoupangAPIError) as exc:
+                self.event(key, "arrange-reconcile-read-failed:" + type(exc).__name__)
+            else:
+                comparable = {**fresh, "status": reviewed["status"],
+                              "tracking": reviewed["tracking"],
+                              "carrierCode": fresh.get("carrierCode") or reviewed["carrierCode"]}
+                same = (all(fresh.get(k) == reviewed.get(k) for k in
+                            ("key", "externalId", "packageId", "orderNo")) and
+                        self.fingerprint(comparable, options) == self.fingerprint(reviewed, options))
+                if (not same or fresh.get("stage") in ("cancelled", "review") or
+                        fresh.get("status") not in ("INSTRUCT", "DEPARTURE", "DELIVERING", "FINAL_DELIVERY", "NONE_TRACKING")):
+                    self.event(key, "arrange-reconcile-order-changed")
+                    self.save_job(key, state="uncertain", error="查詢發現訂單取消、資料或物流異動，已停止取單；不會重送出貨。")
+                    raise ShippingError("查詢發現訂單取消、資料或物流異動，請重新核對；未重送出貨。")
+                if time.monotonic() >= deadline:
+                    break
+                if fresh.get("tracking") and fresh.get("canDownload"):
+                    self.save_job(key, state="arranged", tracking=fresh["tracking"],
+                                  carrier=fresh["carrierCode"], error="")
+                    self.event(key, "arrange-reconciled")
+                    return fresh
+            if attempt + 1 < CP_RECONCILE_ATTEMPTS:
+                time.sleep(min(2, max(0, deadline - time.monotonic())))
+        self.event(key, "arrange-reconcile-unconfirmed")
+        self.save_job(key, state="uncertain", error="限時查詢仍未確認原單，已保留申請紀錄；不會重送出貨。")
+        raise ShippingError("限時查詢仍未確認原單，請稍後查詢平台結果；不會重新申請出貨。")
+
     def _process(self, key, options, fingerprint):
         with self.lock:
             row = self.preview(key, options)
@@ -722,7 +771,10 @@ class Workbench:
             job = self.job(key)
             if job.get("state") in ("sending", "uncertain") and not row["tracking"]:
                 if row.get("action") != "download":
-                    raise ShippingError("前次申請結果未確認，已阻止重複申請；請先查平台結果。")
+                    if row["platform"] != "Coupang":
+                        raise ShippingError("前次申請結果未確認，已阻止重複申請；請先查平台結果。")
+                    row = {**self.reconcile_cp(row, row["shipmentOptions"]),
+                           "shipmentOptions": row["shipmentOptions"]}
             if row["platform"] == "MOMO":
                 return self.process_momo(row, job)
             options = row["shipmentOptions"]
@@ -751,9 +803,13 @@ class Workbench:
                     tracking = text(receipt["invoiceNumber"])
                     self.save_job(key, state="arranged", tracking=tracking)
                     self.event(key, "arranged")
-                except Exception:
+                except Exception as exc:
                     self.save_job(key, state="uncertain", error="申請結果未確認，請先查平台；不會自動重送。")
-                    raise ShippingError("申請結果未確認，已保留紀錄並停止自動重試。")
+                    # Persist only the exception category, never upstream text
+                    # containing customer data, credentials or response bodies.
+                    self.event(key, "arrange-unconfirmed:" + type(exc).__name__)
+                    row = self.reconcile_cp(row, options)
+                    carrier, tracking = row["carrierCode"], row["tracking"]
             if (self.document_matches(row, job) and job.get("tracking") == tracking and
                     job.get("carrier") == carrier and (self.data_dir / job.get("document", "_")).is_file()):
                 return {"ready": True, "key": key, "reused": True}
