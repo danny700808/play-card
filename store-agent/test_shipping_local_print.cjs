@@ -2,29 +2,30 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
+const model=require('./shipping-ui/model.js');
 
 function harness({carrier='7-11店到店',shippingMethod,prepareStatus='prepared',prepareError='',printError='',documentOk=true,
-  profiles=['momo-cvs-v1'],replyProfile='momo-cvs-v1',replyPages=1,printLink=true}={}){
+  layouts=['packing-footer-v1'],replyLayout='packing-footer-v1',channel='MOMO',profiles=['momo-cvs-v1'],replyProfile='momo-cvs-v1',replyPages=1,printLink=true}={}){
   const elements=new Map(),calls=[];
   function el(){return {style:{},children:[],open:true,disabled:false,textContent:'',setAttribute(){},
     append(...nodes){this.children.push(...nodes);},prepend(node){this.children.unshift(node);elements.set(node.id,node);},
     remove(){elements.delete(this.id);}};}
-  for(const id of ['documentControls','documentDialog','printerHint'])elements.set(id,el());
+  for(const id of ['documentControls','documentDialog','printerHint','documentPreviewImage','zoomDocumentPreview','documentPlaceholder','previewCaption'])elements.set(id,el());
   let printed=0;
-  const window={confirm:()=>true};
+  const window={confirm:()=>{throw Error('No extra confirmations');},ShippingModel:model};
   const context=vm.createContext({window,document:{getElementById:id=>elements.get(id),createElement:el},
     AbortSignal,FileReader:class{readAsDataURL(){this.result='data:application/pdf;base64,JVBERi0=';this.onload();}},
     fetch:async(url,options)=>{
       const body=options.body?JSON.parse(options.body):undefined;
       calls.push({url,body});
       if(url==='https://example.test/label.pdf')return {ok:documentOk,blob:async()=>new Blob(['%PDF-1.7\nlabel'])};
-      if(url.endsWith('/health'))return {ok:true,json:async()=>({service:'youzi-shipping-print',printProfiles:profiles})};
-      if(url.endsWith('/prepare'))return {ok:!prepareError,json:async()=>prepareError?{error:prepareError}:{jobId:'job-1',status:body.reprint?'prepared':prepareStatus,pages:replyPages,printProfile:replyProfile,paperMm:[100,150]}};
+      if(url.endsWith('/health'))return {ok:true,json:async()=>({service:'youzi-shipping-print',printProfiles:profiles,packingLayouts:layouts})};
+      if(url.endsWith('/prepare'))return {ok:!prepareError,json:async()=>prepareError?{error:prepareError}:{jobId:'job-1',status:body.reprint?'prepared':prepareStatus,alreadySubmitted:prepareStatus==='preview',layoutVersion:replyLayout,preview:'data:image/png;base64,cHJldmlldw==',pages:replyPages,printProfile:replyProfile,paperMm:[100,150]}};
       if(url.endsWith('/print'))return {ok:!printError,json:async()=>printError?{error:printError}:{status:'submitted'}};
       throw Error('Unexpected endpoint');
     }});
   vm.runInContext(fs.readFileSync(__dirname+'/../shipping-local-print.js','utf8'),context);
-  window.YouziLocalPrint.attach({channel:'MOMO',orderNo:'TEST-ORDER',key:'MOMO:TEST',tracking:'TRACK-TEST',carrier,shippingMethod},
+  window.YouziLocalPrint.attach({channel,items:[{name:'測試商品',variant:'藍色',sku:'2044749-17',quantity:2}],paidAmount:'2070',paidAmountStatus:'confirmed',paidCurrency:'TWD',orderNo:'TEST-ORDER',key:'MOMO:TEST',tracking:'TRACK-TEST',carrier,shippingMethod},
     printLink?{print:'https://example.test/label.pdf'}:{label:'https://example.test/label.pdf'},async()=>{printed++;});
   const box=elements.get('localPrintControls');
   return {button:box.children[0],status:box.children[1],elements,calls,printed:()=>printed};
@@ -99,4 +100,25 @@ test('unsafe or outdated CVS preparation cannot reach /print: '+JSON.stringify(o
   const h=harness(options);await h.button.onclick();
   assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,0);
   assert.equal(h.printed(),0);assert.match(h.status.textContent,/尚未送印|不一致/);
+});
+
+for(const channel of ['蝦皮','MOMO','酷澎','官網'])
+test(channel+' uses the final label pixels for preview and sends all footer details without printing',async()=>{
+ const h=harness({channel,prepareStatus:'preview'});await new Promise(setImmediate);
+ const requests=h.calls.filter(c=>c.url.endsWith('/prepare'));
+ assert.equal(requests.length,1);
+ assert.equal(requests[0].body.packingFooter.items[0].name,'測試商品 / 藍色');
+ assert.equal(requests[0].body.packingFooter.items[0].sku,'204-4749-17');
+ assert.equal(requests[0].body.packingFooter.paidAmount,'2070');
+ assert.equal(h.button.textContent,'重印貨運單');
+ assert.equal(h.elements.get('documentPreviewImage').src,'data:image/png;base64,cHJldmlldw==');
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,0);
+ await h.button.onclick();
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,1);
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/prepare')).at(-1).body.reprint,true);
+});
+for(const option of [{layouts:[]},{replyLayout:'old'}])
+test('cannot silently print an old cached layout: '+JSON.stringify(option),async()=>{
+ const h=harness(option);await h.button.onclick();
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,0);
 });

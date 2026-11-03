@@ -2,6 +2,7 @@
 // Local PDFs stay on the packing PC. This module never requests a shipment.
 (function () {
   const BASE = 'http://127.0.0.1:18182';
+  const LAYOUT = 'packing-footer-v1';
   let generation = 0, inFlight = false, currentButton = null;
   const $ = id => document.getElementById(id);
   async function local(path, body) {
@@ -55,14 +56,31 @@
     const shippingMethod = row.shippingMethod || carrierMethod;
     const momoStore = row.channel === 'MOMO' && ['seven', 'family'].includes(shippingMethod);
     const printProfile = momoStore ? 'momo-cvs-v1' : '';
-    const prepareBody = () => ({channel: row.channel, pdfBase64, ...(momoStore ? {
-      printProfile, shippingMethod, orderKey: row.key, orderNo: row.orderNo, tracking: row.tracking || '',
-    } : {})});
+    const prepareBody = () => ({channel: row.channel, pdfBase64,
+      orderKey: row.key, orderNo: row.orderNo, tracking: row.tracking || '',
+      packingFooter: window.ShippingModel.packingLabel(row),
+      ...(momoStore ? {printProfile, shippingMethod} : {})});
     function checkPrepared(job) {
+      if (job.layoutVersion !== LAYOUT || !job.preview?.startsWith('data:image/png;base64,'))
+        throw Error('副機尚未回傳新版商品標籤與預覽，尚未送印。');
       if (momoStore && (job.printProfile !== printProfile || job.pages !== 1 ||
           !Array.isArray(job.paperMm) || job.paperMm.length !== 2 || job.paperMm[0] !== 100 || job.paperMm[1] !== 150))
         throw Error('副機未回傳正確的超商單張版型，尚未送印。請更新副機列印助手。');
       return job;
+    }
+    function showPrepared(job) {
+      const image = $('documentPreviewImage'), zoom = $('zoomDocumentPreview');
+      if (!image || !zoom) return;
+      image.src = job.preview; image.hidden = false; zoom.hidden = false;
+      $('documentPlaceholder').hidden = true;
+      $('previewCaption').hidden = false;
+      $('previewCaption').textContent = `實際列印版面 · 100 × 150 mm · 共 ${job.pages} 張`;
+      zoom.onclick = () => {
+        $('largeImage').src = job.preview;
+        $('largeImage').alt = '實際列印第一張預覽';
+        $('imageTitle').textContent = '實際列印第一張預覽';
+        $('imageDialog').showModal();
+      };
     }
     let reprint = window.ShippingModel?.documentActionLabel(row) === '重印貨運單';
     let pdfBase64, preparedJob, ready = false;
@@ -83,12 +101,14 @@
       const result = await local('/health');
       if (!active()) return;
       if (result.service !== 'youzi-shipping-print') throw Error('本機連線服務不符。');
+      if (!result.packingLayouts?.includes(LAYOUT))
+        throw Error('副機列印助手需要更新商品標籤版型，尚未送印。');
       if (row.channel === 'MOMO' && carrierMethod && carrierMethod !== shippingMethod)
         throw Error('物流方式與列印版型不一致，請先重新讀取最新訂單。');
       $('printerHint').textContent = row.channel === 'MOMO'
-        ? momoStore ? 'MOMO 超商單：單張原單，100 × 150 mm，保留原單內容尺寸。'
-          : 'MOMO：自動將已支援的左右雙聯原單拆成兩張 100 × 150 mm 貼紙。'
-        : '使用 XP-420B 的 100 × 150 mm 標籤紙。';
+        ? momoStore ? 'MOMO 超商單：單張原單，100 × 150 mm；底部放品名、貨號、數量。'
+          : 'MOMO：左右雙聯共兩張 100 × 150 mm；第一張底部放商品資料，第二張底部留白。'
+        : '100 × 150 mm；原單置中，底部放品名、貨號、數量。';
       if (momoStore && (!Array.isArray(result.printProfiles) || !result.printProfiles.includes(printProfile)))
         throw Error('副機列印助手需要更新 MOMO 超商單版型，尚未送印。');
       if (momoStore && !links.print)
@@ -98,12 +118,13 @@
       if (!active()) return;
       preparedJob = checkPrepared(await local('/prepare', prepareBody()));
       if (!active()) return;
-      if (!['prepared', 'submitted'].includes(preparedJob.status))
+      if (!['prepared', 'preview', 'submitted'].includes(preparedJob.status))
         throw Error('這份單據正在處理或送印結果不明，請先查看印表機。');
-      if (preparedJob.status === 'submitted') reprint = true;
+      if (preparedJob.alreadySubmitted || preparedJob.status === 'submitted') reprint = true;
+      showPrepared(preparedJob);
       ready = true;
       button.textContent = label();
-      status.textContent = '列印助手已連線';
+      status.textContent = `新版標籤已備妥，共 ${preparedJob.pages} 張。`;
     }
     const preparation = preparePreview().catch(error => {
       if (active()) status.textContent = error.message;
@@ -130,6 +151,7 @@
           if (!active()) return;
         }
         if (job.status !== 'prepared') throw Error('這份單據正在處理或送印結果不明，請先查看印表機。');
+        showPrepared(job);
         status.textContent = `條碼檢查通過，正在送印 ${job.pages} 張…`;
         phase = '副機送交印表機';
         const result = await local('/print', {jobId: job.jobId});

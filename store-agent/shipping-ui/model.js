@@ -2,6 +2,25 @@
   'use strict';
   const labels={arranged:'已安排出貨',acquired:'已取單',print_requested:'已開啟列印',printed:'已印單',shipped:'已出貨',processed:'已處理',cancelled:'已取消'};
   const model={
+    packingLabel(row){
+      if(row.stale||row.handlingChanged)throw Error('訂單資料待核對，尚未送印。');
+      if(!Array.isArray(row.items)||!row.items.length)throw Error('尚未取得商品資料，尚未送印。');
+      const items=[];
+      for(const item of row.items){
+        const quantity=row.stage==='partial'?item.remaining:item.quantity;
+        if(quantity==null||typeof quantity==='boolean'||String(quantity).trim()===''||!Number.isInteger(Number(quantity))||Number(quantity)<0||item.heldQuantity>0)
+          throw Error('商品數量待核對，尚未送印。');
+        if(Number(quantity)===0)continue;
+        const name=String(item.name||'').trim(),sku=model.formatSku(item.sku);
+        if(!name||!sku)throw Error('品名或貨號不完整，尚未送印。');
+        const variant=String(item.variant||'').trim();
+        items.push({name:name+(variant&&!name.includes(variant)?' / '+variant:''),sku,quantity:Number(quantity)});
+      }
+      if(!items.length)throw Error('沒有可核對的出貨商品，尚未送印。');
+      return {version:'packing-footer-v1',orderNo:row.orderNo,items,
+        paidAmount:row.paidAmount,paidCurrency:row.paidCurrency,
+        paidAmountStatus:model.paidAmount(row).confirmed?row.paidAmountStatus:'unconfirmed'};
+    },
     paidAmount(row){
       if(row.stale)return {text:'實付金額：待更新',confirmed:false,note:'訂單資料尚未更新，請重新讀取後核對。'};
       if(row.paidAmountStatus==='review')return {text:'實付金額：需核對',confirmed:false,note:row.paidAmountNote||'請核對退款或拆單明細。'};

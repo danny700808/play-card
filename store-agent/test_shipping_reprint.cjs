@@ -18,13 +18,13 @@ function harness({channel='MOMO',history='prepared',handlingAction='',delay=fals
       const body=options.body&&JSON.parse(options.body);calls.push({url,body});
       const ok=value=>({ok:true,json:async()=>value});
       if(url==='/original.pdf'){if(delay)await wait;return {ok:true,blob:async()=>new Blob(['%PDF-1.4 test'])};}
-      if(url.endsWith('/health'))return ok({service:'youzi-shipping-print'});
-      if(url.endsWith('/prepare'))return ok({jobId:'a'.repeat(32),pages:channel==='MOMO'?2:1,status:body.reprint?'prepared':printed?'submitted':history});
+      if(url.endsWith('/health'))return ok({service:'youzi-shipping-print',packingLayouts:['packing-footer-v1']});
+      if(url.endsWith('/prepare'))return ok({jobId:'a'.repeat(32),layoutVersion:'packing-footer-v1',preview:'data:image/png;base64,dGVzdA==',pages:channel==='MOMO'?2:1,status:body.reprint?'prepared':printed?'submitted':history});
       if(url.endsWith('/print')){if(printFailure)throw Error('connection lost');printed=true;return ok({status:'submitted'});}
       throw Error(url);
     }};
   vm.runInNewContext(source,ctx);
-  window.YouziLocalPrint.attach({channel,handlingAction,orderNo:'TEST1234567890',documentReady:true},{print:'/original.pdf'},async()=>records++);
+  window.YouziLocalPrint.attach({channel,handlingAction,orderNo:'TEST1234567890',documentReady:true,items:[{name:'測試商品',sku:'204-4749-17',quantity:1}]},{print:'/original.pdf'},async()=>records++);
   const box=elements.get('localPrintControls');
   return {window,elements,calls,release,button:box.children[0],status:box.children[1],records:()=>records,confirmations:()=>confirmations,
     prints:()=>calls.filter(c=>c.url.endsWith('/print'))};
