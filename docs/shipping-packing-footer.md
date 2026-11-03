@@ -17,6 +17,14 @@ MOMO 超商仍單張、宅配左右雙聯仍兩張。商品資訊只放第一張
 
 ## 副機更新
 
+### 已保存原單取回相容性
+
+`cached_document.py` 以 `sourceDigest` 核對新版商品標籤作業的原始 PDF，同時相容舊作業的 `digest`。新版 `digest` 包含商品及版型，不能再直接拿它比對原單雜湊；否則會把已保存原單誤判成平台未提供。`preview` 作業也可取回其已驗證的原單，但取回不改變送印權限。
+
+原始 PDF 仍必須通過蝦皮通路雜湊、訂單編號、物流號及 `preview.py` 的條碼檢查。只讀取 `source.pdf`，不以合成後標籤冒充原單，不更動列印歷史或自動送印。已安裝助手每次請求都啟動此腳本，備份後更新 `cached_document.py` 即生效，無須重啟服務。`preview.py` 在本目錄保留現場核對版本。
+
+驗證：`python -m unittest discover -s local-print -p test_cached_document.py`。
+
 現場安裝位置 `%LOCALAPPDATA%\YouziShippingPrint`。先備份服務檔案、設定及所有 `jobs/*/status.json` 雜湊，確認列印佇列空且沒有 preparing/submitting 作業。更新 `bridge.py`、`prepare.py`、新增 `packing_footer.py`；原有 `momo_split.py`、`shipping_cvs_layout.py` 原樣保留（本目錄保存當時基礎版本供維護）。需要現有 Python 的 reportlab、pypdf、pypdfium2、zxingcpp 及 Windows 微軟正黑體。
 
 不覆蓋 config、密碼、print_labels.ps1、preview.py、cached_document.py、啟動設定或 jobs。只停止 health 所回報且命令列指向本服務的 PID，再用既有 start.ps1 隱藏啟動；檢查 18182 唯一 listener 及 health 的 release/packingLayouts。
