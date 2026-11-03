@@ -58,3 +58,18 @@ test('timeout does not retry a potentially completed shipment',async()=>{
   await assert.rejects(p,/不會自動重送/);
   assert.deepEqual(h.sent.map(m=>m.type),['probe','get-document','cancel']);
 });
+
+test('missing historical original is distinct from a new label still being prepared',async()=>{
+ const h=harness();h.ready();
+ const p=h.bridge.getDocument(row);await flush();
+ h.reply({type:'error',key:row.key,orderNo:row.orderNo,code:'not_ready',requestId:h.sent.at(-1).requestId});
+ await assert.rejects(p,/已處理不代表這台電腦已保存原單/);
+ assert.equal(h.sent.filter(m=>m.type==='get-document').length,1);
+ assert.equal(h.sent.at(-1).order.mode,'reprint');
+ const fresh=harness();fresh.ready();
+ const newOrder={...row,stage:'pending',tracking:''};
+ const pending=fresh.bridge.getDocument(newOrder);await flush();
+ fresh.reply({type:'error',key:row.key,orderNo:row.orderNo,code:'not_ready',requestId:fresh.sent.at(-1).requestId});
+ await assert.rejects(pending,/目前未能取得這筆貨運單/);
+ assert.equal(fresh.sent.filter(m=>m.type==='get-document').length,1);
+});

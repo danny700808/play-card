@@ -1,4 +1,4 @@
-"""Render and verify an official Shopee PDF in memory. Never prepares or prints."""
+"""Verify/render an official Shopee PDF; CLI archives it, never prepares or prints."""
 import base64
 import io
 import json
@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / 'deps'))
 import pypdfium2 as pdfium
 import zxingcpp
 from pypdf import PdfReader
+from original_archive import save_original
 
 
 def bound_code(text, value):
@@ -68,12 +69,19 @@ def render_preview(raw, order_no, tracking):
     return {'tracking': tracking, 'previewDataUrl': 'data:image/png;base64,'+base64.b64encode(png).decode(), 'barcodeCount': len(decoded)}
 
 
+def preview_and_save(raw, order_no, tracking='', archive=None):
+    result = render_preview(raw, order_no, tracking)
+    save_original(archive if archive is not None else Path(__file__).resolve().parent / 'originals',
+                  raw, order_no, result['tracking'])
+    return result
+
+
 if __name__ == '__main__':
     sys.stdin.reconfigure(encoding='utf-8');sys.stdout.reconfigure(encoding='utf-8')
     try:
         request = json.load(sys.stdin)
         raw = base64.b64decode(request['pdfBase64'], validate=True)
-        print(json.dumps(render_preview(raw, request['orderNo'], request.get('tracking', ''))))
+        print(json.dumps(preview_and_save(raw, request['orderNo'], request.get('tracking', ''))))
     except Exception as error:
         code = str(error) if str(error) in ('order_changed', 'unsupported', 'not_ready') else 'failed'
         print(json.dumps({'code': code}))

@@ -12,16 +12,22 @@ sys.path.insert(0, str(ROOT))
 from preview import PdfReader, render_preview
 
 
-def find_document(jobs, order_no, tracking):
+def find_document(jobs, order_no, tracking, archive=None):
     if not re.fullmatch(r'[A-Z0-9]{12,24}', order_no) or not re.fullmatch(r'[A-Za-z0-9-]{1,40}', tracking):
         raise ValueError('order_changed')
     # Only existing print jobs from the Shopee pipeline qualify. The channel is
     # part of the persisted digest, including jobs made before channel metadata.
-    paths = sorted(jobs.glob('*/status.json'), key=lambda p: p.stat().st_mtime, reverse=True)
+    archive = Path(archive) if archive is not None else jobs.parent / 'originals'
+    paths = sorted([*jobs.glob('*/status.json'), *archive.glob('*/metadata.json')],
+                   key=lambda p: p.stat().st_mtime, reverse=True)
     for path in paths:
         try:
             state = json.loads(path.read_text(encoding='utf-8'))
-            if state.get('status') not in ('preview', 'prepared', 'submitted', 'uncertain', 'submitting'):
+            if path.name == 'metadata.json':
+                if (state.get('version') != 1 or state.get('channel') != '蝦皮'
+                        or state.get('orderNo') != order_no or state.get('tracking') != tracking):
+                    continue
+            elif state.get('status') not in ('preview', 'prepared', 'submitted', 'uncertain', 'submitting'):
                 continue
             source = path.parent / 'source.pdf'
             if not 20 < source.stat().st_size <= 15 * 1024 * 1024:

@@ -7,7 +7,7 @@
     getting_document:'正在取得貨運單…',preparing_preview:'正在準備預覽…',waiting_document:'已確認出貨，正在等待平台提供貨運單；不會重複申請出貨。'};
   const errors={login_required:'副機 EasyStore 登入已失效，請由店主重新登入一次。',
     shipment_label_pending:'平台已確認出貨，但貨運單尚未備妥。稍後只需取回原單，不要再次申請出貨。',
-    not_ready:'平台尚未提供這筆貨運單，請更新訂單後再核對。',
+    not_ready:'目前未能取得這筆貨運單，請稍後重新開啟；若持續發生，請到平台後台確認。',
     order_changed:'訂單內容或物流已變更，請讀取最新訂單後再核對。',
     unsupported:'副機取單助手需要更新，請依接續說明更新助手。'};
   function send(message){window.postMessage({namespace,version,direction:'desk',...message},location.origin);}
@@ -93,7 +93,13 @@
       }
       return;
     }
-    if(m.type==='error'){finish(m.requestId,Error(errors[m.code]||'副機取單未完成，請確認助手狀態後再試。'));return;}
+    if(m.type==='error'){
+      const existing=item.row.tracking||item.row.stage==='shipped'||item.row.canDownload;
+      const message=m.code==='not_ready'&&existing
+        ?'目前無法取回這筆已處理訂單的原貨運單。已處理不代表這台電腦已保存原單，請到 EasyStore／蝦皮後台確認是否仍可下載。'
+        :errors[m.code]||'副機取單未完成，請確認助手狀態後再試。';
+      finish(m.requestId,Error(message));return;
+    }
     if(m.type!=='document')return;
     try{
       if(!m.tracking||(item.row.tracking&&m.tracking!==item.row.tracking))throw Error('貨運單物流號碼不一致，請更新訂單後重新核對。');
