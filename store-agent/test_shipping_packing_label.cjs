@@ -18,7 +18,28 @@ test('missing SKU, stale metadata, cancellation holds and invalid quantities blo
   {items:[{...row.items[0],heldQuantity:1}]},...['',true,null,-1,1.5].map(quantity=>({items:[{...row.items[0],quantity}]}))])
   assert.throws(()=>model.packingLabel({...row,...changes}));
 });
-test('pending COD and refund review never claim an actual paid amount',()=>{
- for(const paidAmountStatus of ['pending_collection','review','unknown'])
+test('refund review and unknown amounts remain unconfirmed',()=>{
+ for(const paidAmountStatus of ['review','unknown'])
   assert.equal(model.packingLabel({...row,paidAmountStatus,payableAmount:'2070'}).paidAmountStatus,'unconfirmed');
+});
+
+test('unpaid COD prints the buyer payable total without marking the order paid',()=>{
+ const cod={...row,orderNo:'TEST-COD-425',paidAmount:null,paidAmountStatus:'pending_collection',payableAmount:'425'};
+ const before=structuredClone(cod);
+ const result=model.packingLabel(cod);
+ assert.equal(result.paidAmount,'425');assert.equal(result.paidAmountStatus,'confirmed');
+ assert.equal(model.paidAmount(cod).text,'待收款：NT$425');
+ assert.equal(model.paidAmount(cod).confirmed,false);
+ assert.deepEqual(cod,before);
+});
+test('COD uses its payable amount, preserving zero/cents and rejecting malformed or missing totals',()=>{
+ for(const amount of ['0','425.50',425,0]){
+  const result=model.packingLabel({...row,paidAmountStatus:'pending_collection',payableAmount:amount});
+  assert.equal(result.paidAmount,amount);assert.equal(result.paidAmountStatus,'confirmed');
+ }
+ for(const amount of [null,undefined,'',true,-1,'NaN','Infinity','1e3','1.001']){
+  const result=model.packingLabel({...row,paidAmountStatus:'pending_collection',payableAmount:amount});
+  assert.equal(result.paidAmount,null);assert.equal(result.paidAmountStatus,'unconfirmed');
+ }
+ assert.equal(model.packingLabel({...row,paidCurrency:'USD'}).paidAmountStatus,'unconfirmed');
 });

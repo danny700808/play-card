@@ -17,9 +17,17 @@
         items.push({name:name+(variant&&!name.includes(variant)?' / '+variant:''),sku,quantity:Number(quantity)});
       }
       if(!items.length)throw Error('沒有可核對的出貨商品，尚未送印。');
+      // The footer's customer number is the buyer's final order amount,
+      // whether already paid or still due on delivery.
+      const amount=row.paidAmountStatus==='pending_collection'?row.payableAmount:row.paidAmount;
+      const known=['confirmed','pending_collection'].includes(row.paidAmountStatus)&&
+        row.paidCurrency==='TWD'&&(typeof amount==='string'||typeof amount==='number')&&
+        /^\d{1,12}(?:\.\d{1,2})?$/.test(String(amount))&&Number.isFinite(Number(amount));
+      // Keep the installed v1 print helper's field names. "confirmed" here
+      // validates the label number only; never mutate the order/payment state.
       return {version:'packing-footer-v1',orderNo:row.orderNo,items,
-        paidAmount:row.paidAmount,paidCurrency:row.paidCurrency,
-        paidAmountStatus:model.paidAmount(row).confirmed?row.paidAmountStatus:'unconfirmed'};
+        paidAmount:known?amount:null,paidCurrency:row.paidCurrency,
+        paidAmountStatus:known?'confirmed':'unconfirmed'};
     },
     paidAmount(row){
       if(row.stale)return {text:'實付金額：待更新',confirmed:false,note:'訂單資料尚未更新，請重新讀取後核對。'};

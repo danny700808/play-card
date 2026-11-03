@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const model=require('./shipping-ui/model.js');
 
-function harness({carrier='7-11店到店',shippingMethod,prepareStatus='prepared',prepareError='',printError='',documentOk=true,
+function harness({rowChanges={},carrier='7-11店到店',shippingMethod,prepareStatus='prepared',prepareError='',printError='',documentOk=true,
   layouts=['packing-footer-v1'],replyLayout='packing-footer-v1',channel='MOMO',profiles=['momo-cvs-v1'],replyProfile='momo-cvs-v1',replyPages=1,printLink=true}={}){
   const elements=new Map(),calls=[];
   function el(){return {style:{},children:[],open:true,disabled:false,textContent:'',setAttribute(){},
@@ -25,7 +25,7 @@ function harness({carrier='7-11店到店',shippingMethod,prepareStatus='prepared
       throw Error('Unexpected endpoint');
     }});
   vm.runInContext(fs.readFileSync(__dirname+'/../shipping-local-print.js','utf8'),context);
-  window.YouziLocalPrint.attach({channel,items:[{name:'測試商品',variant:'藍色',sku:'2044749-17',quantity:2}],paidAmount:'2070',paidAmountStatus:'confirmed',paidCurrency:'TWD',orderNo:'TEST-ORDER',key:'MOMO:TEST',tracking:'TRACK-TEST',carrier,shippingMethod},
+  window.YouziLocalPrint.attach({channel,items:[{name:'測試商品',variant:'藍色',sku:'2044749-17',quantity:2}],paidAmount:'2070',paidAmountStatus:'confirmed',paidCurrency:'TWD',orderNo:'TEST-ORDER',key:'MOMO:TEST',tracking:'TRACK-TEST',carrier,shippingMethod,...rowChanges},
     printLink?{print:'https://example.test/label.pdf'}:{label:'https://example.test/label.pdf'},async()=>{printed++;});
   const box=elements.get('localPrintControls');
   return {button:box.children[0],status:box.children[1],elements,calls,printed:()=>printed};
@@ -121,4 +121,19 @@ for(const option of [{layouts:[]},{replyLayout:'old'}])
 test('cannot silently print an old cached layout: '+JSON.stringify(option),async()=>{
  const h=harness(option);await h.button.onclick();
  assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,0);
+});
+
+test('unpaid Shopee 425 reaches both preview and reprint footer with the existing helper contract',async()=>{
+ const h=harness({channel:'蝦皮',prepareStatus:'preview',rowChanges:{
+  paidAmount:null,paidAmountStatus:'pending_collection',payableAmount:'425'}});
+ await new Promise(setImmediate);
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,0);
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/prepare')).length,1);
+ await h.button.onclick();
+ for(const {body} of h.calls.filter(c=>c.url.endsWith('/prepare'))){
+  assert.equal(body.packingFooter.paidAmount,'425');
+  assert.equal(body.packingFooter.paidAmountStatus,'confirmed');
+  assert.equal(body.packingFooter.paidCurrency,'TWD');
+ }
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,1);
 });
