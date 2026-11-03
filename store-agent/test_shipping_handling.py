@@ -26,7 +26,11 @@ class HandlingTests(unittest.TestCase):
         return self.w.snapshot()["orders"][0]
 
     def test_tracking_alone_is_not_printed(self):
-        self.assertFalse(self.row_state()["handled"])
+        actual = self.row_state()
+        self.assertTrue(actual["handled"])
+        self.assertEqual(actual["handlingAction"], "arranged")
+        self.assertEqual(actual["printCount"], 0)
+        self.assertFalse(actual["documentReady"])
 
     def test_confirmation_survives_restart_and_refresh(self):
         self.w.mark_handled(self.row["key"], "printed", "店內確認")
@@ -90,6 +94,7 @@ class HandlingTests(unittest.TestCase):
                 self.w.mark_handled(self.row["key"], "reopen")
 
     def test_failed_acquisition_never_marks_processed(self):
+        self.row.update(status="INSTRUCT", stage="pending", tracking="")
         with patch.object(self.w, "_process", side_effect=RuntimeError("network")):
             with self.assertRaises(RuntimeError):
                 self.w.process(self.row["key"], {}, "fingerprint")

@@ -562,12 +562,19 @@ class Workbench:
                     handled = db.execute("SELECT * FROM handling WHERE order_key=?", (row["key"],)).fetchone()
                 valid_handled = handled and handled["binding"] == self.handling_binding(row)
                 action = handled["action"] if valid_handled else ""
-                platform_done = row["stage"] in ("shipped", "cancelled") or row.get("platformPrinted", False) or row.get("platformAcquired", False)
+                # Wing can arrange a label without a workbench job/handling row.
+                # This proves arrangement, not document acquisition or printing.
+                # Preserve explicit local reopen and changed-binding review rules.
+                external_arranged = (not handled and not row["stale"] and
+                    row["platform"] == "Coupang" and row.get("status") == "DEPARTURE" and
+                    row["stage"] == "label" and bool(text(row.get("tracking"))))
+                platform_done = (row["stage"] in ("shipped", "cancelled") or row.get("platformPrinted", False) or
+                                 row.get("platformAcquired", False) or external_arranged)
                 row["handled"] = action != "reopen" if action else platform_done
                 row["handlingChanged"] = bool(handled and not valid_handled and not platform_done)
                 row["handlingAction"] = action or ("shipped" if row["stage"] == "shipped" else
                     "cancelled" if row["stage"] == "cancelled" else "printed" if row.get("platformPrinted") else
-                    "acquired" if row.get("platformAcquired") else "")
+                    "acquired" if row.get("platformAcquired") else "arranged" if external_arranged else "")
                 row["handlingSource"] = handled["source"] if valid_handled else "平台"
                 row["handledAt"] = handled["updated"] if valid_handled else ""
                 row["printCount"] = handled["print_count"] if valid_handled else 0

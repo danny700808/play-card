@@ -1,6 +1,6 @@
 (function(root){
   'use strict';
-  const labels={acquired:'已取單',print_requested:'已開啟列印',printed:'已印單',shipped:'已出貨',processed:'已處理',cancelled:'已取消'};
+  const labels={arranged:'已安排出貨',acquired:'已取單',print_requested:'已開啟列印',printed:'已印單',shipped:'已出貨',processed:'已處理',cancelled:'已取消'};
   const model={
     paidAmount(row){
       if(row.stale)return {text:'實付金額：待更新',confirmed:false,note:'訂單資料尚未更新，請重新讀取後核對。'};
@@ -51,6 +51,7 @@
     documentActionLabel(row){
       if(['printed','print_requested','shipped'].includes(row.handlingAction)||row.stage==='shipped')return '重印貨運單';
       if(row.documentReady||row.handlingAction==='acquired')return '列印貨運單';
+      if(row.handlingAction==='arranged')return '取回原貨運單';
       return '取得貨運單';
     },
     status(row){
