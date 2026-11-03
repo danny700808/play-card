@@ -7,16 +7,27 @@
  const icons={schedule:'▦',attendance:'◷',salary:'＄',rental:'⌂',more:'☰'};
  const features={clock:['打卡','clock.html'],history:['打卡紀錄','clock.html?view=history'],hours:['填寫工時','parttime.html'],leave:['請假','leave.html'],temporary:['補登／臨時出勤','temporary-attendance.html'],announcement:['公告','announcements.html'],task:['待辦','task.html'],routine:['定期事項','routine.html'],training:['教育訓練','training.html'],forms:['表單與證明','forms-hub.html'],notification:['通知設定','profile.html']};
  function status(text,error=false){$('personalStatus').textContent=text||'';$('personalStatus').classList.toggle('personal-error',error);}
+ async function restoredAuth(){
+  const auth=firebase.auth();
+  if(typeof auth.authStateReady==='function')await auth.authStateReady();
+  else if(!auth.currentUser)await new Promise((resolve,reject)=>{
+   let unsubscribe,settled=false;
+   const finish=error=>{if(settled)return;settled=true;clearTimeout(timer);if(unsubscribe)unsubscribe();error?reject(error):resolve();};
+   const timer=setTimeout(()=>finish(Error('登入狀態讀取逾時，請重新整理後再試。')),15000);
+   try{unsubscribe=auth.onAuthStateChanged(()=>finish(),finish);if(settled&&unsubscribe)unsubscribe();}catch(error){finish(error);}
+  });
+  return auth;
+ }
  async function verifyIdentity(expected){
-  const auth=firebase.auth();if(auth.authStateReady)await auth.authStateReady();const claims=auth.currentUser?(await auth.currentUser.getIdTokenResult()).claims:{};
-  const local=getUser();if(claims.employee!==true||String(claims.employeeId||'')!==String(expected||'')||local&&!local.portalSessionBridge&&String(local.id)!==String(expected))throw Error('帳號已切換或登入到期，請重新開啟工作台。');
+  const auth=await restoredAuth(),current=auth.currentUser,claims=current?(await current.getIdTokenResult()).claims:{};
+  const local=getUser();if(auth.currentUser?.uid!==current?.uid||claims.employee!==true||String(claims.employeeId||'')!==String(expected||'')||local&&!local.portalSessionBridge&&String(local.id)!==String(expected))throw Error('帳號已切換或登入到期，請重新開啟工作台。');
  }
  async function call(action,data={}){
   const expected=state?.user.id||getUser()?.id;await verifyIdentity(expected);
   const result=await window.YZProtectedData.call('personalWorkspace',{action,...data,expectedEmployeeId:expected});await verifyIdentity(expected);return result;
  }
  async function managerRead(action,data={}){
-  const auth=firebase.auth();if(auth.authStateReady)await auth.authStateReady();const current=auth.currentUser,claims=current?(await current.getIdTokenResult()).claims:{};
+  const auth=await restoredAuth(),current=auth.currentUser,claims=current?(await current.getIdTokenResult()).claims:{};
   if(claims.employee!==true||claims.manager!==true)throw Error('請以管理者帳號開啟員工檢視。');
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),170000);
   try{const response=await fetch('https://'+(APP_CONFIG.FUNCTION_REGION||'us-central1')+'-'+APP_CONFIG.FIREBASE_CONFIG.projectId+'.cloudfunctions.net/personalWorkspace',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await current.getIdToken()},body:JSON.stringify({data:{action,...data,expectedEmployeeId:claims.employeeId}}),signal:controller.signal});const result=await response.json();if(!response.ok||result.error)throw Error(result.error?.message||'讀取失敗。');if(auth.currentUser?.uid!==current.uid)throw Error('帳號已切換，請重新開啟。');return result.result||result.data;}finally{clearTimeout(timer);}
@@ -151,7 +162,7 @@
    if(!firebase.apps.length)firebase.initializeApp(APP_CONFIG.FIREBASE_CONFIG);
    let user=getUser();if(!user){location.replace('login.html?next=dashboard.html');return;}
    preview=params.has('preview')||isManager(user);
-   if(preview){if(firebase.auth().authStateReady)await firebase.auth().authStateReady();let claims=firebase.auth().currentUser?(await firebase.auth().currentUser.getIdTokenResult()).claims:{};
+   if(preview){await restoredAuth();let claims=firebase.auth().currentUser?(await firebase.auth().currentUser.getIdTokenResult()).claims:{};
     if(claims.employee!==true||claims.manager!==true){await ensureHrSession(user);claims=(await firebase.auth().currentUser.getIdTokenResult()).claims;}if(claims.employee!==true||claims.manager!==true)throw Error('手機預覽僅供管理者使用。');
     document.body.classList.add('is-preview');$('previewBar').hidden=false;$('previewLabel').hidden=false;status('讀取人員名單中…');loadPreviewRoster();return;
    }
