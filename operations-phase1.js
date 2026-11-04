@@ -2474,7 +2474,7 @@ function renderOverviewV7(){
     return Object.assign({intent:value,preserveUnmentionedContent:value==='merge-existing'||value==='add-variant'||value==='update-existing',neverCreateDuplicate:true},rules[value]);
   }
   function productPlatformStatus(p,key){
-    const saved=p&&p.platformListingStatus&&p.platformListingStatus[key]||{status:'unknown'},mappingId=productPlatformMappingId(p,key),savedStatus=PRODUCT_PLATFORM_STATUS_META[clean(saved.status)]?clean(saved.status):'unknown';
+    const original=p&&p.platformListingStatus&&p.platformListingStatus[key]||{status:'unknown'},audit=((p.mediaReceipt||{}).platformMediaAudit||(p.internal||{}).platformMediaAudit||{})[key],checked=audit&&audit.listing,saved=checked&&(!original.checkedAt||Date.parse(checked.checkedAt)>=Date.parse(original.checkedAt))?checked:original,mappingId=productPlatformMappingId(p,key),savedStatus=PRODUCT_PLATFORM_STATUS_META[clean(saved.status)]?clean(saved.status):'unknown';
     let status=savedStatus;
     if(mappingId&&status==='unknown')status='mapped';
     if(key==='easyStore'&&p&&p.matchedOnline&&status==='unknown')status='mapped';
@@ -2493,14 +2493,38 @@ function renderOverviewV7(){
     if(key==='easyStore'&&p&&p.matchedOnline)return {exists:true,listingId:row.listingId||clean(p.sourceProductId),inferredFrom:''};
     return {exists:false,listingId:'',inferredFrom:''};
   }
+  function productPlatformMediaState(p,key,kind){
+    const receipt=p.mediaReceipt||{},audit=(receipt.platformMediaAudit||(p.internal||{}).platformMediaAudit||{})[key]||{},explicit=audit[kind];
+    const unknown={label:'待確認',tone:'unknown',note:'尚無平台查驗紀錄，不能判定沒有'};
+    if(p.mediaReceiptError)return {label:'讀取失敗',tone:'unknown',note:p.mediaReceiptError};
+    const normalize=function(r){
+      if(!r)return unknown;
+      const status=clean(r.status),note=[r.reason||r.note||r.message,r.checkedAt||r.at].filter(Boolean).join('｜');
+      if(['pending-review','submitted-awaiting-approval','submitted-or-verified'].includes(status))return {label:'待審',tone:'pending',note:note||'已送審，尚未確認公開'};
+      if(['platform-denied','rejected','denied','submission-blocked','failed','error'].includes(status))return {label:'受阻',tone:'missing',note:note||'需修正後處理'};
+      if(['missing','video-missing','confirmed-absent'].includes(status)||r.present===false)return {label:'缺少',tone:'missing',note:note||'平台查驗確認缺少'};
+      if(['completed','verified','verified-approved-video','saved-reopened-verified','saved-verified-reopened','saved-and-preview-embed-verified','verified-existing','preserved-existing','preserved-original','original-preserved'].includes(status)||r.present===true)return {label:'有',tone:'present',note:note||'已有平台保存／查驗紀錄'};
+      if(['waiting-listing','pending-missing-listing','pending-no-matched-listing','listing-deleted'].includes(status))return {label:'無商品',tone:'unknown',note:note||'缺少可用的對應平台商品'};
+      if(status==='saved-not-submitted')return {label:'待送審',tone:'pending',note:note||'已保存，尚未送審'};
+      if(status.startsWith('pending')||['processing','queued','uploaded'].includes(status))return {label:'待處理',tone:'pending',note:note||'尚未完成平台核對'};
+      return unknown;
+    };
+    if(explicit)return normalize(explicit);
+    if(kind==='photo')return normalize((receipt.physicalImagePlatformResults||{})[key]);
+    const results=normalizeProductVideoRecords(p.productVideos).map(function(v){return (v.platformVideoResults||{})[key];}).filter(Boolean);
+    if(!results.length)return unknown;
+    const states=results.map(normalize),present=states.find(function(x){return x.tone==='present';});
+    return present||states.find(function(x){return x.tone==='pending';})||states[0];
+  }
+  function productPlatformMediaHtml(p,key){
+    return [['photo','實體圖'],['video','影片']].map(function(pair){const media=productPlatformMediaState(p,key,pair[0]);return '<button type="button" class="ops-platform-media-line is-'+media.tone+'" data-action="product-edit" data-id="'+attr(p.docId)+'" title="'+attr(pair[1]+'：'+media.label+'｜'+media.note)+'"><span>'+pair[1]+'</span><strong>'+escapeHtml(media.label)+'</strong></button>';}).join('');
+  }
   function productPlatformStatusHtml(p,compact){
     if(clean(p&&p.sku).startsWith('0'))return '';
-    return '<div class="ops-product-platform-status '+(compact?'compact':'')+'">'+PRODUCT_LISTING_PLATFORMS.map(function(platform){
-      const status=productPlatformStatus(p,platform.key),row=productPlatformPresence(p,platform.key),pending=['queued','pending-review','draft'].includes(status.status),pendingLabel=status.status==='pending-review'?'審核中':status.status==='draft'?'草稿':'待確認',title=[platform.label,pending?pendingLabel:row.exists?'有':'沒有',row.listingId?'編號 '+row.listingId:'',row.inferredFrom,pending?'點一下重新查驗':row.exists?'':'點一下準備補上架'].filter(Boolean).join('｜');
-      if(pending)return '<button type="button" class="is-pending" data-action="product-platform-recheck" data-id="'+attr(p.docId)+'" data-platform="'+attr(platform.key)+'" title="'+attr(title)+'"><b>'+escapeHtml(platform.label)+'</b><i>'+escapeHtml(pendingLabel)+'</i></button>';
-      if(row.exists)return '<span class="is-present" title="'+attr(title)+'"><b>'+escapeHtml(platform.label)+'</b><i>有</i></span>';
-      return '<button type="button" class="is-missing" data-action="product-platform-missing" data-id="'+attr(p.docId)+'" data-platform="'+attr(platform.key)+'" title="'+attr(title)+'"><b>'+escapeHtml(platform.label)+'</b><i>沒有</i></button>';
-    }).join('')+productMediaPresenceBadges(p)+'<button hidden type="button" class="ops-platform-status-review" data-action="product-platform-status-edit" data-id="'+attr(p.docId)+'">核對</button></div>';
+    return '<div class="ops-product-platform-status ops-platform-media-grid '+(compact?'compact':'')+'">'+PRODUCT_LISTING_PLATFORMS.map(function(platform){
+      const status=productPlatformStatus(p,platform.key),row=productPlatformPresence(p,platform.key),pending=['queued','pending-review','draft'].includes(status.status),invalid=productPlatformStatusIsInvalid(status),knownMissing=status.status==='missing',label=pending?(status.status==='pending-review'?'待審':'待確認'):invalid?(knownMissing?'無商品':'受限／退回'):row.exists?'有商品':'待確認',tone=pending?'pending':invalid?'missing':row.exists?'present':'unknown',action=pending||!knownMissing?'product-platform-recheck':'product-platform-missing';
+      return '<section class="ops-platform-media-cell" aria-label="'+attr(platform.label)+'"><button type="button" class="ops-platform-media-heading is-'+tone+'" data-action="'+action+'" data-id="'+attr(p.docId)+'" data-platform="'+attr(platform.key)+'" title="'+attr(platform.label+'｜'+label+(row.listingId?'｜編號 '+row.listingId:''))+'"><b>'+escapeHtml(platform.label)+'</b><i>'+label+'</i></button>'+productPlatformMediaHtml(p,platform.key)+'</section>';
+    }).join('')+'</div>';
   }
   function productMediaPresenceBadges(p){
     const receipt=p.mediaReceipt||{},platforms=PRODUCT_LISTING_PLATFORMS.map(function(x){return x.key;}),photos=p.physicalImageUrls||[],videos=normalizeProductVideoRecords(p.productVideos);
@@ -2532,7 +2556,7 @@ function renderOverviewV7(){
   function loadVisibleProductMediaPresence(){
     if(productMediaObserver)productMediaObserver.disconnect();productMediaPending.clear();
     if(state.view!=='products'||!state.db)return;
-    const cards=queryAll('.ops-product-card-layout-a');
+    const cards=queryAll('.ops-product-card-layout-a, .ops-product-text-row');
     function enqueue(card){
       const p=catalogById(card.dataset.id);if(!p)return;
       const cached=productMediaCache.get(p.docId);
@@ -4255,7 +4279,7 @@ function ensureSalesClock(){
   }
   function refreshProductInlineMedia(p){
     const el=query('.ops-product-inline-media');if(el&&el.dataset.productId===p.docId)el.outerHTML=productInlineMediaHtml(p);
-    queryAll('.ops-product-card-layout-a').filter(function(card){return card.dataset.id===p.docId;}).forEach(function(card){const status=query('.ops-product-platform-status',card);if(status)status.outerHTML=productPlatformStatusHtml(p);});
+    queryAll('.ops-product-card-layout-a, .ops-product-text-row').filter(function(card){return card.dataset.id===p.docId;}).forEach(function(card){const status=query('.ops-product-platform-status',card);if(status)status.outerHTML=productPlatformStatusHtml(p,card.classList.contains('ops-product-text-row'));});
   }
   async function loadProductMediaReceipt(p){
     try{

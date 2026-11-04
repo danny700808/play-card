@@ -2753,3 +2753,14 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-expense-details>summary{cursor:pointer;font-weight:700;padding:3px}
 .ops-expenses-compact .ops-expense-month-toolbar{flex-wrap:wrap}
 @media(max-width:600px){.ops-expenses-compact .ops-expense-department-tabs b{font-size:13px}.ops-expenses-compact .ops-expense-department-tabs button{justify-content:center;padding:8px 4px}.ops-expenses-compact .ops-expense-page-kpis{grid-template-columns:1fr}.ops-expenses-compact .ops-expense-master-table{min-width:560px}}
+
+/* Each platform reports its own media; local files are not publication proof. */
+.ops-platform-media-cell{min-width:0;border:1px solid #dce4e8;border-radius:6px;overflow:hidden;background:#fff}
+.ops-platform-media-cell button{display:flex;align-items:center;justify-content:space-between;gap:2px;width:100%;min-width:0;border:0;border-radius:0;padding:3px 4px;font:inherit;font-size:8px;line-height:1.4;text-align:left;cursor:pointer;background:#f0f3f5;color:#526570}
+.ops-platform-media-cell button+button{border-top:1px solid #e3e9ec}
+.ops-platform-media-cell .is-present{background:#e9f8f1;color:#176b50}
+.ops-platform-media-cell .is-pending{background:#fff8df;color:#7c6109}
+.ops-platform-media-cell .is-missing{background:#fff0ee;color:#a33d34}
+.ops-platform-media-cell .is-unknown{background:#f0f3f5;color:#526570}
+.ops-platform-media-line strong{font-size:8px;white-space:nowrap}
+.ops-platform-media-grid .ops-platform-media-heading b,.ops-platform-media-grid .ops-platform-media-heading i{font-size:8px}
