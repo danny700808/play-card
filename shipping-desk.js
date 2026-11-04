@@ -45,8 +45,10 @@
       const command=path.replace('/api/','');
       const {jobId}=await request('enqueue',{command,body,requestId:crypto.randomUUID()});
       const until=Date.now()+180000;
+      let polls=0;
       while(Date.now()<until){
-        await new Promise(r=>setTimeout(r,1200));
+        // Detect short jobs promptly; back off for longer platform operations.
+        await new Promise(r=>setTimeout(r,polls++===0?300:polls<=8?600:1200));
         if(generation!==ownGeneration)throw Error('已登出。');
         const r=await request('result',{jobId});
         if(generation!==ownGeneration)throw Error('已登出。');

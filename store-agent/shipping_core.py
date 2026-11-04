@@ -478,8 +478,8 @@ class Workbench:
         cfg = self.config["coupang"]
         path = f"/v2/providers/openapi/apis/api/v5/vendors/{cfg['vendor_id']}/ordersheets"
         start_date, end_date = source.coupang_day_query_range(start, end)
-        rows = {}
-        for status in ("ACCEPT", "INSTRUCT", "DEPARTURE", "DELIVERING", "FINAL_DELIVERY", "NONE_TRACKING"):
+        def read_status(status):
+            orders_for_status = []
             token = ""
             for _ in range(30):
                 params = {"createdAtFrom": start_date, "createdAtTo": end_date,
@@ -488,12 +488,20 @@ class Workbench:
                     params["nextToken"] = token
                 payload = source.coupang_request(cfg, "GET", path, params)
                 orders, token = source.coupang_orders_from_payload(payload)
-                for o in orders:
-                    rows[text(o["shipmentBoxId"])] = o
+                orders_for_status.extend(orders)
                 if not token:
                     break
             else:
                 raise ShippingError("酷澎超過 30 頁，未完整讀取。")
+            return orders_for_status
+        rows = {}
+        statuses = ("ACCEPT", "INSTRUCT", "DEPARTURE", "DELIVERING", "FINAL_DELIVERY", "NONE_TRACKING")
+        # Only independent read queries overlap. Preserve status precedence,
+        # sequential pagination, and the subsequent return/cancellation checks.
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            for orders in pool.map(read_status, statuses):
+                for o in orders:
+                    rows[text(o["shipmentBoxId"])] = o
         # Returns are a separate official API; order sheets alone can retain the
         # original payment while a refund is pending. Failure must not confirm it.
         try:

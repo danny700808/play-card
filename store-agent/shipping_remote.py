@@ -103,9 +103,10 @@ class RemoteRelay:
         self.last_snapshot = ""
         self.last_publish = 0
         self.last_cleanup = 0
+        self.session = requests.Session()
 
     def call(self, action, **payload):
-        response = requests.post(ENDPOINT, json={"action": action, **payload},
+        response = self.session.post(ENDPOINT, json={"action": action, **payload},
             headers={"Authorization": "Bearer " + self.config["agentKey"]},
             timeout=(10, 100), allow_redirects=False)
         response.raise_for_status()
@@ -124,6 +125,11 @@ class RemoteRelay:
             return
         payload = json.loads(self.outbox.read_text(encoding="utf-8"))
         self.call("agentComplete", **payload)
+        # agentComplete has already published this exact snapshot. Retry failures
+        # still leave the outbox intact; no shipping action is executed again.
+        if "snapshot" in payload:
+            self.last_snapshot = json.dumps(payload["snapshot"], ensure_ascii=False, sort_keys=True)
+            self.last_publish = time.monotonic()
         self.outbox.unlink()
 
     def run(self):
@@ -131,19 +137,20 @@ class RemoteRelay:
         while not self.stop.is_set():
             try:
                 self.deliver_outbox()
-                if time.monotonic() - self.last_refresh > 300:
+                # User work may defer a due refresh briefly, never indefinitely.
+                if not self.last_refresh or time.monotonic() - self.last_refresh > 330:
                     self.workbench.refresh(3)
                     self.last_refresh = time.monotonic()
-                self.publish()
-                if time.monotonic() - self.last_cleanup > 3600:
-                    self.call("agentCleanup")
-                    self.last_cleanup = time.monotonic()
+                    self.publish()
+                # Claim waiting user work before starting periodic maintenance.
                 response = self.call("agentPoll")
                 job = response.get("job")
                 if job:
                     output = {"jobId": job["id"], "claim": job["claim"]}
                     try:
                         result, files = execute(self.workbench, job["command"], job["body"])
+                        if job["command"] == "refresh":
+                            self.last_refresh = time.monotonic()
                         output["result"] = result
                         if files:
                             output["files"] = files
@@ -156,8 +163,15 @@ class RemoteRelay:
                     temp.write_text(json.dumps(output, ensure_ascii=False), encoding="utf-8")
                     temp.replace(self.outbox)
                     self.deliver_outbox()
-                    self.publish(force=True)
-                self.stop.wait(3 if job else 6)
+                    continue  # Drain follow-up work without a fixed 3 second gap.
+                if time.monotonic() - self.last_refresh > 300:
+                    self.workbench.refresh(3)
+                    self.last_refresh = time.monotonic()
+                self.publish()
+                if time.monotonic() - self.last_cleanup > 3600:
+                    self.call("agentCleanup")
+                    self.last_cleanup = time.monotonic()
+                self.stop.wait(1.5)
             except Exception:
                 # Do not log customer data, platform responses or bearer credentials.
                 self.stop.wait(15)
