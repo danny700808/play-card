@@ -2474,7 +2474,7 @@ function renderOverviewV7(){
     return Object.assign({intent:value,preserveUnmentionedContent:value==='merge-existing'||value==='add-variant'||value==='update-existing',neverCreateDuplicate:true},rules[value]);
   }
   function productPlatformStatus(p,key){
-    const original=p&&p.platformListingStatus&&p.platformListingStatus[key]||{status:'unknown'},audit=((p.mediaReceipt||{}).platformMediaAudit||(p.internal||{}).platformMediaAudit||{})[key],checked=audit&&audit.listing,saved=checked&&(!original.checkedAt||Date.parse(checked.checkedAt)>=Date.parse(original.checkedAt))?checked:original,mappingId=productPlatformMappingId(p,key),savedStatus=PRODUCT_PLATFORM_STATUS_META[clean(saved.status)]?clean(saved.status):'unknown';
+    const original=p&&p.platformListingStatus&&p.platformListingStatus[key]||{status:'unknown'},audit=((p.mediaReceipt||{}).platformMediaAudit||(p.internal||{}).platformMediaAudit||{})[key],checked=audit&&audit.listing,saved=checked&&(!(original.lastCheckedAt||original.checkedAt)||Date.parse(checked.checkedAt)>=Date.parse(original.lastCheckedAt||original.checkedAt))?checked:original,mappingId=productPlatformMappingId(p,key),savedStatus=PRODUCT_PLATFORM_STATUS_META[clean(saved.status)]?clean(saved.status):'unknown';
     let status=savedStatus;
     if(mappingId&&status==='unknown')status='mapped';
     if(key==='easyStore'&&p&&p.matchedOnline&&status==='unknown')status='mapped';
@@ -2524,7 +2524,7 @@ function renderOverviewV7(){
     return '<div class="ops-product-platform-status ops-platform-media-grid '+(compact?'compact':'')+'">'+PRODUCT_LISTING_PLATFORMS.map(function(platform){
       const status=productPlatformStatus(p,platform.key),row=productPlatformPresence(p,platform.key),pending=['queued','pending-review','draft'].includes(status.status),invalid=productPlatformStatusIsInvalid(status),knownMissing=status.status==='missing',label=pending?(status.status==='pending-review'?'待審':'待確認'):invalid?(knownMissing?'無商品':'受限／退回'):row.exists?'有商品':'待確認',tone=pending?'pending':invalid?'missing':row.exists?'present':'unknown',action=pending||!knownMissing?'product-platform-recheck':'product-platform-missing';
       return '<section class="ops-platform-media-cell" aria-label="'+attr(platform.label)+'"><button type="button" class="ops-platform-media-heading is-'+tone+'" data-action="'+action+'" data-id="'+attr(p.docId)+'" data-platform="'+attr(platform.key)+'" title="'+attr(platform.label+'｜'+label+(row.listingId?'｜編號 '+row.listingId:''))+'"><b>'+escapeHtml(platform.label)+'</b><i>'+label+'</i></button>'+productPlatformMediaHtml(p,platform.key)+'</section>';
-    }).join('')+'</div>';
+    }).join('')+'<button hidden type="button" class="ops-platform-status-review" data-action="product-platform-status-edit" data-id="'+attr(p.docId)+'">核對</button></div>';
   }
   function productMediaPresenceBadges(p){
     const receipt=p.mediaReceipt||{},platforms=PRODUCT_LISTING_PLATFORMS.map(function(x){return x.key;}),photos=p.physicalImageUrls||[],videos=normalizeProductVideoRecords(p.productVideos);
