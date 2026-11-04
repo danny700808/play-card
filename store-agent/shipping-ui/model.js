@@ -12,7 +12,7 @@
           throw Error('商品數量待核對，尚未送印。');
         if(Number(quantity)===0)continue;
         const name=String(item.name||'').trim(),sku=model.formatSku(item.sku);
-        if(!name||!sku)throw Error('品名或貨號不完整，尚未送印。');
+        if(!name)throw Error('品名不完整，尚未送印。');
         const variant=String(item.variant||'').trim();
         items.push({name:name+(variant&&!name.includes(variant)?' / '+variant:''),sku,quantity:Number(quantity)});
       }
@@ -91,4 +91,3 @@
   if(typeof module!=='undefined')module.exports=model;
   else root.ShippingModel=model;
 })(typeof window!=='undefined'?window:this);
-

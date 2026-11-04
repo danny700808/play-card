@@ -13,10 +13,18 @@ test('partial labels require known remaining quantities; never silently skip an 
  assert.throws(()=>model.packingLabel({...row,stage:'partial',items:[{...row.items[0],remaining:null}]}),/數量待核對/);
  assert.equal(model.packingLabel({...row,stage:'partial',items:[{...row.items[0],remaining:1}]}).items[0].quantity,1);
 });
-test('missing SKU, stale metadata, cancellation holds and invalid quantities block before printing',()=>{
- for(const changes of [{stale:true},{handlingChanged:true},{items:[{...row.items[0],sku:''}]},
+test('missing name, stale metadata, cancellation holds and invalid quantities block before printing',()=>{
+ for(const changes of [{stale:true},{handlingChanged:true},{items:[{...row.items[0],name:''}]},
   {items:[{...row.items[0],heldQuantity:1}]},...['',true,null,-1,1.5].map(quantity=>({items:[{...row.items[0],quantity}]}))])
   assert.throws(()=>model.packingLabel({...row,...changes}));
+});
+test('missing SKU retains the product, variant and quantity alongside SKU-bearing items',()=>{
+ for(const sku of ['',null,undefined,'   ']){
+  const result=model.packingLabel({...row,items:[row.items[0],{name:'木箱鼓專用袋',variant:'P02專用袋',sku,quantity:1}]});
+  assert.equal(result.items.length,2);
+  assert.deepEqual(result.items[1],{name:'木箱鼓專用袋 / P02專用袋',sku:'',quantity:1});
+  assert.equal(result.items[0].sku,'204-4749-17');
+ }
 });
 test('refund review and unknown amounts remain unconfirmed',()=>{
  for(const paidAmountStatus of ['review','unknown'])

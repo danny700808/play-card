@@ -34,10 +34,11 @@ def validate(data):
     for item in raw:
         if not isinstance(item, dict):
             raise ValueError('商品資料格式不正確。')
-        name, sku = clean(item.get('name', ''), 1000), clean(item.get('sku', ''), 100)
+        raw_sku = item.get('sku')
+        name, sku = clean(item.get('name', ''), 1000), clean('' if raw_sku is None else raw_sku, 100)
         quantity = item.get('quantity')
-        if not name or not sku or type(quantity) is not int or not 1 <= quantity <= 9999:
-            raise ValueError('品名、貨號或數量不完整，尚未送印。')
+        if not name or type(quantity) is not int or not 1 <= quantity <= 9999:
+            raise ValueError('品名或數量不完整，尚未送印。')
         key = (name, sku)
         grouped[key] = grouped.get(key, 0) + quantity
     amount = data.get('paidAmount')
@@ -82,7 +83,7 @@ def footer_pdf(data):
             col_w = (94 * MM - (columns - 1) * 2 * MM) / columns
             rows = []
             for item in data['items']:
-                sku = f"{item['sku']} × {item['quantity']}"
+                sku = f"{item['sku']} × {item['quantity']}" if item['sku'] else f"數量：{item['quantity']}"
                 if pdfmetrics.stringWidth(sku, FONT, size) > col_w:
                     break
                 rows.append(wrap(item['name'], col_w, size) + [sku])

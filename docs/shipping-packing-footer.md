@@ -8,7 +8,7 @@ MOMO 超商仍單張、宅配左右雙聯仍兩張。商品資訊只放第一張
 
 ## 實作
 
-- `shipping-local-print.js` 傳遞目前訂單品項和標籤金額；`model.packingLabel` 驗證數量、缺少貨號、部分待出貨及待核對狀態。
+- `shipping-local-print.js` 傳遞目前訂單品項和標籤金額；`model.packingLabel` 驗證品名、數量、部分待出貨及待核對狀態。貨號可空白：沒有貨號仍印完整品名／規格及數量，不印貨號或「未提供」，不因此阻擋整單。有貨號則維持「貨號 × 數量」。
 - 為相容現場已安裝的 v1 列印助手，標籤金額沿用 `packingFooter.paidAmount`／`paidAmountStatus` 欄位；此 payload 的 `confirmed` 只表示標籤數字已確認，不代表已收款。原始訂單付款狀態、左側待收款顯示及帳務資料不變；副機無須更新。\n- `local-print/packing_footer.py` 合併同品名／貨號數量、自動換行和 1–3 欄，字級最低 7 pt。超出可讀範圍就停止準備，不漏印、不截斷、不增加紙張。
 - `prepare.py` 先走既有各平台正常化／MOMO 分流，再保留 `original-labels.pdf`，產生新 `labels.pdf`。輸入 `source.pdf` 完全保留。縮放後的 203 dpi 黑白 PNG 必須與原單所有條碼內容及數量一致。
 - `/prepare` 回傳 `preview`，其內容正是送印第一張 PNG。共用視窗改為這份預覽，不再只看原始 PDF。

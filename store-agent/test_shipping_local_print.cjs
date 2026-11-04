@@ -123,6 +123,20 @@ test('cannot silently print an old cached layout: '+JSON.stringify(option),async
  assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,0);
 });
 
+test('MOMO items without SKU reach preparation and explicit print with full name and quantity',async()=>{
+ const h=harness({rowChanges:{items:[{name:'木箱鼓',variant:'P02',sku:'134-0106',quantity:1},
+  {name:'木箱鼓專用袋',variant:'P02專用袋',sku:null,quantity:1}]}});
+ await new Promise(setImmediate);
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,0);
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/prepare')).length,1);
+ await h.button.onclick();
+ for(const {body} of h.calls.filter(c=>c.url.endsWith('/prepare'))){
+  assert.equal(body.packingFooter.items.length,2);
+  assert.deepEqual(body.packingFooter.items[1],{name:'木箱鼓專用袋 / P02專用袋',sku:'',quantity:1});
+ }
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,1);
+});
+
 test('unpaid Shopee 425 reaches both preview and reprint footer with the existing helper contract',async()=>{
  const h=harness({channel:'蝦皮',prepareStatus:'preview',rowChanges:{
   paidAmount:null,paidAmountStatus:'pending_collection',payableAmount:'425'}});

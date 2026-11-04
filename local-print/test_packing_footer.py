@@ -21,6 +21,26 @@ def data(**changes):
 
 
 class FooterTests(unittest.TestCase):
+    def test_missing_sku_prints_full_name_variant_and_quantity(self):
+        for sku in ('', None, '   '):
+            raw = data(items=[{'name': '木箱鼓 / P02', 'sku': '134-0106', 'quantity': 1},
+                              {'name': '木箱鼓專用袋 / P02專用袋', 'sku': sku, 'quantity': 2}])
+            normalized = validate(raw)
+            self.assertEqual(len(normalized['items']), 2)
+            pdf, _ = footer_pdf(normalized)
+            text = PdfReader(io.BytesIO(pdf)).pages[0].extract_text()
+            self.assertIn('134-0106 × 1', text)
+            self.assertIn('木箱鼓專用袋 / P02專用袋', text)
+            self.assertIn('數量：2', text)
+            self.assertNotIn('未提供', text)
+            self.assertNotIn('None', text)
+        self.assertEqual(validate(data(items=[{'name':'配件', 'quantity':1}]))['items'][0]['sku'], '')
+
+    def test_missing_sku_never_relaxes_name_or_quantity_validation(self):
+        for changes in ({'name':''}, {'quantity':0}, {'quantity':None}, {'quantity':True}):
+            with self.assertRaises(ValueError):
+                validate(data(items=[{'name':'配件', 'sku':'', 'quantity':1, **changes}]))
+
     def test_total_once_no_heading_or_unit_price(self):
         raw = data()
         raw['items'] *= 2
@@ -117,6 +137,13 @@ class HistoryTests(unittest.TestCase):
         second = self.handler.prepare(changed)[1]
         self.assertNotEqual(first['jobId'],second['jobId'])
         self.assertEqual(second['status'],'prepared')
+
+    def test_missing_sku_reaches_preparation_without_auto_printing(self):
+        payload = {**self.payload, 'packingFooter':data(items=[{'name':'木箱鼓專用袋 / P02', 'quantity':1}])}
+        code, result = self.handler.prepare(payload)
+        self.assertEqual(code, 200)
+        self.assertEqual(result['status'], 'prepared')
+        self.assertEqual(len(self.commands), 1)
 
     def test_cvs_equivalent_normalized_pdf_retains_old_print_guard(self):
         self.old('submitted',digest='OTHER-PDF',identity='SAME-LABEL')
