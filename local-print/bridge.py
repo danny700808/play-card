@@ -4,6 +4,7 @@ Origin + JSON/custom-header checks prevent browser CSRF. Hosts are constrained
 against DNS rebinding. Only uploaded PDFs are accepted: no URL fetching or paths.
 Job state is persisted before submitting to Windows to avoid accidental retries.
 """
+import atexit
 import base64
 import hashlib
 import json
@@ -16,6 +17,7 @@ import threading
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from render_client import RenderClient
 from packing_footer import validate as validate_footer, VERSION as FOOTER_VERSION
 
 ROOT = Path(__file__).resolve().parent
@@ -28,12 +30,25 @@ HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 CHANNELS = {"MOMO", "蝦皮", "酷澎", "官網"}
 LOCK = threading.Lock()
 MAX_BODY = 22 * 1024 * 1024
-RELEASE = '2.1.0-packing-footer'
+RELEASE = '2.2.0-warm-renderer'
 PROFILE = 'momo-cvs-v1'
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+RENDERER = RenderClient(ROOT)
+atexit.register(RENDERER.close)
 
 
 def run(command, stdin=None, timeout=90):
+    # Keep protected-password lookup and physical printing unchanged. Only
+    # document conversion uses the serial, persistent, non-printing worker.
+    if len(command) >= 2 and str(command[0]) == sys.executable:
+        script = Path(command[1])
+        if script.parent == ROOT and script.name in ('prepare.py', 'preview.py', 'cached_document.py'):
+            payload = json.loads(stdin)
+            operation = {'prepare.py':'prepare', 'preview.py':'preview',
+                         'cached_document.py':'cached-document'}[script.name]
+            if operation == 'prepare':
+                payload = {'job': str(command[2]), 'options': payload}
+            return RENDERER.call(operation, payload, timeout=timeout)
     return subprocess.run(command, input=stdin, capture_output=True, text=True,
                           encoding="utf-8", errors="replace", timeout=timeout,
                           creationflags=CREATE_NO_WINDOW)
@@ -375,4 +390,7 @@ class LocalPrintServer(ThreadingHTTPServer):
 
 
 if __name__ == "__main__":
+    warmed = RENDERER.call('warmup', {}, timeout=45)
+    if warmed.returncode:
+        raise RuntimeError('Local document renderer could not start.')
     LocalPrintServer(("127.0.0.1", PORT), Handler).serve_forever()
