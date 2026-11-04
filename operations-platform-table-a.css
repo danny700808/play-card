@@ -1,0 +1,31 @@
+/* Product card A: aligned platform prices and independently verified media. */
+.ops-product-card-layout-a .ops-product-detail-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+.ops-product-card-layout-a .ops-product-detail-grid>div{padding:7px 4px;background:#f4f7f6;border-radius:6px;min-width:0}
+.ops-product-card-layout-a .ops-product-detail-grid span{font-size:11px!important;line-height:1.5;white-space:normal}
+.ops-product-card-layout-a .ops-product-detail-grid b{font-size:13px!important;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.ops-product-platform-status.ops-platform-table-wrap{display:block!important;padding:8px!important;min-width:0;grid-column:1/-1}
+.ops-platform-table{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;border:1px solid #dbe8e2;border-radius:8px;overflow:hidden;background:white;font-size:13px}
+.ops-platform-table th,.ops-platform-table td{padding:5px 2px;text-align:center;vertical-align:middle;border:0;border-bottom:1px solid #e9efec;line-height:1.4}
+.ops-platform-table thead th{background:#e7f2ed;color:#285b48;font-size:12px;font-weight:700;white-space:nowrap;padding:8px 1px}
+.ops-platform-table th:first-child{width:21%}
+.ops-platform-table th:nth-child(2){width:25%}
+.ops-platform-table tbody th{font-size:13px;color:#263e34;font-weight:700;white-space:nowrap}
+.ops-platform-table tbody tr:last-child>*{border-bottom:0}
+.ops-platform-table .ops-platform-price{font-size:13px;font-weight:650;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;color:#263e34}
+.ops-platform-table .ops-platform-indicator{display:flex!important;align-items:center;justify-content:center;width:28px!important;height:28px;min-width:0;min-height:0;margin:auto;padding:4px!important;border:0;border-radius:7px!important;cursor:pointer}
+.ops-platform-table .ops-platform-indicator svg{width:20px;height:20px;display:block;flex-shrink:0}
+.ops-platform-table .is-present{background:#e1f3e8!important;color:#16804d!important}
+.ops-platform-table .is-missing{background:#fce8e7!important;color:#c94b49!important}
+.ops-platform-table .is-pending{background:#fff1d6!important;color:#a66a09!important}
+.ops-platform-table .is-unknown{background:#edf0f3!important;color:#6c7d89!important}
+.ops-platform-table .ops-platform-indicator:hover{filter:brightness(.94)}
+.ops-platform-table .ops-platform-indicator:focus-visible{outline:2px solid #24865f;outline-offset:2px}
+.ops-platform-table-wrap>[hidden]{display:none!important}
+.ops-product-text-platforms .ops-platform-table-wrap{min-width:270px}
+@media(max-width:600px){
+ .ops-product-card-layout-a .ops-product-detail-grid{gap:4px}
+ .ops-product-platform-status.ops-platform-table-wrap{padding:8px!important}
+ .ops-platform-table thead th{font-size:13px}
+ .ops-platform-table tbody th,.ops-platform-table .ops-platform-price{font-size:14px}
+ .ops-platform-table .ops-platform-indicator{width:32px!important;height:32px}
+}

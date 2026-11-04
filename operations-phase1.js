@@ -2517,14 +2517,23 @@ function renderOverviewV7(){
     return present||states.find(function(x){return x.tone==='pending';})||states[0];
   }
   function productPlatformMediaHtml(p,key){
-    return [['photo','實體圖'],['video','影片']].map(function(pair){const media=productPlatformMediaState(p,key,pair[0]);return '<button type="button" class="ops-platform-media-line is-'+media.tone+'" data-action="product-edit" data-id="'+attr(p.docId)+'" title="'+attr(pair[1]+'：'+media.label+'｜'+media.note)+'"><span>'+pair[1]+'</span><strong>'+escapeHtml(media.label)+'</strong></button>';}).join('');
+    return [['photo','實體圖'],['video','影片']].map(function(pair){const media=productPlatformMediaState(p,key,pair[0]),label=pair[1]+'：'+media.label+'｜'+media.note;return '<td><button type="button" class="ops-platform-media-line ops-platform-indicator is-'+media.tone+'" data-action="product-edit" data-id="'+attr(p.docId)+'" title="'+attr(label)+'" aria-label="'+attr(label)+'">'+productPlatformIndicator(media.tone)+'</button></td>';}).join('');
+  }
+  function productPlatformIndicator(tone){
+    const paths={present:'<path d="m5 12 4 4 10-10"/>',missing:'<path d="M6 12h12"/>',pending:'<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>',unknown:'<path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 5"/><path d="M12 17h.01"/>'};
+    return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'+(paths[tone]||paths.unknown)+'</svg>';
+  }
+  function productPlatformCardPrice(p,key){
+    const value=p[key+'Price'];
+    return value!=null&&value!==''&&Number.isFinite(Number(value))?'$'+Number(value).toLocaleString('en-US'):'—';
   }
   function productPlatformStatusHtml(p,compact){
     if(clean(p&&p.sku).startsWith('0'))return '';
-    return '<div class="ops-product-platform-status ops-platform-media-grid '+(compact?'compact':'')+'">'+PRODUCT_LISTING_PLATFORMS.map(function(platform){
+    return '<div class="ops-product-platform-status ops-platform-table-wrap '+(compact?'compact':'')+'"><table class="ops-platform-table" aria-label="平台售價與商品媒體狀態"><thead><tr><th scope="col">平台</th><th scope="col">售價</th><th scope="col">商品</th><th scope="col">實體圖</th><th scope="col">影片</th></tr></thead><tbody>'+PRODUCT_LISTING_PLATFORMS.map(function(platform){
       const status=productPlatformStatus(p,platform.key),row=productPlatformPresence(p,platform.key),pending=['queued','pending-review','draft'].includes(status.status),invalid=productPlatformStatusIsInvalid(status),knownMissing=status.status==='missing',label=pending?(status.status==='pending-review'?'待審':'待確認'):invalid?(knownMissing?'無商品':'受限／退回'):row.exists?'有商品':'待確認',tone=pending?'pending':invalid?'missing':row.exists?'present':'unknown',action=pending||!knownMissing?'product-platform-recheck':'product-platform-missing';
-      return '<section class="ops-platform-media-cell" aria-label="'+attr(platform.label)+'"><button type="button" class="ops-platform-media-heading is-'+tone+'" data-action="'+action+'" data-id="'+attr(p.docId)+'" data-platform="'+attr(platform.key)+'" title="'+attr(platform.label+'｜'+label+(row.listingId?'｜編號 '+row.listingId:''))+'"><b>'+escapeHtml(platform.label)+'</b><i>'+label+'</i></button>'+productPlatformMediaHtml(p,platform.key)+'</section>';
-    }).join('')+'<button hidden type="button" class="ops-platform-status-review" data-action="product-platform-status-edit" data-id="'+attr(p.docId)+'">核對</button></div>';
+      const title=platform.label+'｜'+label+(row.listingId?'｜編號 '+row.listingId:'');
+      return '<tr class="ops-platform-media-cell"><th scope="row">'+escapeHtml(platform.label)+'</th><td class="ops-platform-price" title="中央平台售價">'+productPlatformCardPrice(p,platform.key)+'</td><td><button type="button" class="ops-platform-media-heading ops-platform-indicator is-'+tone+'" data-action="'+action+'" data-id="'+attr(p.docId)+'" data-platform="'+attr(platform.key)+'" title="'+attr(title)+'" aria-label="'+attr(title)+'">'+productPlatformIndicator(tone)+'</button></td>'+productPlatformMediaHtml(p,platform.key)+'</tr>';
+    }).join('')+'</tbody></table><button hidden type="button" class="ops-platform-status-review" data-action="product-platform-status-edit" data-id="'+attr(p.docId)+'">核對</button></div>';
   }
   function productMediaPresenceBadges(p){
     const receipt=p.mediaReceipt||{},platforms=PRODUCT_LISTING_PLATFORMS.map(function(x){return x.key;}),photos=p.physicalImageUrls||[],videos=normalizeProductVideoRecords(p.productVideos);
@@ -2670,7 +2679,7 @@ function renderOverviewV7(){
     const variant=clean(p.variantName);
     const imageHtml=urls.length?urls.map(function(url,index){return '<img loading="lazy" src="'+attr(url)+'" alt="'+attr(index===1&&variant?variant:systemName)+'" onerror="this.style.display=\'none\'">';}).join(''):'<div class="placeholder">無圖</div>';
     const active=state.productEditId===p.docId?' active':'';
-    return '<article class="ops-product-card ops-product-card-full ops-product-card-layout-a'+active+'" data-action="product-edit" data-id="'+attr(p.docId)+'" role="button" tabindex="0"><div class="ops-product-image-grid '+(urls.length<2?'single':'')+'">'+imageHtml+'</div><div class="ops-product-body"><div class="ops-product-sku-row"><div class="ops-product-sku-main"><b>'+escapeHtml(p.sku||'未設定')+'</b>'+(p.sku?'<button type="button" class="ops-label-print-button" data-action="product-print-label" data-id="'+attr(p.docId)+'">列印條碼</button>':'')+'</div><span class="ops-product-inline-stock">庫存 <strong>'+escapeHtml(formatNumber(p.currentStock))+'</strong></span></div><div class="ops-product-name-rows"><b>'+escapeHtml(systemName)+'</b>'+(productNeedsEasyStoreVariantImage(p)?statusTag('官網細項圖待補','red'):'')+'</div>'+'<div class="ops-product-detail-grid"><div><span>門市定價</span><b>'+money(p.storePrice)+'</b></div><div><span>網路售價</span><b>'+money(p.onlinePrice)+'</b></div><div><span>最近一次進貨成本</span><b>'+money(p.latestPurchaseCost)+'</b></div><div><span>平均成本</span><b>'+money(p.averageCost)+'</b></div></div></div>'+productPlatformStatusHtml(p,false)+'</article>';
+    return '<article class="ops-product-card ops-product-card-full ops-product-card-layout-a'+active+'" data-action="product-edit" data-id="'+attr(p.docId)+'" role="button" tabindex="0"><div class="ops-product-image-grid '+(urls.length<2?'single':'')+'">'+imageHtml+'</div><div class="ops-product-body"><div class="ops-product-sku-row"><div class="ops-product-sku-main"><b>'+escapeHtml(p.sku||'未設定')+'</b>'+(p.sku?'<button type="button" class="ops-label-print-button" data-action="product-print-label" data-id="'+attr(p.docId)+'">列印條碼</button>':'')+'</div><span class="ops-product-inline-stock">庫存 <strong>'+escapeHtml(formatNumber(p.currentStock))+'</strong></span></div><div class="ops-product-name-rows"><b>'+escapeHtml(systemName)+'</b>'+(productNeedsEasyStoreVariantImage(p)?statusTag('官網細項圖待補','red'):'')+'</div>'+'<div class="ops-product-detail-grid"><div><span>門市定價</span><b>'+money(p.storePrice)+'</b></div><div><span>最後進貨成本</span><b>'+money(p.latestPurchaseCost)+'</b></div><div><span>平均成本</span><b>'+money(p.averageCost)+'</b></div></div></div>'+productPlatformStatusHtml(p,false)+'</article>';
   }
   function productTextRow(p){
     const name=clean(p.originalName||p.name)||'未命名商品';

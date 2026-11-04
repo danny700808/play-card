@@ -31,11 +31,11 @@ test('商品資訊放寬所有 SKU 開頭，只排除沒有商品編號的資料
 test('四平台狀態顯示有、沒有或審核中，並提供對應處理', () => {
   const body = functionBody('productPlatformStatusHtml');
   assert.match(body, /clean\(p&&p\.sku\)\.startsWith\('0'\).*return ''/s);
-  assert.match(body, />有<\/i>/);
-  assert.match(body, />沒有<\/i>/);
-  assert.match(body, /pendingLabel=status\.status==='pending-review'\?'審核中'/);
-  assert.match(body, /data-action="product-platform-recheck"/);
-  assert.match(body, /data-action="product-platform-missing"/);
+  assert.match(body, /productPlatformIndicator\(tone\)/);
+  assert.match(body, /aria-label/);
+  assert.match(body, /status\.status==='pending-review'\?'待審'/);
+  assert.match(body, /'product-platform-recheck'/);
+  assert.match(body, /'product-platform-missing'/);
   assert.match(body, /data-action="product-platform-status-edit"/);
   assert.match(functionBody('handleAction'), /product-platform-missing.*openProductListingCase/);
   assert.match(functionBody('handleAction'), /product-platform-recheck.*startProductPlatformAudit/);
