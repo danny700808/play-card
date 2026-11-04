@@ -110,14 +110,14 @@ const operationsHubSource=fs.readFileSync(path.join(__dirname,'..','operations-h
 const formalPortalSource=fs.readFileSync(path.join(__dirname,'..','portal.html'),'utf8');
 assert.match(operationsSource,/分攤規則：先選費用週期，再依涵蓋月份分到每天/,'支出頁最上方必須清楚說明費用週期與涵蓋期間');
 assert.match(operationsSource,/年度費用分攤到連續 12 個月/,'支出頁必須說明年度費用的計算方式');
-assert.match(operationsSource,/整個涵蓋期間的非星期一日期平均分配/,'跨月費用必須依整段期間的每日成本分攤');
-assert.match(operationsSource,/期間分攤一律排除星期一/,'支出頁必須說明星期一不分攤');
+assert.match(operationsSource,/兩月帳單先平均分成兩個月/,'跨月費用必須依整段期間的每日成本分攤');
+assert.match(operationsSource,/再分到各月非星期一日期/,'支出頁必須說明星期一不分攤');
 assert.match(operationsSource,/const body=operatingExpenseRuleNoticeHtml\(\)\+'<div class="ops-expense-detail-head">/,'扣款規則說明必須位於支出明細頁最上方');
 assert.match(operationsHubSource,/href="#expenses" data-view="expenses"/,'左側選單必須有獨立營運支出入口');
 assert.match(operationsHubSource,/>營運支出</,'左側選單必須明確標示營運支出');
 assert.match(formalPortalSource,/href="#expenses" data-view="expenses"/,'正式入口的左側選單也必須有營運支出');
 assert.match(formalPortalSource,/operations-expenses\.js\?v=20260801-operating-expenses-v6/,'正式入口必須先載入支出期間分攤新版程式');
-assert.match(formalPortalSource,/operations-phase1\.js\?v=20261031-payroll-groups-v2/,'正式入口必須使用目前租賃續約收入流程主程式快取號');
+assert.match(formalPortalSource,/operations-phase1\.js\?v=20261104-expenses-total-period-v1/,'正式入口必須使用目前租賃續約收入流程主程式快取號');
 assert.match(operationsSource,/expenses:renderOperatingExpensesPage/,'營運支出入口必須顯示獨立右側頁面');
 assert.match(operationsSource,/id="operatingExpenseMonth"/,'營運支出頁必須可以選擇查詢月份');
 assert.match(operationsSource,/data-action="expense-month-shift"/,'營運支出頁必須可以切換前後月份');
@@ -130,7 +130,7 @@ assert.match(operationsSource,/data-action="expense-custom-new"/,'主表底部�
 assert.doesNotMatch(operationsSource,/data-action="operating-expense-settings">固定費用設定/,'支出頁不得再顯示獨立固定費用設定入口');
 assert.match(operationsSource,/一次性支出依實際發生日保留/,'星期一仍必須保留一次性實際支出');
 assert.match(operationsSource,/每年一次：年度總額分攤 12 個月/,'修改支出時必須能選擇年度費用');
-assert.match(operationsSource,/例如 6 月收到 4、5 月電費/,'兩月帳單介面必須用實際例子說明回分方式');
+assert.match(operationsSource,/例如 11 月補填 9–10 月帳單/,'兩月帳單介面必須用實際例子說明回分方式');
 assert.match(operationsSource,/年度費用結束月份（自動 12 個月）/,'年度費用必須自動帶出連續 12 個月的結束月份');
 assert.match(operationsSource,/plan\.systemManaged\|\|periodManaged\?'disabled readonly'/,'兩月與年度費用的本月分攤額不得在主表被誤當總額直接修改');
 assert.match(operationsSource,/\{id:'store',label:'尚品樂器行',shortLabel:'營業部門'\}/,'既有支出帳必須明確歸屬尚品樂器行／營業部門');
@@ -173,7 +173,7 @@ const payrollWindow={document:startupDocument,matchMedia:()=>({matches:false}),Y
 payrollWindow.window=payrollWindow;
 const instrumentedOperationsSource=operationsSource.replace(
   'global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};',
-  'global.__testMasterRows=operatingExpenseMasterRows;global.__testNormalizeExpenses=normalizeOperatingExpenseSettings;global.__testExpenseLedger=operatingExpenseLedgerForBounds;global.__testAutomaticPayrollLedger=automaticPayrollLedger;global.__testPeriodExpenseSettings=periodExpenseSettings;global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};'
+  'global.__testPeriodEditor=expensePeriodEditorInfo;global.__testSummary=operatingExpenseAllSummaryHtml;global.__testRenderExpenses=renderOperatingExpensesPage;global.__testMasterRows=operatingExpenseMasterRows;global.__testNormalizeExpenses=normalizeOperatingExpenseSettings;global.__testExpenseLedger=operatingExpenseLedgerForBounds;global.__testAutomaticPayrollLedger=automaticPayrollLedger;global.__testPeriodExpenseSettings=periodExpenseSettings;global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};'
 );
 vm.runInNewContext(instrumentedOperationsSource,{window:payrollWindow,document:startupDocument,console,Date,Map,Set,Promise,JSON,Math,Number,String,Array,Object,RegExp,Error,Intl,URL,Blob,FormData,setTimeout,clearTimeout});
 const payrollState=payrollWindow.OperationsCenterV1.state;
@@ -276,3 +276,28 @@ payrollState.employees=payrollState.employees.filter(row=>row.employeeId==='P');
 const noStaff=payrollWindow.__testMasterRows('2026-08',[]).find(r=>r.category==='專職薪資');
 assert.equal(noStaff.amount,0);assert.equal(noStaff.systemManaged,true);assert.match(noStaff.note,/尚無專職薪資設定/);
 console.log('Part-time/staff salaries and combined employer benefits checked');
+
+assert.deepEqual(expenses.allocatePeriodByMonth(6000,'2026-09','2026-10'),[{month:'2026-09',amount:3000},{month:'2026-10',amount:3000}]);
+assert.deepEqual(expenses.allocatePeriodByMonth(6001,'2026-09','2026-10'),[{month:'2026-09',amount:3001},{month:'2026-10',amount:3000}]);
+for(const month of ['2026-09','2026-10']){
+ const period=payrollWindow.__testPeriodEditor(null,null,month,'bimonthly');
+ assert.equal(period.startMonth,'2026-09');assert.equal(period.endMonth,'2026-10');
+}
+const novPeriod=payrollWindow.__testPeriodEditor(null,null,'2026-11','bimonthly');
+assert.equal(novPeriod.startMonth,'2026-11');assert.equal(novPeriod.endMonth,'2026-12');
+const backfilled=expenses.manualExpenseLedgerRows([{id:'backfill',category:'電費',amount:6000,allocationMode:'bimonthly',periodStartMonth:'2026-09',periodEndMonth:'2026-10',occurredAt:'2026-11-04'}],settings,'2026-09-01','2026-11-30');
+assert.equal(total(backfilled.filter(row=>row.expenseMonth==='2026-09')),3000);
+assert.equal(total(backfilled.filter(row=>row.expenseMonth==='2026-10')),3000);
+assert.equal(total(backfilled.filter(row=>row.expenseMonth==='2026-11')),0);
+console.log('Equal monthly electricity and billing-period defaults passed');
+
+payrollState.operatingExpenseSettings=normalizeThree({});
+payrollState.employees=[];payrollState.employeeSalaryConfigs=[];payrollState.parttimeRecords=[];
+payrollState.operatingExpenseMonth='2026-10';payrollState.operatingExpenseDepartment='shared';
+const summary=payrollWindow.__testSummary('2026-10',{start:new Date('2026-10-01T00:00:00'),end:new Date('2026-10-31T23:59:59')});
+assert.match(summary,/49,000/);assert.match(summary,/42,500/);assert.match(summary,/6,500/);
+const rendered=payrollWindow.__testRenderExpenses();
+assert.match(rendered,/全部支出合計/);assert.match(rendered,/查看全部支出項目/);
+const electricTr=rendered.match(/<tr class="ops-expense-master-row[^"]*"><td><div class="ops-expense-item-main"><b>電費<\/b>[\s\S]*?<\/tr>/)[0];
+assert.doesNotMatch(electricTr,/ops-expense-zero/);assert.match(electricTr,/2026-09 ～ 2026-10/);
+console.log('All-department sum and visible electricity row passed');

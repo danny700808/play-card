@@ -92,6 +92,10 @@
   }
   function allocatePeriodAmount(value,startMonth,endMonth,closedWeekdays){
     const total=integerAmount(value),months=monthKeysBetween(startMonth,endMonth),dates=[];
+    if(months.length===2){
+      const base=Math.floor(total/2);
+      return months.flatMap(function(month,index){return allocateMonthlyAmount(base+(index===0?total-base*2:0),month,closedWeekdays).map(function(day){return Object.assign({month:month},day);});});
+    }
     months.forEach(function(month){operatingDateKeys(month,closedWeekdays).forEach(function(dateKey){dates.push(dateKey);});});
     if(!total||!dates.length)return [];
     const base=Math.floor(total/dates.length),remainder=total-(base*dates.length);
