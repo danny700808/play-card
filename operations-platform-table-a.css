@@ -1,4 +1,8 @@
 /* Product card A: aligned platform prices and independently verified media. */
+.ops-platform-table .ops-price-unverified{color:#72818b;font-size:12px}
+.ops-platform-table .ops-price-mismatch{color:#b35317}
+.ops-platform-table .ops-price-mismatch small{display:block;font-size:10px;line-height:1.2}
+.ops-platform-table .ops-platform-absent{color:#9a6a68;text-align:center;font-size:12px;background:#fff7f6}
 .ops-product-card-layout-a .ops-product-detail-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
 .ops-product-card-layout-a .ops-product-detail-grid>div{padding:7px 4px;background:#f4f7f6;border-radius:6px;min-width:0}
 .ops-product-card-layout-a .ops-product-detail-grid span{font-size:11px!important;line-height:1.5;white-space:normal}

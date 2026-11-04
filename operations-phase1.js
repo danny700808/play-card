@@ -31,7 +31,7 @@
     employeeSalaryConfigHistory:'employeeSalaryConfigHistory',
     parttimeRecords:'parttimeRecords'
   };
-  const OPERATION_PRODUCT_READ_FIELDS = ["alternateNames", "autoCreated", "averageCost", "avgCost", "barcode", "brand", "category", "code", "color", "commonProductDescription", "completedListingImageUrls", "costLayers", "countryOfOrigin", "coupangCategoryCode", "coupangPrice", "createdAt", "currentStock", "ean", "easyStoreHasMultipleVariants", "easyStoreHasVariantImage", "easyStoreMatched", "easyStorePrice", "easyStoreProductVariantCount", "easyStoreSyncedAt", "easyStoreVariantImageId", "easyStoreVariantImageStatus", "enabled", "imageSource", "imageUrl", "imageUrls", "importInitialized", "includedItems", "internalName", "internalSku", "latestPurchaseCost", "material", "minStock", "model", "modelNo", "momoCategoryCode", "momoPrice", "movingAverageCost", "name", "note", "onHand", "onlineName", "onlinePrice", "onlineUrl", "openingStock", "openingUnitCost", "originalName", "originalSalePrice", "packageHeightCm", "packageLengthCm", "packageMeasurementMode", "packageResearchNote", "packageResearchSourceUrl", "packageResearchStatus", "packageWeightKg", "packageWidthCm", "parentImageUrls", "physicalImageUrls", "physicalImages", "physicalImagesUpdatedAt", "physicalOriginalImageUrls", "platformListingStatus", "platformMappings", "platformPriceOverrides", "platformPriceSync", "platformPricesInitialized", "productArchived", "productCode", "productResearchSourceUrls", "productResearchStatus", "productResearchUpdatedAt", "productVideoUrls", "productVideos", "productVideosUpdatedAt", "purchaseCost", "purchasePrice", "referencePurchaseCost", "remark", "reserved", "reservedStock", "retailPrice", "safetyStock", "salePrice", "saleRewardPercent", "searchKeywords", "sellingPoints", "sharedOnlinePrice", "shippingDecision", "shopeeCategoryPath", "sku", "source", "sourceCollection", "sourceFile", "sourceKey", "sourceProductId", "sourceVariantId", "specificationText", "status", "stock", "storePrice", "updatedAt", "variantImageUrl", "variantImageUrls", "variantName", "warrantyInfo", "zeroCostConfirmed", "zeroCostConfirmedAt", "zeroCostConfirmedBy", "備註", "商品名稱", "商品編號", "型號", "條碼"];
+  const OPERATION_PRODUCT_READ_FIELDS = ["alternateNames", "autoCreated", "averageCost", "avgCost", "barcode", "brand", "category", "code", "color", "commonProductDescription", "completedListingImageUrls", "costLayers", "countryOfOrigin", "coupangCategoryCode", "coupangPrice", "createdAt", "currentStock", "ean", "easyStoreHasMultipleVariants", "easyStoreHasVariantImage", "easyStoreMatched", "easyStorePrice", "easyStoreProductVariantCount", "easyStoreSyncedAt", "easyStoreVariantImageId", "easyStoreVariantImageStatus", "enabled", "imageSource", "imageUrl", "imageUrls", "importInitialized", "includedItems", "internalName", "internalSku", "latestPurchaseCost", "material", "minStock", "model", "modelNo", "momoCategoryCode", "momoPrice", "movingAverageCost", "name", "note", "onHand", "onlineName", "onlinePrice", "onlineUrl", "openingStock", "openingUnitCost", "originalName", "originalSalePrice", "packageHeightCm", "packageLengthCm", "packageMeasurementMode", "packageResearchNote", "packageResearchSourceUrl", "packageResearchStatus", "packageWeightKg", "packageWidthCm", "parentImageUrls", "physicalImageUrls", "physicalImages", "physicalImagesUpdatedAt", "physicalOriginalImageUrls", "platformListingStatus", "platformMappings", "platformMediaAudit", "platformPriceOverrides", "platformPriceSync", "platformPricesInitialized", "productArchived", "productCode", "productResearchSourceUrls", "productResearchStatus", "productResearchUpdatedAt", "productVideoUrls", "productVideos", "productVideosUpdatedAt", "purchaseCost", "purchasePrice", "referencePurchaseCost", "remark", "reserved", "reservedStock", "retailPrice", "safetyStock", "salePrice", "saleRewardPercent", "searchKeywords", "sellingPoints", "sharedOnlinePrice", "shippingDecision", "shopeeCategoryPath", "sku", "source", "sourceCollection", "sourceFile", "sourceKey", "sourceProductId", "sourceVariantId", "specificationText", "status", "stock", "storePrice", "updatedAt", "variantImageUrl", "variantImageUrls", "variantName", "warrantyInfo", "zeroCostConfirmed", "zeroCostConfirmedAt", "zeroCostConfirmedBy", "備註", "商品名稱", "商品編號", "型號", "條碼"];
   const READ_LIMIT = 10000;
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
@@ -886,7 +886,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
       sharedOnlinePrice:sharedOnlinePrice,easyStorePrice:platformPrice('easyStorePrice'),momoPrice:platformPrice('momoPrice'),coupangPrice:platformPrice('coupangPrice'),platformPricesInitialized:pricesInitialized,platformPriceOverrides:obj.platformPriceOverrides&&typeof obj.platformPriceOverrides==='object'?obj.platformPriceOverrides:{},
       latestPurchaseCost:numberOrNull(firstValue(obj,['latestPurchaseCost','referencePurchaseCost','purchaseCost','purchasePrice'])),averageCost:stats.averageCost!=null?stats.averageCost:numberOrNull(firstValue(obj,['averageCost','avgCost','movingAverageCost'])),
       nextFifoCost:stats.nextFifoCost,inventoryValue:stats.inventoryValue,costIncomplete:stats.costIncomplete,costLayers:layers,
-      platformPriceSync:obj.platformPriceSync&&typeof obj.platformPriceSync==='object'?obj.platformPriceSync:{},platformMappings:obj.platformMappings&&typeof obj.platformMappings==='object'?obj.platformMappings:{},platformListingStatus:normalizePlatformListingStatus(obj.platformListingStatus),
+      platformMediaAudit:obj.platformMediaAudit||{},platformPriceSync:obj.platformPriceSync&&typeof obj.platformPriceSync==='object'?obj.platformPriceSync:{},platformMappings:obj.platformMappings&&typeof obj.platformMappings==='object'?obj.platformMappings:{},platformListingStatus:normalizePlatformListingStatus(obj.platformListingStatus),
       shopeeCategoryPath:clean(obj.shopeeCategoryPath),momoCategoryCode:clean(obj.momoCategoryCode),coupangCategoryCode:clean(obj.coupangCategoryCode),
       productResearchStatus:['not-searched','partial','researched','manual'].includes(clean(obj.productResearchStatus))?clean(obj.productResearchStatus):'not-searched',productResearchSourceUrls:normalizeProductResearchSourceUrls(obj.productResearchSourceUrls),productResearchUpdatedAt:obj.productResearchUpdatedAt||'',
       alternateNames:clean(obj.alternateNames),searchKeywords:clean(obj.searchKeywords),sellingPoints:clean(obj.sellingPoints),specificationText:clean(obj.specificationText),includedItems:clean(obj.includedItems),material:clean(obj.material),color:clean(obj.color),countryOfOrigin:clean(obj.countryOfOrigin),warrantyInfo:clean(obj.warrantyInfo),commonProductDescription:clean(obj.commonProductDescription),
@@ -2446,7 +2446,7 @@ function renderOverviewV7(){
   }
   function productPlatformMappingId(p,key){
     const mappings=p&&p.platformMappings&&typeof p.platformMappings==='object'?p.platformMappings:{},mapping=mappings[key]&&typeof mappings[key]==='object'?mappings[key]:{};
-    const candidates=key==='easyStore'?[mapping.productId,p&&p.sourceProductId]:key==='shopee'?[mapping.itemId,mapping.itemIds,mapping.channelProductId,mapping.channelProductIds]:key==='momo'?[mapping.goodsCode,mapping.goodsCodes,mapping.goodsdtCode,mapping.goodsdtCodes,mapping.entpGoodsNo,mapping.entpGoodsNos]:[mapping.vendorItemId,mapping.vendorItemIds,mapping.sellerProductId,mapping.sellerProductIds];
+    const candidates=[mapping.listingId].concat(key==='easyStore'?[mapping.productId,p&&p.sourceProductId]:key==='shopee'?[mapping.itemId,mapping.itemIds,mapping.channelProductId,mapping.channelProductIds,mapping.productId]:key==='momo'?[mapping.goodsCode,mapping.goodsCodes,mapping.goodsdtCode,mapping.goodsdtCodes,mapping.entpGoodsNo,mapping.entpGoodsNos]:[mapping.sellerProductId,mapping.sellerProductIds,mapping.vendorItemId,mapping.vendorItemIds]);
     for(const candidate of candidates){const rows=Array.isArray(candidate)?candidate:[candidate];const found=rows.map(clean).find(Boolean);if(found)return found;}
     return '';
   }
@@ -2474,7 +2474,7 @@ function renderOverviewV7(){
     return Object.assign({intent:value,preserveUnmentionedContent:value==='merge-existing'||value==='add-variant'||value==='update-existing',neverCreateDuplicate:true},rules[value]);
   }
   function productPlatformStatus(p,key){
-    const original=p&&p.platformListingStatus&&p.platformListingStatus[key]||{status:'unknown'},audit=((p.mediaReceipt||{}).platformMediaAudit||(p.internal||{}).platformMediaAudit||{})[key],checked=audit&&audit.listing,saved=checked&&(!(original.lastCheckedAt||original.checkedAt)||Date.parse(checked.checkedAt)>=Date.parse(original.lastCheckedAt||original.checkedAt))?checked:original,mappingId=productPlatformMappingId(p,key),savedStatus=PRODUCT_PLATFORM_STATUS_META[clean(saved.status)]?clean(saved.status):'unknown';
+    const original=p&&p.platformListingStatus&&p.platformListingStatus[key]||{status:'unknown'},checked=productPlatformAuditEvidence(p,key,'listing'),saved=checked&&(!(original.lastCheckedAt||original.checkedAt)||Date.parse(checked.checkedAt)>=Date.parse(original.lastCheckedAt||original.checkedAt))?checked:original,mappingId=productPlatformMappingId(p,key),savedStatus=PRODUCT_PLATFORM_STATUS_META[clean(saved.status)]?clean(saved.status):'unknown';
     let status=savedStatus;
     if(mappingId&&status==='unknown')status='mapped';
     if(key==='easyStore'&&p&&p.matchedOnline&&status==='unknown')status='mapped';
@@ -2494,9 +2494,9 @@ function renderOverviewV7(){
     return {exists:false,listingId:'',inferredFrom:''};
   }
   function productPlatformMediaState(p,key,kind){
-    const receipt=p.mediaReceipt||{},audit=(receipt.platformMediaAudit||(p.internal||{}).platformMediaAudit||{})[key]||{},explicit=audit[kind];
+    const receipt=p.mediaReceipt||{},explicit=productPlatformAuditEvidence(p,key,kind);
     const unknown={label:'待確認',tone:'unknown',note:'尚無平台查驗紀錄，不能判定沒有'};
-    if(p.mediaReceiptError)return {label:'讀取失敗',tone:'unknown',note:p.mediaReceiptError};
+    if(p.mediaReceiptError&&!explicit)return {label:'讀取失敗',tone:'unknown',note:p.mediaReceiptError};
     const normalize=function(r){
       if(!r)return unknown;
       const status=clean(r.status),note=[r.reason||r.note||r.message,r.checkedAt||r.at].filter(Boolean).join('｜');
@@ -2519,19 +2519,26 @@ function renderOverviewV7(){
   function productPlatformMediaHtml(p,key){
     return [['photo','實體圖'],['video','影片']].map(function(pair){const media=productPlatformMediaState(p,key,pair[0]),label=pair[1]+'：'+media.label+'｜'+media.note;return '<td><button type="button" class="ops-platform-media-line ops-platform-indicator is-'+media.tone+'" data-action="product-edit" data-id="'+attr(p.docId)+'" title="'+attr(label)+'" aria-label="'+attr(label)+'">'+productPlatformIndicator(media.tone)+'</button></td>';}).join('');
   }
+  function productPlatformAuditEvidence(p,key,kind){
+    const candidates=[p.platformMediaAudit,(p.internal||{}).platformMediaAudit,(p.mediaReceipt||{}).platformMediaAudit].map(function(a){return a&&a[key]&&a[key][kind];}).filter(Boolean);
+    return candidates.sort(function(a,b){return (Date.parse(b.checkedAt||b.at)||0)-(Date.parse(a.checkedAt||a.at)||0);})[0]||null;
+  }
   function productPlatformIndicator(tone){
     const paths={present:'<path d="m5 12 4 4 10-10"/>',missing:'<path d="M6 12h12"/>',pending:'<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>',unknown:'<path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 5"/><path d="M12 17h.01"/>'};
     return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'+(paths[tone]||paths.unknown)+'</svg>';
   }
   function productPlatformCardPrice(p,key){
-    const value=p[key+'Price'];
-    return value!=null&&value!==''&&Number.isFinite(Number(value))?'$'+Number(value).toLocaleString('en-US'):'—';
+    const evidence=productPlatformAuditEvidence(p,key,'price'),expected=p[key+'Price'],value=evidence&&evidence.actualPrice;
+    if(value==null||value===''||!Number.isFinite(Number(value)))return '<span class="ops-price-unverified" title="尚未查驗平台售價；中央設定不代表平台已同步">待查</span>';
+    const differs=expected!=null&&expected!==''&&Number(expected)!==Number(value),note='平台實價 $'+Number(value).toLocaleString('en-US')+'｜查驗 '+clean(evidence.checkedAt)+(differs?'｜中央設定 $'+Number(expected).toLocaleString('en-US')+'，尚未一致':'');
+    return '<span class="'+(differs?'ops-price-mismatch':'ops-price-verified')+'" title="'+attr(note)+'">$'+Number(value).toLocaleString('en-US')+(differs?'<small>不一致</small>':'')+'</span>';
   }
   function productPlatformStatusHtml(p,compact){
     if(clean(p&&p.sku).startsWith('0'))return '';
     return '<div class="ops-product-platform-status ops-platform-table-wrap '+(compact?'compact':'')+'"><table class="ops-platform-table" aria-label="平台售價與商品媒體狀態"><thead><tr><th scope="col">平台</th><th scope="col">售價</th><th scope="col">商品</th><th scope="col">實體圖</th><th scope="col">影片</th></tr></thead><tbody>'+PRODUCT_LISTING_PLATFORMS.map(function(platform){
-      const status=productPlatformStatus(p,platform.key),row=productPlatformPresence(p,platform.key),pending=['queued','pending-review','draft'].includes(status.status),invalid=productPlatformStatusIsInvalid(status),knownMissing=status.status==='missing',label=pending?(status.status==='pending-review'?'待審':'待確認'):invalid?(knownMissing?'無商品':'受限／退回'):row.exists?'有商品':'待確認',tone=pending?'pending':invalid?'missing':row.exists?'present':'unknown',action=pending||!knownMissing?'product-platform-recheck':'product-platform-missing';
+      const status=productPlatformStatus(p,platform.key),row=productPlatformPresence(p,platform.key),pending=['queued','pending-review','draft'].includes(status.status),invalid=productPlatformStatusIsInvalid(status),knownMissing=status.status==='missing',label=pending?(status.status==='pending-review'?'待審':'待確認'):invalid?(knownMissing?'無商品':'受限／退回'):['active','inactive'].includes(status.status)?'有商品':'待確認',tone=pending?'pending':invalid?'missing':['active','inactive'].includes(status.status)?'present':'unknown',action=pending||!knownMissing?'product-platform-recheck':'product-platform-missing';
       const title=platform.label+'｜'+label+(row.listingId?'｜編號 '+row.listingId:'');
+      if(knownMissing)return '<tr class="ops-platform-media-cell"><th scope="row">'+escapeHtml(platform.label)+'</th><td colspan="4" class="ops-platform-absent"><button type="button" data-action="product-platform-missing" data-id="'+attr(p.docId)+'" data-platform="'+attr(platform.key)+'" title="'+attr(status.note||'已查驗無商品')+'">無商品</button></td></tr>';
       return '<tr class="ops-platform-media-cell"><th scope="row">'+escapeHtml(platform.label)+'</th><td class="ops-platform-price" title="中央平台售價">'+productPlatformCardPrice(p,platform.key)+'</td><td><button type="button" class="ops-platform-media-heading ops-platform-indicator is-'+tone+'" data-action="'+action+'" data-id="'+attr(p.docId)+'" data-platform="'+attr(platform.key)+'" title="'+attr(title)+'" aria-label="'+attr(title)+'">'+productPlatformIndicator(tone)+'</button></td>'+productPlatformMediaHtml(p,platform.key)+'</tr>';
     }).join('')+'</tbody></table><button hidden type="button" class="ops-platform-status-review" data-action="product-platform-status-edit" data-id="'+attr(p.docId)+'">核對</button></div>';
   }
@@ -4292,7 +4299,14 @@ function ensureSalesClock(){
   }
   async function loadProductMediaReceipt(p){
     try{
-      const snap=await state.db.collection(COLLECTIONS.listingCases).doc(p.docId).get(),raw=snap.exists?snap.data()||{}:{};
+      const snapshots=await Promise.all([state.db.collection(COLLECTIONS.listingCases).doc(p.docId).get(),state.db.collection(COLLECTIONS.products).doc(p.docId).get()]),snap=snapshots[0],raw=snap.exists?snap.data()||{}:{};
+      if(snapshots[1].exists){
+        const current=snapshots[1].data()||{};
+        p.platformMediaAudit=current.platformMediaAudit||{};
+        if(p.internal)p.internal.platformMediaAudit=p.platformMediaAudit;
+        if(current.platformListingStatus)p.platformListingStatus=current.platformListingStatus;
+        if(current.platformMappings)p.platformMappings=current.platformMappings;
+      }
       productMediaCache.set(p.docId,{at:Date.now(),raw:raw});
       applyProductMediaReceipt(p,raw);
     }catch(error){p.mediaReceiptError='進度讀取失敗，請重新開啟商品後再確認。';refreshProductInlineMedia(p);}
@@ -6274,6 +6288,10 @@ executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,imageStandardV
       '檢測範圍：EasyStore 官網、EasyStore 官方蝦皮通路、MOMO 店+商品管理、Coupang Wing；目標商品共 '+productCount+' 筆。'+scopeText,
       '唯一判定規則：有效平台商品／規格存在就算「有」。缺貨、庫存 0、因庫存而自動停售、一般正常下架，以及 MOMO 因商品上限放在下架區，仍算「有」；補庫存或恢復後可以重新顯示。MOMO 的上架、暫存、一般下架皆可算「有」。任何平台的違規、受限制、審核未通過、拒絕、強制下架、已刪除或不可恢復商品一律算「沒有」，即使仍留有舊編號也必須標紅，等待重新上架。平台完全找不到相同商品／規格也算「沒有」。',
       '配對規則：原廠 SKU／賣家 SKU／平台商品編號優先；合併商品必須展開規格確認每個原廠 SKU。不可只因品牌或相近型號相同就判定；顏色、尾碼或型號不同仍是不同商品。蝦皮必須查 EasyStore 官方蝦皮通路的實際商品狀態，不可只因官網存在就推定。',
+      '完整連動查驗 v1：同時查商品、每個 SKU 的平台實際售價、輪播及描述中的實體圖、影片。售價寫 platformMediaAudit.<平台>.price={actualPrice,expectedPrice,status,listingId,variantId,checkedAt,source}，與中央不同寫 mismatch；不得用中央售價冒充平台實價。',
+      '合併商品先完整展開並精確確認所有 SKU，再將確認共用的介紹圖與影片查驗結果回寫所有對應中央商品及既有案件。個別規格售價、存在狀態、指定細項圖分別判斷；不得只憑相似品名、相同前綴或舊編號擴散結果。',
+      '實體圖必須看實際內容；舊實拍不需要有實體圖字樣或水印。確認有實拍就寫 verified 並保存 evidenceImageUrls、判斷依據、listingId、checkedAt；照片不明確則 unknown，不能因中央無實體圖欄位就判缺少。影片必須在平台商品內確認存在，不能只看中央 YouTube 網址。',
+      '所有查驗依項目寫 platformMediaAudit.<平台>.listing/photo/video/price，保留查驗時間、來源及原因；新結果優先但不可覆蓋較新結果。查驗與連動儲存後重新讀取同一平台商品再回寫，失敗保存問題且不得標綠。確認無商品才顯示整列無商品；中央無編號仍須完整 SKU 搜尋。已有媒體不得重傳。本次只補查驗紀錄，不修改平台商品或價格。',
       '酷澎特別規則：平台清單仍顯示審核中時寫成 pending-review，不可寫 active，也不可寫 missing；本次不安排自動回查，後續由管理者另啟狀態檢測。重查發現已核准上架才改 active；發現審核未通過、拒絕或不可恢復才改 rejected／missing。',
       '更新要求：每一筆中央商品的 easyStore、shopee、momo、coupang 都寫入最新 platformListingStatus、正確 listingId、查驗時間與簡短原因；缺貨／一般下架寫明仍可恢復並保持綠色，酷澎審核中保持黃色，違規／拒絕寫明需重新上架並保持紅色。不得修改四平台商品內容、價格、庫存或上下架狀態。',
       '完成後回報四平台各自的「有／審核中／沒有／違規」總數、修正筆數、找不到及需要重新上架的 SKU 清單，並重新讀取中央頁面確認顏色已更新。'
