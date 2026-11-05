@@ -448,6 +448,7 @@
       }
       if(isPendingRenewal){
         b('','confirmRenewal()','確認續約成立');
+        b('danger','markCustomerReturned()','客人退租','id="customerReturnBtn" title="直接完成退租，包含提前退租"');
         b('secondary','printRentalContract()','預覽 / 列印');
         deleteWholeCase();
         return `<div class="btn-row">${parts.join('')}</div>`;
@@ -456,6 +457,7 @@
         b('','openPaidRenewal()','登記已收款續租');
         if((c.renewalEntries||[]).some(e=>e.incomeSource==='admin-paid-renewal' && e.note!=='續約 '+e.periods+' 期')) b('secondary','normalizePaidRenewalNotes()','套用標準續約備註');
         b('','sendRenewalReturnLink()','傳送續約 / 退租連結給客人');
+        b('danger','markCustomerReturned()','客人退租','id="customerReturnBtn" title="直接完成退租，包含提前退租"');
         b('secondary','printRentalContract()','預覽 / 列印');
         deleteWholeCase();
         return `<div class="btn-row">${parts.join('')}</div>`;
@@ -488,6 +490,7 @@
     function formatMoneyInline(v){ const n=R.num(v); return n ? n.toLocaleString('zh-TW')+' 元' : '未填'; }
     function renewalAdminHtml(c){
       c=c||{};
+      if(['已退租','returned'].includes(R.clean(c.status))) return `<div class="msg ok"><b>已退租</b>${c.returnedAtText?`<br>退租登記時間：${R.esc(c.returnedAtText)}`:''}</div>`;
       const p=c.pendingRenewal||{};
       const r=c.returnRequest||{};
       const blocks=[];
@@ -1491,6 +1494,51 @@ ${url}
       }catch(error){R.toast(error.message||String(error),false);}
     };
 
+    let customerReturnSaving=false;
+    window.markCustomerReturned=async function(){
+      const id=R.val('contractId');
+      if(!id) return R.toast('請先選擇正式契約。',false);
+      if(customerReturnSaving) return;
+      customerReturnSaving=true;
+      const btn=R.qs('customerReturnBtn');
+      if(btn){btn.disabled=true;btn.textContent='退租儲存中…';}
+      let saved=false;
+      try{
+        const db=R.db();
+        const ref=db.collection('rentalContracts').doc(id);
+        // Read the latest record and merge only return metadata; early return has no date or fee prerequisite.
+        const returned=await db.runTransaction(async tx=>{
+          const snap=await tx.get(ref);
+          if(!snap.exists) throw Error('找不到契約資料。');
+          const current=snap.data();
+          if(R.clean(current.status)==='已退租') return current;
+          const now=R.nowText();
+          const stamp=firebase.firestore.FieldValue.serverTimestamp();
+          const patch={status:'已退租',returnedAt:stamp,returnedAtText:now,returnSource:'admin-direct-return',updatedAt:stamp,updatedAtText:now};
+          tx.set(ref,patch,{merge:true});
+          return Object.assign({},current,patch);
+        });
+        saved=true;
+        selected=Object.assign({__id:id},returned);
+        contracts=contracts.map(c=>c.__id===id?Object.assign({},c,returned):c);
+        filter='returned';
+        searchKeyword='';
+        const search=R.qs('rentalSearchInput');
+        if(search) search.value='';
+        document.querySelectorAll('.tab').forEach(tab=>tab.classList.toggle('active',tab.dataset.filter==='returned'));
+        updateRentalSearchHint();
+        renderStats();
+        renderList();
+        renderContract(selected);
+        await loadAll();
+        R.toast('已登記客人退租，已移至「已退租」。',true);
+      }catch(e){
+        R.toast((saved?'退租已儲存，請重新整理頁面查看。':'退租儲存失敗：')+(e.message||String(e)),false);
+      }finally{
+        customerReturnSaving=false;
+        if(btn){btn.disabled=false;btn.textContent='客人退租';}
+      }
+    };
     window.completeReturn=async function(){ const id=R.val('contractId'); if(!id) return R.toast('請先儲存合約。', false); if(!confirm('確認已收回設備並完成退租？')) return; if(!confirm('再次確認：此操作會將契約標記為已退租，確定繼續？')) return; try{ await R.call('rentalCompleteReturnHttp',{contractId:id}); R.toast('已完成退租並通知客人。', true); await loadAll(); }catch(e){ R.toast(e.message||String(e), false); } };
   </script>
   <script>document.addEventListener('DOMContentLoaded',initPage,{once:true});</script>
