@@ -28,3 +28,7 @@ test('archived online main image cannot override the new central cover after rel
  assert.equal(value.imageUrl,'new');assert.deepEqual(Array.from(value.parentImageUrls),[]);assert.deepEqual(Array.from(value.variantImageUrls),[]);
  assert.equal(ctx.productDisplayImage({parentImageUrls:['old'],variantImageUrls:['old'],imageUrls:['old','new'],internal:raw}),'new');
 });
+
+test('optimized product reads retain image archive metadata',()=>{
+ const fields=JSON.parse(src.match(/const OPERATION_PRODUCT_READ_FIELDS = (\[[^;]+\]);/)[1]);assert.ok(fields.includes('archivedProductImageUrls'));
+});
