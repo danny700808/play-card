@@ -5472,7 +5472,7 @@ function ensureSalesClock(){
     });
     product.internal.archivedProductImageUrls=archived;
     const internal=state.internalProducts.find(function(row){return row.docId===id;});if(internal)internal.archivedProductImageUrls=archived;
-    mergeCatalog();const fresh=catalogById(id);if(fresh)refreshProductInlineMedia(fresh);
+    mergeCatalog();const fresh=catalogById(id);if(fresh)refreshProductInlineMedia(fresh);await saveFastStateCache();
     await writeAudit(restore?'復原商品圖片':'移除商品圖片','product',id,(product.sku||id)+'｜'+url);
     toast(restore?'細項圖片已復原':'細項圖片已移除',restore?'已回到商品細項圖片':'原圖仍保留，可展開「已移除圖片」復原','success');
   }

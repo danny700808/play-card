@@ -6,7 +6,7 @@ function extract(name){const start=src.search(new RegExp('  (?:async )?function 
 function setup(){
  const raw={imageUrl:'old',imageUrls:['old','new'],currentStock:2,averageCost:1015,updatedAt:123};
  const product={docId:'p',sku:'RD',imageUrl:'old',imageUrls:['old','new'],internal:raw};
- const ctx={Set,clean:x=>x,safeUrl:x=>x||'',PRODUCT_REFERENCE_IMAGE_MAX:20,normalizeProductResearchSourceUrls:x=>[...new Set(x||[])],catalogById:()=>product,COLLECTIONS:{products:'products'},serverTimestamp:()=>456,userLabel:()=> 'tester',writeAudit:async()=>{},toast:()=>{},refreshProductInlineMedia:()=>{},mergeCatalog:()=>{},state:{internalProducts:[raw],db:{collection:()=>({doc:()=>({})}),runTransaction:async fn=>fn({get:async()=>({exists:true,data:()=>raw}),set:(ref,payload)=>Object.assign(raw,payload)})}}};
+ const ctx={Set,clean:x=>x,safeUrl:x=>x||'',PRODUCT_REFERENCE_IMAGE_MAX:20,normalizeProductResearchSourceUrls:x=>[...new Set(x||[])],catalogById:()=>product,COLLECTIONS:{products:'products'},serverTimestamp:()=>456,userLabel:()=> 'tester',writeAudit:async()=>{},toast:()=>{},refreshProductInlineMedia:()=>{},mergeCatalog:()=>{},saveFastStateCache:async()=>{},state:{internalProducts:[raw],db:{collection:()=>({doc:()=>({})}),runTransaction:async fn=>fn({get:async()=>({exists:true,data:()=>raw}),set:(ref,payload)=>Object.assign(raw,payload)})}}};
  vm.createContext(ctx);vm.runInContext(extract('productEditorImages')+'\n'+extract('archiveProductMasterImage'),ctx);return {ctx,raw,product};
 }
 test('removal is reversible and preserves image binaries, inventory and cost baseline',async()=>{
