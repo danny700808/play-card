@@ -63,3 +63,14 @@ test('group members and aliases deduplicate per subject, including irregular cou
  const result=api.studentEnrollmentCounts({resourceEvents:[lesson('pair','piano'),lesson('pair','piano'),lesson('alias','piano'),lesson('alias','guitar'),lesson('joined','drums'),lesson('ordinary','piano'),lesson('foreign','piano')],irregularModes:[{...lesson('alias','piano'),enabled:true},{...lesson('alias','drums'),enabled:true}]},today,[],profiles);
  assert.deepEqual(result,{activeCount:7,irregularCount:1,totalCount:8});
 });
+
+test('roster reconciles exactly to counts, keeps a group on one row and lists different subjects separately',()=>{
+ const api=context.loadBackendForScheduleTests({collections:{}});
+ const lesson=(id,subjectId)=>({studentIds:[id],subjectId,teacherId:'teacher'});
+ const profiles=[{id:'g',name:'王甲',phone:'0900000000'},{id:'b',name:'李乙'},{id:'alias',name:'王甲'}],groups=[{id:'g',memberIds:['g','b'],memberNames:['王甲','李乙'],active:true}];
+ const bundle={resourceEvents:[lesson('alias','drums'),lesson('g','drums'),lesson('g','drums'),lesson('alias','piano')],irregularModes:[{...lesson('g','drums'),enabled:true},{...lesson('alias','theory'),enabled:true}]};
+ const regular=api.studentEnrollmentCounts(bundle,today,groups,profiles,'active'),irregular=api.studentEnrollmentCounts(bundle,today,groups,profiles,'irregular');
+ assert.equal(regular.activeCount,3);assert.equal(regular.students.length,2);assert.equal(regular.students.reduce((n,r)=>n+r.personCount,0),3);
+ const group=regular.students.find(r=>r.subjectId==='drums');assert.equal(group.id,'g');assert.deepEqual(group.memberNames,['王甲','李乙']);assert.equal(group.personCount,2);
+ assert.equal(irregular.irregularCount,1);assert.equal(irregular.students.length,1);assert.equal(irregular.students[0].subjectId,'theory');
+});

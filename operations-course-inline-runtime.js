@@ -1175,8 +1175,22 @@
   var studentDirectorySummary=null,studentDirectorySummaryAt=0,studentDirectorySummaryPending=null,studentSearchRequest=0;
   function renderStudentDirectoryMetrics(){
     var summary=studentDirectorySummary;
-    $('studentMetrics').innerHTML=metric('目前在學人數（課表內）',summary?summary.activeCount:'…',summary?summary.rangeStart+' 起・今天及未來課表・同名同科目只計一次；不同科目分開計':'今天及未來課表・同名同科目只計一次；不同科目分開計')+metric('不定時上課人數',summary?summary.irregularCount:'…',summary?'同名同科目與課表內不重複；合計 '+summary.totalCount+' 人次':'未列入左側課表人數')+'<button type="button" class="btn outline" id="showUnpaidStudents">尚有未繳・點選查詢</button>';
+    $('studentMetrics').innerHTML='<button type="button" class="card metric" style="text-align:left;cursor:pointer" id="showActiveStudents"><span>目前在學人數（課表內）</span><strong>'+esc(summary?summary.activeCount:'…')+'</strong></button><button type="button" class="card metric" style="text-align:left;cursor:pointer" id="showIrregularStudents"><span>不定時上課人數</span><strong>'+esc(summary?summary.irregularCount:'…')+'</strong></button><button type="button" class="btn outline" id="showUnpaidStudents">尚有未繳・點選查詢</button>';
+    $('showActiveStudents').onclick=function(){showEnrollmentStudents('active');};
+    $('showIrregularStudents').onclick=function(){showEnrollmentStudents('irregular');};
     $('showUnpaidStudents').onclick=function(){$('studentSearch').value='';$('studentPaymentFilter').value='due';recentStudentsData=null;renderStudents();};
+  }
+  function showEnrollmentStudents(kind){
+    $('studentSearch').value='';$('studentPaymentFilter').value='all';
+    var request=++studentSearchRequest,label=kind==='irregular'?'不定時上課名單':'目前在學名單';
+    $('studentRows').innerHTML='<tr><td colspan="7">正在讀取'+label+'…</td></tr>';
+    window.YouziCoursePreviewData.loadStudentDirectory('',kind).then(function(result){
+      if(request!==studentSearchRequest||currentView!=='students')return;
+      studentDirectorySummary=result;studentDirectorySummaryAt=Date.now();renderStudentDirectoryMetrics();
+      var rows=result.students||[],count=kind==='irregular'?result.irregularCount:result.activeCount;
+      rows.forEach(function(row){if(!state.students.some(function(existing){return existing.id===row.id;}))state.students.push({id:row.id,name:row.name,phone:row.phone,active:true});});
+      $('studentRows').innerHTML='<tr><td colspan="7"><b>'+label+'・'+count+' 人次</b></td></tr>'+ (rows.map(function(row){return '<tr><td><b>'+esc(row.name)+'</b>'+(row.personCount>1?'<small>團體班・'+row.personCount+' 位</small>':'')+'</td><td>'+esc(row.phone||'未填')+'</td><td colspan="4">'+esc(row.subjectName)+'<small>'+esc((row.teacherNames||[]).join('、'))+'</small></td><td><button class="btn small secondary" data-student-id="'+esc(row.id)+'">查看學費紀錄</button></td></tr>';}).join('')||'<tr><td colspan="7">目前沒有符合的學生。</td></tr>');
+    }).catch(function(error){if(request!==studentSearchRequest||currentView!=='students')return;$('studentRows').innerHTML='<tr><td colspan="7">名單讀取失敗，請再點選人數重試。</td></tr>';toast('名單讀取失敗',clean(error.message),'error');});
   }
   function renderStudents(){
     var api=window.YouziCoursePreviewData,query=clean($('studentSearch').value),filter=$('studentPaymentFilter').value,request=++studentSearchRequest;
@@ -1189,7 +1203,7 @@
     }
     if(!query){
       if(filter==='due'){renderRecentStudents();return;}
-      $('studentRows').innerHTML='<tr><td colspan="7">輸入學生姓名（可只輸入一個字），或點選「尚有未繳」。</td></tr>';return;
+      $('studentRows').innerHTML='<tr><td colspan="7">輸入學生姓名（可只輸入一個字），或點選上方人數／「尚有未繳」。</td></tr>';return;
     }
     $('studentRows').innerHTML='<tr><td colspan="7">搜尋學生中…</td></tr>';
     api.loadStudentDirectory(query).then(function(result){

@@ -13674,8 +13674,8 @@ async function managerScheduleCatalog() {
 }
 
 // Counts use the same resolved calendar as the timetable; search never loads it.
-function studentEnrollmentCounts(bundle, day, groups = [], profiles = []) {
-  const regular=new Set(),irregular=new Set();
+function studentEnrollmentCounts(bundle, day, groups = [], profiles = [], listKind = '') {
+  const regular=new Map(),irregular=new Map();
   const normalize=name=>clean(name).normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase();
   const names=new Map(profiles.map(row=>[sourceId(row),normalize(row.name)]));
   const membersById=new Map(profiles.filter(row=>(row.memberNames||[]).length>1).map(row=>[sourceId(row),row.memberNames.map(normalize)]));
@@ -13685,23 +13685,42 @@ function studentEnrollmentCounts(bundle, day, groups = [], profiles = []) {
   groups.forEach(group=>(group.memberIds||[]).forEach((id,index)=>{const name=(group.memberNames||[])[index];if(name)names.set(id,clean(name).normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase());}));
   const stoppedIds=new Set(profiles.filter(row=>row.active===false).map(sourceId));
   const expand=id=>{const group=groups.find(row=>row.active!==false&&row.id===id);return group&&(group.memberIds||[]).length?group.memberIds:[id];};
-  const add=(set,ids,subject)=>ids.filter(id=>id&&!stoppedIds.has(id)).forEach(id=>{
+  const displayNames=new Map(profiles.map(row=>[normalize(row.name),clean(row.name)]));
+  profiles.forEach(row=>(row.memberNames||[]).forEach(name=>displayNames.set(normalize(name),clean(name))));
+  groups.forEach(group=>(group.memberNames||[]).forEach(name=>displayNames.set(normalize(name),clean(name))));
+  const add=(set,ids,subject,teacher)=>ids.filter(id=>id&&!stoppedIds.has(id)).forEach(id=>{
     const group=groups.find(row=>row.active!==false&&row.id===id);
     const people=group?expand(id).filter(member=>member&&!stoppedIds.has(member)).map(member=>names.get(member)||member):(membersById.get(id)||[names.get(id)||id]);
-    people.forEach(name=>set.add(JSON.stringify([name,subject])));
+    people.forEach(name=>{
+      const key=JSON.stringify([name,subject]),previous=set.get(key),candidate={id,subjectId:subject,personName:displayNames.get(name)||name,groupSize:people.length,teacherIds:new Set(previous?previous.teacherIds:[])};
+      if(teacher)candidate.teacherIds.add(teacher);
+      // Prefer the group row consistently when the same person also has extra lessons.
+      if(!previous||candidate.groupSize>previous.groupSize||candidate.groupSize===previous.groupSize&&id<previous.id)set.set(key,candidate);
+      else previous.teacherIds=candidate.teacherIds;
+    });
   });
   const rooms=new Map((bundle.rooms||[]).map(row=>[sourceId(row),row]));
   (bundle.resourceEvents||[]).forEach(row=>{
     if(isRoomRentalEvent(row)||!eventTeacherId(row)||['cancelled','pending_conflict'].includes(normalizeScheduleStatus(row.status)))return;
-    add(roomKind(rooms.get(eventRoomId(row))||{})==='holding'?irregular:regular,eventStudentIds(row),eventSubjectId(row));
+    add(roomKind(rooms.get(eventRoomId(row))||{})==='holding'?irregular:regular,eventStudentIds(row),eventSubjectId(row),eventTeacherId(row));
   });
   (bundle.irregularModes||[]).forEach(row=>{
     if(row.enabled===false||(row.resumedFrom&&row.resumedFrom<=day))return;
     const ids=eventStudentIds(row).filter(id=>!(bundle.suspensions||[]).some(stop=>stop.studentId===id&&stop.teacherId===row.teacherId&&(!stop.subjectId||stop.subjectId===row.subjectId)&&(!stop.effectiveDate||stop.effectiveDate<=(row.effectiveDate&&row.effectiveDate>day?row.effectiveDate:day))));
-    add(irregular,ids,eventSubjectId(row));
+    add(irregular,ids,eventSubjectId(row),eventTeacherId(row));
   });
-  regular.forEach(id=>irregular.delete(id));
-  return {activeCount:regular.size,irregularCount:irregular.size,totalCount:regular.size+irregular.size};
+  regular.forEach((value,key)=>irregular.delete(key));
+  const result={activeCount:regular.size,irregularCount:irregular.size,totalCount:regular.size+irregular.size};
+  if(listKind){
+    const rows=new Map();
+    (listKind==='irregular'?irregular:regular).forEach(person=>{
+      const key=JSON.stringify([person.id,person.subjectId]);let row=rows.get(key);
+      if(!row){const profile=profiles.find(p=>sourceId(p)===person.id)||{};row={id:person.id,subjectId:person.subjectId,memberNames:[],teacherIds:[],phone:clean(profile.phone),active:true,irregular:listKind==='irregular',personCount:0};rows.set(key,row);}
+      row.memberNames.push(person.personName);row.personCount++;row.teacherIds=[...new Set([...row.teacherIds,...person.teacherIds])];
+    });
+    result.students=[...rows.values()].map(row=>({...row,name:row.memberNames.join('、')})).sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant')||a.subjectId.localeCompare(b.subjectId));
+  }
+  return result;
 }
 // Determine a finite proof horizon from every future dated occurrence/change and
 // recurring start. One longest recurrence cycle after the last boundary proves
@@ -13730,10 +13749,13 @@ async function futureEnrollmentSnapshot(day){
 async function managerStudentDirectory(data = {}) {
   const query=clean(data.query).toLocaleLowerCase().slice(0,80);
   if(!query){
+    const listKind=['active','irregular'].includes(data.listKind)?data.listKind:'';
     const rangeStart=currentTaipeiDay(),snapshot=await futureEnrollmentSnapshot(rangeStart),rangeEnd=enrollmentProofEnd(rangeStart,snapshot);
     const [bundle,groups,profileSnapshot]=await Promise.all([scheduleBundleUncached(rangeStart,rangeEnd,'',{occupancyOnly:true,enrollmentSnapshot:snapshot}),readCourseGroups(),db.collection(MIRROR.students).where('sourceActive','==',true).get()]);
     const profiles=await mergeStudentProfileOverrides(profileSnapshot.docs.map(doc=>({__id:doc.id,...jsonValue(doc.data().source)})));
-    return {ok:true,...studentEnrollmentCounts(bundle,rangeStart,groups,profiles),rangeStart,rangeEnd,total:0,students:[]};
+    const result=studentEnrollmentCounts(bundle,rangeStart,groups,profiles,listKind);
+    if(listKind){const [subjects,teachers]=await Promise.all([mirrorRows('subjects'),mirrorRows('teachers')]);result.students=result.students.map(row=>({...row,subjectName:clean(subjects.find(s=>sourceId(s)===row.subjectId)?.name)||'未記錄科目',teacherNames:row.teacherIds.map(id=>clean(teachers.find(t=>sourceId(t)===id)?.name)).filter(Boolean)}));}
+    return {ok:true,rangeStart,rangeEnd,total:result.students?.length||0,students:[],...result,listKind};
   }
   const profiles=await mirrorRows('students');
   const students=Array.from(new Map(profiles.map(row=>[sourceId(row),row])).values());
