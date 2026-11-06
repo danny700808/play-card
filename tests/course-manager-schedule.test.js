@@ -125,3 +125,20 @@ test('closure on a later weekly date rejects all writes; released dates remain b
  f.docs.set('courseClassClosures/2026-09-14',{active:false,reason:'颱風天'});
  await f.c.adminSaveSchedule(request());assert(f.docs.has('coursePortalFixedCourses/manager-op1'));
 });
+test('two students share one class and tuition, retain separate phones, and retry does not duplicate',async()=>{
+ const f=fixture(),data=enroll();delete data.enrollment.newStudent;data.enrollment.newStudents=[{name:'第一位',phone:'0911111111'},{name:'第二位',phone:'0922222222'}];
+ const result=await f.c.adminSaveSchedule(data);
+ const profiles=[...f.docs.entries()].filter(([key])=>key.startsWith('coursePortalStudentProfiles/')).map(([,row])=>row);
+ const groups=[...f.docs.entries()].filter(([key])=>key.startsWith('coursePortalStudentGroups/')).map(([,row])=>row);
+ assert.equal(profiles.length,2);assert.equal(groups.length,1);assert.equal(result.student.name,'第一位－第二位');assert.equal(result.student.phone,'0911111111');
+ assert.deepEqual(Array.from(groups[0].memberPhones),['0911111111','0922222222']);assert.equal(result.event.studentIds.length,1);
+ assert.equal([...f.docs.keys()].filter(key=>key.startsWith('coursePortalTuitionPeriods/')).length,1);assert.equal(result.tuitionPeriod.expectedAmount,2800);
+ const projected=require('../functions/courseGroups').projectCourseGroups('students',profiles,groups);assert.equal(projected.length,1);assert.ok(projected[0].name.includes('第一位'));assert.ok(projected[0].name.includes('第二位'));assert.equal(projected[0].phone,'0911111111');assert.equal(projected[0].memberPhones[1],'0922222222');
+ const size=f.docs.size;assert.equal((await f.c.adminSaveSchedule(data)).duplicate,true);assert.equal(f.docs.size,size);
+});
+test('invalid second name and duplicate names leave no partial pair or ledger',async()=>{
+ for(const name of ['', '第一位']){const f=fixture(),data=enroll();delete data.enrollment.newStudent;data.enrollment.newStudents=[{name:'第一位',phone:'0911111111'},{name,phone:'0922222222'}];await assert.rejects(f.c.adminSaveSchedule(data),/姓名/);assert.equal(f.docs.size,1);}
+});
+test('a paired class conflict does not create either student, group or tuition',async()=>{
+ const f=fixture([{id:'busy',date:'2026-09-14',startTime:'18:00',endTime:'19:00',roomId:'room',studentIds:[]}]),data=enroll();delete data.enrollment.newStudent;data.enrollment.newStudents=[{name:'第一位'},{name:'第二位'}];await assert.rejects(f.c.adminSaveSchedule(data),/已被占用/);assert.equal(f.docs.size,1);
+});

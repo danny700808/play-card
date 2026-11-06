@@ -10547,11 +10547,21 @@ async function adminSaveSchedule(data) {
   }
   const enrollment = data.enrollment || null;
   if (enrollment && (mode !== 'save' || !['fixed','single'].includes(type) || raw.specialLesson === true || clean(data.sourceEventId) || clean(data.sourceCourseId))) throw new HttpsError('invalid-argument', '新課程方案只能在新增排課時建立。');
-  let newStudent = null;
-  if (enrollment && enrollment.newStudent) {
-    const name = clean(enrollment.newStudent.name);
-    if (type !== 'fixed' || !name || name.length > 100) throw new HttpsError('invalid-argument', '新學生請填姓名，並使用固定排課。');
-    newStudent = {id:'enroll-'+hash(operationId).slice(0,32), name, phone:normalizePhone(enrollment.newStudent.phone), studentActive:true, managerCreated:true, managerNote:'', active:true};
+  let newStudent = null, newStudentMembers = [], newStudentGroup = null;
+  if(enrollment && (enrollment.newStudent || enrollment.newStudents)){
+    const entries=enrollment.newStudents || [enrollment.newStudent];
+    if(!Array.isArray(entries)||entries.length<1||entries.length>2)throw new HttpsError('invalid-argument','新學生請選擇一位或兩位。');
+    newStudentMembers=entries.map((entry,index)=>{
+      const name=clean(entry&&entry.name);
+      if(type!=='fixed'||!name||name.length>100)throw new HttpsError('invalid-argument','請填寫每位新學生姓名，並使用固定排課。');
+      return {id:'enroll-'+hash(operationId).slice(0,32)+(index?'-2':''),name,phone:normalizePhone(entry.phone),studentActive:true,managerCreated:true,managerNote:'',active:true};
+    });
+    if(new Set(newStudentMembers.map(row=>row.name.normalize('NFKC').replace(/\s+/g,''))).size!==newStudentMembers.length)throw new HttpsError('invalid-argument','兩位學生姓名不可重複。');
+    newStudent=newStudentMembers[0];
+    if(newStudentMembers.length===2){
+      newStudentGroup={id:newStudent.id,name:newStudentMembers.map(row=>row.name).join('－'),memberIds:newStudentMembers.map(row=>row.id),memberNames:newStudentMembers.map(row=>row.name),memberPhones:newStudentMembers.map(row=>row.phone),startDate:date,sourceCourseIds:['manager-'+operationId],active:true};
+      newStudent={...newStudent,name:newStudentGroup.name,memberIds:newStudentGroup.memberIds,memberNames:newStudentGroup.memberNames,memberPhones:newStudentGroup.memberPhones};
+    }
   }
   const groups = await readCourseGroups();
   const studentIds = [...new Set((newStudent ? [newStudent.id] : Array.isArray(raw.studentIds) ? raw.studentIds : []).map(value => canonicalStudentId(clean(value), groups)).filter(Boolean))];
@@ -10657,15 +10667,15 @@ async function adminSaveSchedule(data) {
       const existingPeriod = await tx.get(periodRef);
       const mirrorPeers = await tx.get(db.collection(MIRROR.tuitionPeriods).where('source.studentId','==',studentIds[0]));
       const portalPeers = await tx.get(db.collection(TUITION_PERIODS).where('studentId','==',studentIds[0]));
-      let studentRef = null;
-      if (newStudent) {
-        studentRef = db.collection('coursePortalStudentProfiles').doc(newStudent.id);
-        if ((await tx.get(studentRef)).exists) throw new HttpsError('already-exists', '學生建立識別碼已使用，請重新開啟排課。');
-      }
+      const studentRefs=newStudentMembers.map(row=>db.collection('coursePortalStudentProfiles').doc(row.id));
+      for(const ref of studentRefs){if((await tx.get(ref)).exists)throw new HttpsError('already-exists','學生建立識別碼已使用，請重新開啟排課。');}
+      const groupRef=newStudentGroup?db.collection('coursePortalStudentGroups').doc(newStudentGroup.id):null;
+      if(groupRef&&(await tx.get(groupRef)).exists)throw new HttpsError('already-exists','兩人班已建立，請重新載入。');
       if (existingPeriod.exists) throw new HttpsError('already-exists', '課程方案已建立，請重新載入。');
       const peers = mergePortalTuitionRows(mirrorPeers.docs.filter(doc => doc.data().sourceActive !== false).map(doc => doc.data().source || {}), portalPeers.docs, []);
       enrollmentPeriod.periodNo = peers.reduce((max,p)=>Math.max(max,Number(p.periodNo)||0),0)+1;
-      if (studentRef) tx.create(studentRef,{...newStudent,updatedAt:FieldValue.serverTimestamp(),updatedBy:'manager-enrollment'});
+      studentRefs.forEach((ref,index)=>tx.create(ref,{...newStudentMembers[index],updatedAt:FieldValue.serverTimestamp(),updatedBy:'manager-enrollment'}));
+      if(groupRef)tx.create(groupRef,{...newStudentGroup,updatedAt:FieldValue.serverTimestamp(),createdBy:'manager-enrollment'});
       tx.create(periodRef,{...enrollmentPeriod,updatedAt:FieldValue.serverTimestamp()});
     }
     for (const doc of superseded) tx.set(doc.ref,{active:false,supersededBy:id,updatedAt:FieldValue.serverTimestamp()},{merge:true});

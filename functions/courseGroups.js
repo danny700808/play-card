@@ -12,7 +12,7 @@ function projectCourseGroups(type, input, groups, options = {}) {
     const inRange = row => !row.date || row.date >= group.startDate;
     if (type === 'students') {
       rows = rows.filter(row => options.includeAliases || !members.has(id(row)) || id(row) === group.id)
-        .map(row => id(row) === group.id ? { ...row, identityName: row.identityName || row.name, name: group.name, memberIds: [...members], memberNames: group.memberNames || [] } : row);
+        .map(row => id(row) === group.id ? { ...row, identityName: row.identityName || row.name, name: group.name, memberIds: [...members], memberNames: group.memberNames || [], memberPhones: group.memberPhones || [] } : row);
     } else if (type === 'tuitionPeriods') {
       const hidden = new Set(group.hiddenPeriodIds || []);
       rows = rows.filter(row => !hidden.has(id(row)));
