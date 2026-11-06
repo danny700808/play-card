@@ -20,3 +20,11 @@ test('removing twice is idempotent and restoring one image preserves others in a
  assert.deepEqual(Array.from(raw.archivedProductImageUrls),['old','new']);await ctx.archiveProductMasterImage('p','old',true);assert.deepEqual(Array.from(raw.archivedProductImageUrls),['new']);
 });
 
+
+test('archived online main image cannot override the new central cover after reload',()=>{
+ const {ctx,raw}=setup();raw.archivedProductImageUrls=['old'];raw.parentImageUrls=['old'];raw.variantImageUrls=['old'];ctx.numberOrNull=x=>x==null?null:Number(x);ctx.normalizePlatformListingStatus=()=>({});
+ vm.runInContext(extract('buildCatalogValues')+'\n'+extract('productDisplayImage'),ctx);
+ const value=ctx.buildCatalogValues({parentImageUrls:['old'],variantImageUrls:['old'],imageUrls:['old']},raw);value.internal=raw;
+ assert.equal(value.imageUrl,'new');assert.deepEqual(Array.from(value.parentImageUrls),[]);assert.deepEqual(Array.from(value.variantImageUrls),[]);
+ assert.equal(ctx.productDisplayImage({parentImageUrls:['old'],variantImageUrls:['old'],imageUrls:['old','new'],internal:raw}),'new');
+});

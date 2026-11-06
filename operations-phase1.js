@@ -915,8 +915,8 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   function buildCatalogValues(online,internal){
     const originalName=(internal&&internal.internalName)||''; const onlineName=(online&&online.onlineName)||(internal&&internal.onlineName)||''; const display=originalName||onlineName||'未命名商品';
     const sku=(internal&&internal.internalSku)||(online&&online.sku)||''; const images=[]; const archivedImages=new Set((internal&&internal.archivedProductImageUrls)||[]);
-    const parentImages=((online&&online.parentImageUrls)||(internal&&internal.parentImageUrls)||[]).map(safeUrl).filter(Boolean);
-    const variantImages=((online&&online.variantImageUrls)||(internal&&internal.variantImageUrls)||[]).map(safeUrl).filter(Boolean);
+    const parentImages=((online&&online.parentImageUrls)||(internal&&internal.parentImageUrls)||[]).map(safeUrl).filter(function(url){return url&&!archivedImages.has(url);});
+    const variantImages=((online&&online.variantImageUrls)||(internal&&internal.variantImageUrls)||[]).map(safeUrl).filter(function(url){return url&&!archivedImages.has(url);});
     parentImages.concat(variantImages).concat((online&&online.imageUrls)||[]).concat((internal&&internal.imageUrls)||[]).concat([(online&&online.imageUrl)||(internal&&internal.imageUrl)||'']).forEach(function(url){url=safeUrl(url);if(url&&!archivedImages.has(url)&&!images.includes(url))images.push(url);});
     const onlinePrice=online&&online.onlinePrice!=null?online.onlinePrice:(internal&&internal.onlinePrice!=null?internal.onlinePrice:null); const storePrice=internal&&internal.storePrice!=null?internal.storePrice:null;
     const pricesInitialized=!!(internal&&internal.platformPricesInitialized===true);
@@ -2675,12 +2675,14 @@ function renderOverviewV7(){
     return rows;
   }
   function productDisplayImage(p){
-    return ((p&&p.variantImageUrls)||[]).map(safeUrl).find(Boolean)||((p&&p.parentImageUrls)||[]).map(safeUrl).find(Boolean)||((p&&p.imageUrls)||[]).map(safeUrl).find(Boolean)||safeUrl(p&&p.imageUrl)||'';
+    const active=function(url){return url&&!((p&&p.internal&&p.internal.archivedProductImageUrls)||[]).includes(url);};
+    return ((p&&p.variantImageUrls)||[]).map(safeUrl).find(active)||((p&&p.parentImageUrls)||[]).map(safeUrl).find(active)||((p&&p.imageUrls)||[]).map(safeUrl).find(active)||(active(safeUrl(p&&p.imageUrl))?safeUrl(p&&p.imageUrl):'');
   }
   function productCard(p){
-    const allImages=Array.from(new Set((p.imageUrls||[]).concat(p.imageUrl?[p.imageUrl]:[]).filter(Boolean)));
-    const parentImages=Array.from(new Set((p.parentImageUrls||[]).filter(Boolean)));
-    const variantImages=Array.from(new Set((p.variantImageUrls||[]).filter(Boolean)));
+    const imageActive=function(url){return url&&!((p.internal&&p.internal.archivedProductImageUrls)||[]).includes(url);};
+    const allImages=Array.from(new Set((p.imageUrls||[]).concat(p.imageUrl?[p.imageUrl]:[]).filter(imageActive)));
+    const parentImages=Array.from(new Set((p.parentImageUrls||[]).filter(imageActive)));
+    const variantImages=Array.from(new Set((p.variantImageUrls||[]).filter(imageActive)));
     const mainImage=variantImages[0]||parentImages[0]||allImages[0]||'';
     const urls=[mainImage].filter(Boolean);
     const systemName=clean(p.originalName||p.name||p.onlineName)||'未命名商品';
