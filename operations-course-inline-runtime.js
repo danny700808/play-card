@@ -1182,6 +1182,7 @@
   }
   function showEnrollmentStudents(kind){
     $('studentSearch').value='';$('studentPaymentFilter').value='all';
+    $('studentDirectoryHead').innerHTML='<tr><th>學生</th><th>聯絡方式</th><th colspan="4">科目／老師</th><th>操作</th></tr>';
     var request=++studentSearchRequest,label=kind==='irregular'?'不定時上課名單':'目前在學名單';
     $('studentRows').innerHTML='<tr><td colspan="7">正在讀取'+label+'…</td></tr>';
     window.YouziCoursePreviewData.loadStudentDirectory('',kind).then(function(result){
@@ -1193,6 +1194,7 @@
     }).catch(function(error){if(request!==studentSearchRequest||currentView!=='students')return;$('studentRows').innerHTML='<tr><td colspan="7">名單讀取失敗，請再點選人數重試。</td></tr>';toast('名單讀取失敗',clean(error.message),'error');});
   }
   function renderStudents(){
+    $('studentDirectoryHead').innerHTML='<tr><th>學生</th><th>聯絡方式</th><th>目前科目／老師</th><th>本期堂數</th><th>本期學費</th><th>下次上課</th><th>操作</th></tr>';
     var api=window.YouziCoursePreviewData,query=clean($('studentSearch').value),filter=$('studentPaymentFilter').value,request=++studentSearchRequest;
     studentHistoryMode=false;
     var low=$('studentPaymentFilter').querySelector('option[value="low"]');if(low)low.remove();
