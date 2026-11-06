@@ -811,7 +811,7 @@
       scheduleCatalogError='';
       var pending=window.YouziCoursePreviewData.loadScheduleCatalog().then(function(rows){
         if(state!==target)return;
-        target.feePlans=rows;scheduleCatalogReady=true;
+        target.feePlans=rows;if(rows.subjects)target.subjects=rows.subjects;if(rows.teachers)target.teachers=rows.teachers;scheduleCatalogReady=true;
       }).catch(function(error){if(state===target)scheduleCatalogError=clean(error.message);throw error;}).finally(function(){if(scheduleCatalogState===target&&scheduleCatalogPromise===pending)scheduleCatalogPromise=null;});
       scheduleCatalogPromise=pending;
     }
@@ -1838,7 +1838,7 @@
   }
   async function ensureStudentDetails(ids){
     var target=state,cache=studentDetailCache(),api=window.YouziCoursePreviewData;
-    if(!cache.catalog)cache.catalog=api.loadScheduleCatalog().then(function(rows){target.feePlans=rows;}).catch(function(error){cache.catalog=null;throw error;});
+    if(!cache.catalog)cache.catalog=api.loadScheduleCatalog().then(function(rows){target.feePlans=rows;if(rows.subjects)target.subjects=rows.subjects;if(rows.teachers)target.teachers=rows.teachers;}).catch(function(error){cache.catalog=null;throw error;});
     var requests=ids.map(function(id){
       if(cache.ready.has(id))return Promise.resolve();
       if(!cache.pending.has(id))cache.pending.set(id,Promise.all([cache.catalog,api.refreshWorkspaceSlice({studentIds:[id]})]).then(function(results){

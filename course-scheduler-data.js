@@ -400,7 +400,7 @@
 
   async function payrollTransfer(data){await ensureTeacherPayrollManagerAuth();var result=await firebaseFunctions('asia-east1').httpsCallable('coursePayrollTransferTaiwan',{timeout:180000})(data);return result.data;}
 
-  async function loadScheduleCatalog(){await ensureTeacherPayrollManagerAuth();var payload=await call(AUTO_LOAD_FUNCTION_NAME,{scope:'schedule-catalog'});if(!payload||!payload.ok)throw new Error('收費方案讀取未完成');return buildState(payload,todayKey()).feePlans;}
+  async function loadScheduleCatalog(){await ensureTeacherPayrollManagerAuth();var payload=await call(AUTO_LOAD_FUNCTION_NAME,{scope:'schedule-catalog'});if(!payload||!payload.ok)throw new Error('收費方案讀取未完成');var catalog=buildState(payload,todayKey()),rows=catalog.feePlans;rows.subjects=catalog.subjects;rows.teachers=catalog.teachers;return rows;}
   async function loadStudentDirectory(query){await ensureTeacherPayrollManagerAuth();var payload=await call(AUTO_LOAD_FUNCTION_NAME,{scope:'student-directory',query:query||''});if(!payload||!payload.ok)throw new Error('學生查詢未完成');return payload;}
   async function loadRecentStudents(){await ensureTeacherPayrollManagerAuth();var payload=await call(AUTO_LOAD_FUNCTION_NAME,{scope:'students-recent'},{timeout:180000});if(!payload||!payload.ok)throw new Error('近期學生資料讀取未完成');var result=buildState(payload,todayKey());result.recentRange={start:payload.rangeStart,end:payload.rangeEnd};return result;}
 

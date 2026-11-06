@@ -13657,7 +13657,8 @@ async function managerTeacherPayrollCatalog() {
 }
 
 async function managerScheduleCatalog() {
-  return {ok:true,feePlans:await mirrorRows('feePlans')};
+  const [feePlans,subjects,teachers]=await Promise.all([mirrorRows('feePlans'),mirrorRows('subjects'),mirrorRows('teachers')]);
+  return {ok:true,feePlans,subjects,teachers};
 }
 
 // Lightweight directory: no tuition, attendance, payroll or schedule history.

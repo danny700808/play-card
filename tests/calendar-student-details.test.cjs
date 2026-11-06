@@ -5,7 +5,7 @@ function harness(){
   const reads=[],pending=[],nodes=new Map();let catalogReads=0;
   const ctx={Set,Map,WeakMap,Promise,clean:x=>String(x||''),state:{readOnly:true,dataMode:'migration',dataMeta:{partial:true},tuitionPeriods:[{id:'other',studentId:'other'}],feePlans:[]},
     isReadOnly:()=>ctx.state.readOnly,toast(){},$:id=>{if(!nodes.has(id)){const classes=new Set();nodes.set(id,{dataset:{},classList:{add:x=>classes.add(x),contains:x=>classes.has(x),remove:x=>classes.delete(x)}});}return nodes.get(id);},openModal:id=>ctx.$(id).classList.add('open'),
-    window:{YouziCoursePreviewData:{loadScheduleCatalog:async()=>{catalogReads++;return [{id:'plan'}];},refreshWorkspaceSlice:scope=>{reads.push(scope);return new Promise((resolve,reject)=>pending.push({resolve,reject}));},applyWorkspaceSlice:(state,payload)=>{assert.equal(state.feePlans[0].id,'plan');state.tuitionPeriods=state.tuitionPeriods.filter(p=>p.studentId!==payload.studentId).concat({id:'period-'+payload.studentId,studentId:payload.studentId});},loadPublished:()=>{throw Error('must not read all students');}}}};
+    window:{YouziCoursePreviewData:{loadScheduleCatalog:async()=>{catalogReads++;return Object.assign([{id:'plan'}],{subjects:[{id:'guitar',name:'木吉他'}],teachers:[{id:'teacher',name:'老師'}]});},refreshWorkspaceSlice:scope=>{reads.push(scope);return new Promise((resolve,reject)=>pending.push({resolve,reject}));},applyWorkspaceSlice:(state,payload)=>{assert.equal(state.feePlans[0].id,'plan');state.tuitionPeriods=state.tuitionPeriods.filter(p=>p.studentId!==payload.studentId).concat({id:'period-'+payload.studentId,studentId:payload.studentId});},loadPublished:()=>{throw Error('must not read all students');}}}};
   vm.createContext(ctx);vm.runInContext(source.slice(source.indexOf('  function calendarPartial(){'),source.indexOf('  async function ensureWorkspaceDetails(){')),ctx);
   return {ctx,reads,pending,nodes,catalogReads:()=>catalogReads};
 }
@@ -16,7 +16,7 @@ test('first click reads only the chosen student and retains other students and p
   assert.equal(h.ctx.$('eventModal').classList.contains('open'),true);
   assert.deepEqual(JSON.parse(JSON.stringify(h.reads)),[{studentIds:['a']}]);
   h.pending[0].resolve({studentId:'a'});await flush();assert.equal(opened,1);
-  assert.equal(h.ctx.state.readOnly,false);assert.equal(h.ctx.state.dataMode,'sandbox');assert.equal(h.ctx.state.dataMeta.partial,true);
+  assert.equal(h.ctx.state.subjects[0].name,'木吉他');assert.equal(h.ctx.state.teachers[0].name,'老師');assert.equal(h.ctx.state.readOnly,false);assert.equal(h.ctx.state.dataMode,'sandbox');assert.equal(h.ctx.state.dataMeta.partial,true);
   assert.deepEqual(h.ctx.state.tuitionPeriods.map(p=>p.studentId),['other','a']);
   assert.equal(h.ctx.afterStudentDetailsReady(['a'],()=>opened++,'eventModal','A'),false);assert.equal(h.reads.length,1);
   h.ctx.afterStudentDetailsReady(['b'],()=>opened++,'eventModal','B');assert.equal(h.reads.length,2);assert.deepEqual(Array.from(h.reads[1].studentIds),['b']);
