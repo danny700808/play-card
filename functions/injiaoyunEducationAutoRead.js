@@ -147,6 +147,11 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
         const { withPortalReads } = require('./portalReadContext');
         return await withPortalReads(managerScheduleCatalog)();
       }
+      if (clean(request && request.data && request.data.scope) === 'student-directory') {
+        const { managerStudentDirectory } = require('./coursePortal');
+        const { withPortalReads } = require('./portalReadContext');
+        return await withPortalReads(managerStudentDirectory)(request.data || {});
+      }
       if (clean(request && request.data && request.data.scope) === 'students-recent') {
         const { managerRecentStudents } = require('./coursePortal');
         const { withPortalReads } = require('./portalReadContext');

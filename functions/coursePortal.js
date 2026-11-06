@@ -13660,6 +13660,31 @@ async function managerScheduleCatalog() {
   return {ok:true,feePlans:await mirrorRows('feePlans')};
 }
 
+// Lightweight directory: no tuition, attendance, payroll or schedule history.
+async function managerStudentDirectory(data = {}) {
+  const day = currentTaipeiDay();
+  const [profiles, modesSnap, stopsSnap] = await Promise.all([
+    mirrorRows('students'),
+    db.collection('coursePortalIrregularCourses').where('enabled','==',true).get(),
+    db.collection('coursePortalStudentSuspensions').where('status','==','active').get()
+  ]);
+  const stops=stopsSnap.docs.map(doc=>doc.data()).filter(row=>!row.effectiveDate||row.effectiveDate<=day);
+  const irregular=new Set();
+  modesSnap.docs.forEach(doc=>{
+    const row=doc.data();
+    if(row.resumedFrom||row.effectiveDate&&row.effectiveDate>day)return;
+    (row.studentIds||[]).forEach(id=>{
+      if(!stops.some(stop=>stop.studentId===id&&stop.teacherId===row.teacherId&&(!stop.subjectId||stop.subjectId===row.subjectId)))irregular.add(id);
+    });
+  });
+  const students=Array.from(new Map(profiles.map(row=>[sourceId(row),row])).values());
+  const active=students.filter(row=>row.active!==false);
+  const query=clean(data.query).toLocaleLowerCase().slice(0,80);
+  const matches=query?students.filter(row=>clean(row.name).toLocaleLowerCase().includes(query)).sort((a,b)=>clean(a.name).localeCompare(clean(b.name),'zh-Hant')):[];
+  return {ok:true,activeCount:active.length,irregularCount:active.filter(row=>irregular.has(sourceId(row))).length,total:matches.length,
+    students:matches.slice(0,200).map(row=>({id:sourceId(row),name:clean(row.name),phone:clean(row.phone),active:row.active!==false,irregular:row.active!==false&&irregular.has(sourceId(row))}))};
+}
+
 async function managerRecentStudents() {
   const endDate = currentTaipeiDay();
   const start = new Date(endDate + 'T12:00:00Z');
@@ -13981,6 +14006,7 @@ module.exports = {
   managerTeacherPayrollCatalog,
   managerCalendarBootstrap,
   managerRecentStudents,
+  managerStudentDirectory,
   managerScheduleCatalog,
   managerCalendarFollowup
 };

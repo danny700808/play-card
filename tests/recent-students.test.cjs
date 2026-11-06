@@ -20,3 +20,13 @@ test('combined followup reads only stopped students ledgers and uses current pay
  assert.equal(result.followupStops.find(r=>r.studentId==='owing').currentUnpaidAmount,1800);assert.equal(result.followupStops.find(r=>r.studentId==='paid').currentUnpaidAmount,0);assert.equal(result.followupStops.length,2);
  for(const q of data.queries.filter(q=>/Tuition/.test(q.name)))assert.ok(q.filters.length>0,'must not scan all '+q.name);
 });
+
+ test('directory returns current counts and one-character matches without loading ledgers',async()=>{
+ const data={collections:{opsEducationMirrorStudents:[mirror('a',{id:'a',name:'王甲',active:true}),mirror('b',{id:'b',name:'王乙',active:false}),mirror('c',{id:'c',name:'李丙',active:true})],coursePortalIrregularCourses:[doc('i',{enabled:true,studentIds:['a','b'],teacherId:'t',subjectId:'s'}),doc('duplicate',{enabled:true,studentIds:['a'],teacherId:'t',subjectId:'s'}),doc('future',{enabled:true,studentIds:['c'],effectiveDate:'2999-01-01'})]}};
+ const api=context.loadBackendForScheduleTests(data);
+ const summary=await api.managerStudentDirectory();
+ assert.equal(summary.activeCount,2);assert.equal(summary.irregularCount,1);assert.equal(summary.students.length,0);
+ const result=await api.managerStudentDirectory({query:'王'});
+ assert.deepEqual(result.students.map(row=>row.id).sort(),['a','b']);assert.equal(result.students.find(row=>row.id==='b').irregular,false);
+ assert.ok(!data.queries.some(q=>/Tuition|Attendance|Payroll|Rental|Schedule/.test(q.name)));
+ });

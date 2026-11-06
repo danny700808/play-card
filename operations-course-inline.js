@@ -5,7 +5,7 @@
 
   var VERSION = '20260917-room-subject-v1';
   var TEMPLATE_URL = 'operations-course-inline-template.html?v=20261031-student-phone-v2';
-  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20261106-attendance-first-v1';
+  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20261106-student-search-v2';
   var STYLE_URL = 'course-scheduler.css?v=20261031-student-phone-v2';
   var DB_NAME = 'youzi-course-scheduler';
   var STORE_NAME = 'formalSnapshots';
@@ -214,7 +214,7 @@
     loadingPromise = (async function () {
       showLoading('正在開啟完整課務功能…');
       var template = await loadTemplate();
-      var workspace = (desiredView==='teachers'||global.matchMedia('(max-width:780px)').matches && desiredView==='calendar') ? null : await resolveWorkspace();
+      var workspace = (['teachers','students'].indexOf(desiredView)>=0||global.matchMedia('(max-width:780px)').matches && desiredView==='calendar') ? null : await resolveWorkspace();
       shadow.innerHTML = '<link rel="stylesheet" href="' + STYLE_URL + '"><style>' + inlineOverrides() + '</style><link rel="stylesheet" href="operations-mobile-admin.css?v=20260922-date-nav-v1"><div class="course-inline-body">' + template + '</div>';
       inlineBody = shadow.querySelector('.course-inline-body');
       function fitDesktopCalendar(){
