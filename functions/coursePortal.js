@@ -13661,29 +13661,36 @@ async function managerScheduleCatalog() {
   return {ok:true,feePlans,subjects,teachers};
 }
 
-// Lightweight directory: no tuition, attendance, payroll or schedule history.
-async function managerStudentDirectory(data = {}) {
-  const day = currentTaipeiDay();
-  const [profiles, modesSnap, stopsSnap] = await Promise.all([
-    mirrorRows('students'),
-    db.collection('coursePortalIrregularCourses').where('enabled','==',true).get(),
-    db.collection('coursePortalStudentSuspensions').where('status','==','active').get()
-  ]);
-  const stops=stopsSnap.docs.map(doc=>doc.data()).filter(row=>!row.effectiveDate||row.effectiveDate<=day);
-  const irregular=new Set();
-  modesSnap.docs.forEach(doc=>{
-    const row=doc.data();
-    if(row.resumedFrom||row.effectiveDate&&row.effectiveDate>day)return;
-    (row.studentIds||[]).forEach(id=>{
-      if(!stops.some(stop=>stop.studentId===id&&stop.teacherId===row.teacherId&&(!stop.subjectId||stop.subjectId===row.subjectId)))irregular.add(id);
-    });
+// Counts use the same resolved calendar as the timetable; search never loads it.
+function studentEnrollmentCounts(bundle, day, groups = []) {
+  const regular=new Set(),irregular=new Set();
+  const expand=id=>{const group=groups.find(row=>row.active!==false&&row.id===id);return group&&(group.memberIds||[]).length?group.memberIds:[id];};
+  const add=(set,ids)=>ids.filter(Boolean).forEach(id=>expand(id).filter(Boolean).forEach(member=>set.add(member)));
+  const rooms=new Map((bundle.rooms||[]).map(row=>[sourceId(row),row]));
+  (bundle.resourceEvents||[]).forEach(row=>{
+    if(isRoomRentalEvent(row)||!eventTeacherId(row)||['cancelled','pending_conflict'].includes(normalizeScheduleStatus(row.status)))return;
+    add(roomKind(rooms.get(eventRoomId(row))||{})==='holding'?irregular:regular,eventStudentIds(row));
   });
-  const students=Array.from(new Map(profiles.map(row=>[sourceId(row),row])).values());
-  const active=students.filter(row=>row.active!==false);
+  (bundle.irregularModes||[]).forEach(row=>{
+    if(row.enabled===false||(row.effectiveDate&&row.effectiveDate>day)||(row.resumedFrom&&row.resumedFrom<=day))return;
+    const ids=eventStudentIds(row).filter(id=>!(bundle.suspensions||[]).some(stop=>stop.studentId===id&&stop.teacherId===row.teacherId&&(!stop.subjectId||stop.subjectId===row.subjectId)&&(!stop.effectiveDate||stop.effectiveDate<=day)));
+    add(irregular,ids);
+  });
+  regular.forEach(id=>irregular.delete(id));
+  return {activeCount:regular.size,irregularCount:irregular.size,totalCount:regular.size+irregular.size};
+}
+async function managerStudentDirectory(data = {}) {
   const query=clean(data.query).toLocaleLowerCase().slice(0,80);
-  const matches=query?students.filter(row=>clean(row.name).toLocaleLowerCase().includes(query)).sort((a,b)=>clean(a.name).localeCompare(clean(b.name),'zh-Hant')):[];
-  return {ok:true,activeCount:active.length,irregularCount:active.filter(row=>irregular.has(sourceId(row))).length,total:matches.length,
-    students:matches.slice(0,200).map(row=>({id:sourceId(row),name:clean(row.name),phone:clean(row.phone),active:row.active!==false,irregular:row.active!==false&&irregular.has(sourceId(row))}))};
+  if(!query){
+    const rangeStart=currentTaipeiDay(),rangeEnd=addDays(rangeStart,27);
+    const [bundle,groups]=await Promise.all([scheduleBundle(rangeStart,rangeEnd,'',{occupancyOnly:true}),readCourseGroups()]);
+    return {ok:true,...studentEnrollmentCounts(bundle,rangeStart,groups),rangeStart,rangeEnd,total:0,students:[]};
+  }
+  const profiles=await mirrorRows('students');
+  const students=Array.from(new Map(profiles.map(row=>[sourceId(row),row])).values());
+  const matches=students.filter(row=>clean(row.name).toLocaleLowerCase().includes(query)).sort((a,b)=>clean(a.name).localeCompare(clean(b.name),'zh-Hant'));
+  const summary=data.searchOnly===true?{}:await managerStudentDirectory({});
+  return {...summary,ok:true,total:matches.length,students:matches.slice(0,200).map(row=>({id:sourceId(row),name:clean(row.name),phone:clean(row.phone),active:row.active!==false}))};
 }
 
 async function managerRecentStudents() {
@@ -14008,6 +14015,7 @@ module.exports = {
   managerCalendarBootstrap,
   managerRecentStudents,
   managerStudentDirectory,
+  studentEnrollmentCounts,
   managerScheduleCatalog,
   managerCalendarFollowup
 };

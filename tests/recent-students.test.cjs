@@ -24,9 +24,22 @@ test('combined followup reads only stopped students ledgers and uses current pay
  test('directory returns current counts and one-character matches without loading ledgers',async()=>{
  const data={collections:{opsEducationMirrorStudents:[mirror('a',{id:'a',name:'王甲',active:true}),mirror('b',{id:'b',name:'王乙',active:false}),mirror('c',{id:'c',name:'李丙',active:true})],coursePortalIrregularCourses:[doc('i',{enabled:true,studentIds:['a','b'],teacherId:'t',subjectId:'s'}),doc('duplicate',{enabled:true,studentIds:['a'],teacherId:'t',subjectId:'s'}),doc('future',{enabled:true,studentIds:['c'],effectiveDate:'2999-01-01'})]}};
  const api=context.loadBackendForScheduleTests(data);
- const summary=await api.managerStudentDirectory();
- assert.equal(summary.activeCount,2);assert.equal(summary.irregularCount,1);assert.equal(summary.students.length,0);
- const result=await api.managerStudentDirectory({query:'王'});
- assert.deepEqual(result.students.map(row=>row.id).sort(),['a','b']);assert.equal(result.students.find(row=>row.id==='b').irregular,false);
+
+ const result=await api.managerStudentDirectory({query:'王',searchOnly:true});
+ assert.deepEqual(result.students.map(row=>row.id).sort(),['a','b']);assert.equal(result.activeCount,undefined);
  assert.ok(!data.queries.some(q=>/Tuition|Attendance|Payroll|Rental|Schedule/.test(q.name)));
  });
+
+test('enrollment splits resolved timetable and irregular students into disjoint person sets',()=>{
+ const api=context.loadBackendForScheduleTests({collections:{}});
+ const event=(id,ids,extra={})=>({id,teacherId:'teacher',studentIds:ids,roomId:'normal',status:'scheduled',...extra});
+ const bundle={rooms:[{id:'normal',name:'鋼琴教室'},{id:'holding',name:'不定時'}],resourceEvents:[event('a',['a']),event('repeat',['a'],{teacherId:'another',subjectId:'other'}),event('group',['group']),event('cancel',['cancel'],{status:'cancelled'}),event('rental',['rental'],{type:'rental'}),event('holding',['hold','a'],{roomId:'holding'}),event('leave',['leave'],{status:'leave'})],irregularModes:[{studentIds:['a','i','i'],teacherId:'teacher',enabled:true},{studentIds:['i'],teacherId:'other',enabled:true},{studentIds:['stopped'],teacherId:'teacher',enabled:true},{studentIds:['future'],enabled:true,effectiveDate:'2999-01-01'},{studentIds:['resumed'],enabled:true,resumedFrom:'2000-01-01'}],suspensions:[{studentId:'stopped',teacherId:'teacher',effectiveDate:'2000-01-01'}]};
+ const result=api.studentEnrollmentCounts(bundle,today,[{id:'group',memberIds:['m1','m2'],active:true}]);
+ assert.deepEqual(result,{activeCount:4,irregularCount:2,totalCount:6});
+});
+test('empty calendar does not count profiles marked active; summary returns no student list',async()=>{
+ const data={collections:{opsEducationMirrorStudents:[mirror('old',{id:'old',name:'只有舊標記',active:true})]}};
+ const result=await context.loadBackendForScheduleTests(data).managerStudentDirectory();
+ assert.equal(result.activeCount,0);assert.equal(result.irregularCount,0);assert.equal(result.students.length,0);
+ assert.ok(!data.queries.some(q=>/Tuition|Attendance|Payroll/.test(q.name)));
+});

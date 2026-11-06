@@ -1174,7 +1174,7 @@
   var studentDirectorySummary=null,studentDirectorySummaryAt=0,studentDirectorySummaryPending=null,studentSearchRequest=0;
   function renderStudentDirectoryMetrics(){
     var summary=studentDirectorySummary;
-    $('studentMetrics').innerHTML=metric('目前在學人數',summary?summary.activeCount:'…','依學生目前上課中狀態統計')+metric('其中不定時上課人數',summary?summary.irregularCount:'…','已包含在目前在學人數內')+'<button type="button" class="btn outline" id="showUnpaidStudents">尚有未繳・點選查詢</button>';
+    $('studentMetrics').innerHTML=metric('目前在學人數（課表內）',summary?summary.activeCount:'…',summary?summary.rangeStart+'～'+summary.rangeEnd+'・所有老師去重':'今天起 4 週・所有老師去重')+metric('不定時上課人數',summary?summary.irregularCount:'…',summary?'與課表內不重複；兩類合計 '+summary.totalCount+' 人':'未列入左側課表人數')+'<button type="button" class="btn outline" id="showUnpaidStudents">尚有未繳・點選查詢</button>';
     $('showUnpaidStudents').onclick=function(){$('studentSearch').value='';$('studentPaymentFilter').value='due';recentStudentsData=null;renderStudents();};
   }
   function renderStudents(){
@@ -1193,7 +1193,7 @@
     $('studentRows').innerHTML='<tr><td colspan="7">搜尋學生中…</td></tr>';
     api.loadStudentDirectory(query).then(function(result){
       if(request!==studentSearchRequest||currentView!=='students')return;
-      studentDirectorySummary=result;studentDirectorySummaryAt=Date.now();renderStudentDirectoryMetrics();
+      renderStudentDirectoryMetrics();
       var rows=result.students.filter(function(row){return filter!=='active'||row.active;});
       // Merge identity only. A chosen student's ledger is fetched by openStudent.
       result.students.forEach(function(row){if(!state.students.some(function(existing){return existing.id===row.id;}))state.students.push(row);});
