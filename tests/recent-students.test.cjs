@@ -30,12 +30,12 @@ test('combined followup reads only stopped students ledgers and uses current pay
  assert.ok(!data.queries.some(q=>/Tuition|Attendance|Payroll|Rental|Schedule/.test(q.name)));
  });
 
-test('enrollment splits resolved timetable and irregular students into disjoint person sets',()=>{
+test('enrollment splits resolved timetable and irregular students into disjoint student-subject sets',()=>{
  const api=context.loadBackendForScheduleTests({collections:{}});
  const event=(id,ids,extra={})=>({id,teacherId:'teacher',studentIds:ids,roomId:'normal',status:'scheduled',...extra});
  const bundle={rooms:[{id:'normal',name:'鋼琴教室'},{id:'holding',name:'不定時'}],resourceEvents:[event('a',['a']),event('repeat',['a'],{teacherId:'another',subjectId:'other'}),event('group',['group']),event('cancel',['cancel'],{status:'cancelled'}),event('rental',['rental'],{type:'rental'}),event('holding',['hold','a'],{roomId:'holding'}),event('leave',['leave'],{status:'leave'})],irregularModes:[{studentIds:['a','i','i'],teacherId:'teacher',enabled:true},{studentIds:['i'],teacherId:'other',enabled:true},{studentIds:['stopped'],teacherId:'teacher',enabled:true},{studentIds:['future'],enabled:true,effectiveDate:'2999-01-01'},{studentIds:['resumed'],enabled:true,resumedFrom:'2000-01-01'}],suspensions:[{studentId:'stopped',teacherId:'teacher',effectiveDate:'2000-01-01'}]};
  const result=api.studentEnrollmentCounts(bundle,today,[{id:'group',memberIds:['m1','m2'],active:true}]);
- assert.deepEqual(result,{activeCount:4,irregularCount:3,totalCount:7});
+ assert.deepEqual(result,{activeCount:5,irregularCount:3,totalCount:8});
 });
 test('empty calendar does not count profiles marked active; summary returns no student list',async()=>{
  const data={collections:{opsEducationMirrorStudents:[mirror('old',{id:'old',name:'只有舊標記',active:true})]}};
@@ -44,7 +44,7 @@ test('empty calendar does not count profiles marked active; summary returns no s
  assert.ok(!data.queries.some(q=>/Tuition|Attendance|Payroll/.test(q.name)));
 });
 
-test('same names, multiple subjects and extra lessons count once; stopped profiles never count',()=>{
+test('same names and extra lessons within one subject count once; stopped profiles never count',()=>{
  const api=context.loadBackendForScheduleTests({collections:{}});
  const events=[{studentIds:['a'],teacherId:'t'},{studentIds:['alias'],teacherId:'other',portalAction:'extra_lesson'},{studentIds:['a'],teacherId:'t'},{studentIds:['stopped'],teacherId:'t'}];
  const result=api.studentEnrollmentCounts({resourceEvents:events,irregularModes:[{enabled:true,studentIds:['third'],teacherId:'t'},{enabled:true,studentIds:['i'],teacherId:'t'}]},today,[],[{id:'a',name:'王小明'},{id:'alias',name:' 王 小明 '},{id:'third',name:'王小明'},{id:'i',name:'李小華'},{id:'stopped',name:'已停課',active:false}]);
@@ -54,4 +54,12 @@ test('future enrollment has no 4-week or 3-month cutoff and covers resumed cours
  const api=context.loadBackendForScheduleTests({collections:{}});
  const snapshot={events:[{date:'2030-01-01'}],temporary:[],fixed:[{date:'2026-01-01',frequencyWeeks:2}],changes:[],modes:{docs:[{data:()=>({resumedFrom:'2031-01-01'})}]},settings:{docs:[]}};
  assert.equal(api.enrollmentProofEnd('2026-11-06',snapshot),'2031-01-15');
+});
+
+test('group members and aliases deduplicate per subject, including irregular courses',()=>{
+ const api=context.loadBackendForScheduleTests({collections:{}});
+ const lesson=(studentId,subjectId)=>({studentIds:[studentId],subjectId,teacherId:'t'});
+ const profiles=[{id:'pair',name:'王小明 李小華'},{id:'alias',name:'王小明'},{id:'joined',name:'陳甲林乙',memberNames:['陳甲','林乙']},{id:'ordinary',name:'歐陽小明'},{id:'foreign',name:'巴西-台灣'}];
+ const result=api.studentEnrollmentCounts({resourceEvents:[lesson('pair','piano'),lesson('pair','piano'),lesson('alias','piano'),lesson('alias','guitar'),lesson('joined','drums'),lesson('ordinary','piano'),lesson('foreign','piano')],irregularModes:[{...lesson('alias','piano'),enabled:true},{...lesson('alias','drums'),enabled:true}]},today,[],profiles);
+ assert.deepEqual(result,{activeCount:7,irregularCount:1,totalCount:8});
 });

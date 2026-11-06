@@ -611,6 +611,7 @@ async function mergeStudentProfileOverrides(rows, selectedIds, existingSnapshot)
     if (phone || override.managerCreated === true) next.phone = phone;
     if (typeof override.studentActive === 'boolean') next.active = override.studentActive;
     if (typeof override.managerNote === 'string') next.note = override.managerNote;
+    if (Array.isArray(override.memberNames)) next.memberNames = override.memberNames.map(clean).filter(Boolean);
     return next;
   });
 }
@@ -13675,20 +13676,29 @@ async function managerScheduleCatalog() {
 // Counts use the same resolved calendar as the timetable; search never loads it.
 function studentEnrollmentCounts(bundle, day, groups = [], profiles = []) {
   const regular=new Set(),irregular=new Set();
-  const names=new Map(profiles.map(row=>[sourceId(row),clean(row.name).normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase()]));
+  const normalize=name=>clean(name).normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase();
+  const names=new Map(profiles.map(row=>[sourceId(row),normalize(row.name)]));
+  const membersById=new Map(profiles.filter(row=>(row.memberNames||[]).length>1).map(row=>[sourceId(row),row.memberNames.map(normalize)]));
+  // Older two-person classes used a separator inside a single display name.
+  // Only split explicit Chinese-name tokens; never guess from name length.
+  profiles.forEach(row=>{const parts=clean(row.name).split(/[\s、，,－＆&]+/).filter(Boolean);if(!membersById.has(sourceId(row))&&parts.length>1&&parts.every(name=>/^[\u3400-\u9fff]{2,4}$/.test(name)))membersById.set(sourceId(row),parts.map(normalize));});
   groups.forEach(group=>(group.memberIds||[]).forEach((id,index)=>{const name=(group.memberNames||[])[index];if(name)names.set(id,clean(name).normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase());}));
   const stoppedIds=new Set(profiles.filter(row=>row.active===false).map(sourceId));
   const expand=id=>{const group=groups.find(row=>row.active!==false&&row.id===id);return group&&(group.memberIds||[]).length?group.memberIds:[id];};
-  const add=(set,ids)=>ids.filter(Boolean).forEach(id=>expand(id).filter(member=>member&&!stoppedIds.has(member)).forEach(member=>set.add(names.get(member)||member)));
+  const add=(set,ids,subject)=>ids.filter(id=>id&&!stoppedIds.has(id)).forEach(id=>{
+    const group=groups.find(row=>row.active!==false&&row.id===id);
+    const people=group?expand(id).filter(member=>member&&!stoppedIds.has(member)).map(member=>names.get(member)||member):(membersById.get(id)||[names.get(id)||id]);
+    people.forEach(name=>set.add(JSON.stringify([name,subject])));
+  });
   const rooms=new Map((bundle.rooms||[]).map(row=>[sourceId(row),row]));
   (bundle.resourceEvents||[]).forEach(row=>{
     if(isRoomRentalEvent(row)||!eventTeacherId(row)||['cancelled','pending_conflict'].includes(normalizeScheduleStatus(row.status)))return;
-    add(roomKind(rooms.get(eventRoomId(row))||{})==='holding'?irregular:regular,eventStudentIds(row));
+    add(roomKind(rooms.get(eventRoomId(row))||{})==='holding'?irregular:regular,eventStudentIds(row),eventSubjectId(row));
   });
   (bundle.irregularModes||[]).forEach(row=>{
     if(row.enabled===false||(row.resumedFrom&&row.resumedFrom<=day))return;
     const ids=eventStudentIds(row).filter(id=>!(bundle.suspensions||[]).some(stop=>stop.studentId===id&&stop.teacherId===row.teacherId&&(!stop.subjectId||stop.subjectId===row.subjectId)&&(!stop.effectiveDate||stop.effectiveDate<=(row.effectiveDate&&row.effectiveDate>day?row.effectiveDate:day))));
-    add(irregular,ids);
+    add(irregular,ids,eventSubjectId(row));
   });
   regular.forEach(id=>irregular.delete(id));
   return {activeCount:regular.size,irregularCount:irregular.size,totalCount:regular.size+irregular.size};

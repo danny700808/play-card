@@ -1175,7 +1175,7 @@
   var studentDirectorySummary=null,studentDirectorySummaryAt=0,studentDirectorySummaryPending=null,studentSearchRequest=0;
   function renderStudentDirectoryMetrics(){
     var summary=studentDirectorySummary;
-    $('studentMetrics').innerHTML=metric('目前在學人數（課表內）',summary?summary.activeCount:'…',summary?summary.rangeStart+' 起・今天及未來課表・同名只計一次':'今天及未來課表・同名只計一次')+metric('不定時上課人數',summary?summary.irregularCount:'…',summary?'與課表內不重複；兩類合計 '+summary.totalCount+' 人':'未列入左側課表人數')+'<button type="button" class="btn outline" id="showUnpaidStudents">尚有未繳・點選查詢</button>';
+    $('studentMetrics').innerHTML=metric('目前在學人數（課表內）',summary?summary.activeCount:'…',summary?summary.rangeStart+' 起・今天及未來課表・同名同科目只計一次；不同科目分開計':'今天及未來課表・同名同科目只計一次；不同科目分開計')+metric('不定時上課人數',summary?summary.irregularCount:'…',summary?'同名同科目與課表內不重複；合計 '+summary.totalCount+' 人次':'未列入左側課表人數')+'<button type="button" class="btn outline" id="showUnpaidStudents">尚有未繳・點選查詢</button>';
     $('showUnpaidStudents').onclick=function(){$('studentSearch').value='';$('studentPaymentFilter').value='due';recentStudentsData=null;renderStudents();};
   }
   function renderStudents(){
