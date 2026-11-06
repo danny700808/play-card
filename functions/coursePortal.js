@@ -4893,6 +4893,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
   });
 }
 async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options = {}) {
+  const enrollment=options.enrollmentSnapshot;
   const teacherHome = options.teacherHome === true && Boolean(ownTeacherId);
   const occupancyOnly = options.occupancyOnly === true;
   const adminWrite = options.adminWrite === true;
@@ -4904,15 +4905,15 @@ async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options 
     mirrorRows('subjects'),
     teacherHome || occupancyOnly ? Promise.resolve([]) : adminWrite ? mirrorProfilesByIds('students', options.studentIds || []) : mirrorRows('students'),
     occupancyOnly ? Promise.resolve([]) : teacherHome || adminWrite ? mirrorProfilesByIds('teachers', [ownTeacherId]) : mirrorRows('teachers'),
-    historyStudentId ? historyStudentEvents(historyStudentId, startDate, endDate) : mirrorRowsByDateRange('events', startDate, endDate, { includeInactive: true }),
-    mirrorRows('fixedCourses').then(historyCourses),
-    mirrorRowsByDateRange('temporaryCourses', startDate, endDate).then(historyCourses),
-    historyStudentId ? Promise.resolve([]) : mirrorRowsByDateRange('roomRentals', startDate, endDate),
-    scheduleChangeDocsByDateRange(startDate, endDate),
+    enrollment ? enrollment.events : historyStudentId ? historyStudentEvents(historyStudentId, startDate, endDate) : mirrorRowsByDateRange('events', startDate, endDate, { includeInactive: true }),
+    enrollment ? enrollment.fixed : mirrorRows('fixedCourses').then(historyCourses),
+    enrollment ? enrollment.temporary : mirrorRowsByDateRange('temporaryCourses', startDate, endDate).then(historyCourses),
+    enrollment || historyStudentId ? Promise.resolve([]) : mirrorRowsByDateRange('roomRentals', startDate, endDate),
+    enrollment ? enrollment.changes : scheduleChangeDocsByDateRange(startDate, endDate),
     activeStudentSuspensions(),
     db.collection('opsSettings').doc('injiaoyunEducationMirror').get(),
-    db.collection('coursePortalIrregularCourses').where('enabled','==',true).get(),
-    ((options.adminDelta === true || teacherHome || occupancyOnly || adminWrite) ? settingsCollection.where('date','>=',startDate).where('date','<=',endDate) : settingsCollection).get()
+    enrollment ? enrollment.modes : db.collection('coursePortalIrregularCourses').where('enabled','==',true).get(),
+    enrollment ? enrollment.settings : ((options.adminDelta === true || teacherHome || occupancyOnly || adminWrite) ? settingsCollection.where('date','>=',startDate).where('date','<=',endDate) : settingsCollection).get()
   ]);
   const irregularModes = irregularSnapshot.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
   const maps = {
@@ -13662,29 +13663,57 @@ async function managerScheduleCatalog() {
 }
 
 // Counts use the same resolved calendar as the timetable; search never loads it.
-function studentEnrollmentCounts(bundle, day, groups = []) {
+function studentEnrollmentCounts(bundle, day, groups = [], profiles = []) {
   const regular=new Set(),irregular=new Set();
+  const names=new Map(profiles.map(row=>[sourceId(row),clean(row.name).normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase()]));
+  groups.forEach(group=>(group.memberIds||[]).forEach((id,index)=>{const name=(group.memberNames||[])[index];if(name)names.set(id,clean(name).normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase());}));
+  const stoppedIds=new Set(profiles.filter(row=>row.active===false).map(sourceId));
   const expand=id=>{const group=groups.find(row=>row.active!==false&&row.id===id);return group&&(group.memberIds||[]).length?group.memberIds:[id];};
-  const add=(set,ids)=>ids.filter(Boolean).forEach(id=>expand(id).filter(Boolean).forEach(member=>set.add(member)));
+  const add=(set,ids)=>ids.filter(Boolean).forEach(id=>expand(id).filter(member=>member&&!stoppedIds.has(member)).forEach(member=>set.add(names.get(member)||member)));
   const rooms=new Map((bundle.rooms||[]).map(row=>[sourceId(row),row]));
   (bundle.resourceEvents||[]).forEach(row=>{
     if(isRoomRentalEvent(row)||!eventTeacherId(row)||['cancelled','pending_conflict'].includes(normalizeScheduleStatus(row.status)))return;
     add(roomKind(rooms.get(eventRoomId(row))||{})==='holding'?irregular:regular,eventStudentIds(row));
   });
   (bundle.irregularModes||[]).forEach(row=>{
-    if(row.enabled===false||(row.effectiveDate&&row.effectiveDate>day)||(row.resumedFrom&&row.resumedFrom<=day))return;
-    const ids=eventStudentIds(row).filter(id=>!(bundle.suspensions||[]).some(stop=>stop.studentId===id&&stop.teacherId===row.teacherId&&(!stop.subjectId||stop.subjectId===row.subjectId)&&(!stop.effectiveDate||stop.effectiveDate<=day)));
+    if(row.enabled===false||(row.resumedFrom&&row.resumedFrom<=day))return;
+    const ids=eventStudentIds(row).filter(id=>!(bundle.suspensions||[]).some(stop=>stop.studentId===id&&stop.teacherId===row.teacherId&&(!stop.subjectId||stop.subjectId===row.subjectId)&&(!stop.effectiveDate||stop.effectiveDate<=(row.effectiveDate&&row.effectiveDate>day?row.effectiveDate:day))));
     add(irregular,ids);
   });
   regular.forEach(id=>irregular.delete(id));
   return {activeCount:regular.size,irregularCount:irregular.size,totalCount:regular.size+irregular.size};
 }
+// Determine a finite proof horizon from every future dated occurrence/change and
+// recurring start. One longest recurrence cycle after the last boundary proves
+// membership of continuing rules without imposing a 4-week/3-month cutoff.
+function enrollmentProofEnd(day,snapshot){
+  const changes=snapshot.changes.map(doc=>doc.data());
+  const modes=snapshot.modes.docs.map(doc=>doc.data());
+  const rows=[...snapshot.events,...snapshot.temporary,...snapshot.fixed,...changes,...changes.map(row=>row.event||{}),...modes,...modes.flatMap(row=>row.intervals||[]),...snapshot.settings.docs.map(doc=>doc.data())];
+  let last=day,cycle=7;
+  for(const row of rows){
+    for(const key of ['date','startDate','sourceDate','effectiveDate','cutoverDate','anchorDate','resumedFrom']){const value=dateKey(row[key]);if(value&&value>last)last=value;}
+    for(const value of Object.keys(row.statusByDate||row.exceptions||{})){if(dateKey(value)&&value>last)last=value;}
+    cycle=Math.max(cycle,safeFrequencyWeeks(row.frequencyWeeks||row.intervalWeeks)*7);
+  }
+  return addDays(last,cycle);
+}
+async function futureEnrollmentSnapshot(day){
+  const future=async(type)=>{
+    const snapshot=await db.collection(MIRROR[type]).where('source.date','>=',day).get();
+    const rows=snapshot.docs.map(doc=>({...jsonValue(doc.data().source),__id:doc.id,__mirrorActive:doc.data().sourceActive!==false,__mirrorUpdatedAt:asMillis(doc.data().sourceUpdatedAt||doc.data().updatedAt)}));
+    return projectCourseGroups(type,rows,await readCourseGroups());
+  };
+  const [events,temporary,fixed,changes,modes,settings]=await Promise.all([future('events'),future('temporaryCourses'),mirrorRows('fixedCourses'),scheduleChangeDocsByDateRange(day,'9999-12-31'),db.collection('coursePortalIrregularCourses').where('enabled','==',true).get(),db.collection('coursePortalLessonSettings').where('date','>=',day).get()]);
+  return {events,temporary:temporary.filter(row=>row.__mirrorActive!==false),fixed,changes,modes,settings};
+}
 async function managerStudentDirectory(data = {}) {
   const query=clean(data.query).toLocaleLowerCase().slice(0,80);
   if(!query){
-    const rangeStart=currentTaipeiDay(),rangeEnd=addDays(rangeStart,27);
-    const [bundle,groups]=await Promise.all([scheduleBundle(rangeStart,rangeEnd,'',{occupancyOnly:true}),readCourseGroups()]);
-    return {ok:true,...studentEnrollmentCounts(bundle,rangeStart,groups),rangeStart,rangeEnd,total:0,students:[]};
+    const rangeStart=currentTaipeiDay(),snapshot=await futureEnrollmentSnapshot(rangeStart),rangeEnd=enrollmentProofEnd(rangeStart,snapshot);
+    const [bundle,groups,profileSnapshot]=await Promise.all([scheduleBundleUncached(rangeStart,rangeEnd,'',{occupancyOnly:true,enrollmentSnapshot:snapshot}),readCourseGroups(),db.collection(MIRROR.students).where('sourceActive','==',true).get()]);
+    const profiles=await mergeStudentProfileOverrides(profileSnapshot.docs.map(doc=>({__id:doc.id,...jsonValue(doc.data().source)})));
+    return {ok:true,...studentEnrollmentCounts(bundle,rangeStart,groups,profiles),rangeStart,rangeEnd,total:0,students:[]};
   }
   const profiles=await mirrorRows('students');
   const students=Array.from(new Map(profiles.map(row=>[sourceId(row),row])).values());
@@ -14016,6 +14045,7 @@ module.exports = {
   managerRecentStudents,
   managerStudentDirectory,
   studentEnrollmentCounts,
+  enrollmentProofEnd,
   managerScheduleCatalog,
   managerCalendarFollowup
 };
