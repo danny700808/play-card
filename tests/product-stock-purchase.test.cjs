@@ -15,13 +15,14 @@ function fixture(options={}){
   const db={collection:collection=>({doc(id){const ref={id:id||'id'+(++seq)};ref.path=collection+'/'+ref.id;ref.get=async()=>{if(options.readFailure)throw Error('read failed');return snapshot(ref);};return ref;}}),async runTransaction(fn){
     if(options.concurrent)rows.set('products/p1',{...raw,currentStock:raw.currentStock+1});
     if(options.concurrentMetadata)rows.set('products/p1',{...raw,updatedAt:new Date('2026-10-28T01:00:00Z')});
+    if(options.serverChanges)rows.set('products/p1',{...rows.get('products/p1'),...options.serverChanges});
     let pending=[];const tx={get:async ref=>snapshot(ref),set:(ref,data,opts)=>pending.push({ref,data,merge:opts?.merge}),update:(ref,data)=>pending.push({ref,data,merge:true})};
     if(options.retry){await fn(tx);pending=[];}
     await fn(tx);if(options.failCommit)throw Error('commit failed');
     for(const op of pending)rows.set(op.ref.path,{...(op.merge?rows.get(op.ref.path):{}),...op.data});commits++;
   }};state.db=db;
   const context={state,Date,Number,Map,Set,Array,Math,Error,console,FormData:class{constructor(form){this.form=form;}get(key){return this.form.fields[key]?.value??'';}},COLLECTIONS:{products:'products',purchases:'purchases',inventory:'inventory',platformInventoryQueue:'queue',platformSyncRequests:'priceQueue'},VERSION:'test',global:{YouziInventoryAverageCost:model,confirm:()=>true},clean,normalizeCode:clean,numberOrNull:num,firstValue:(obj,keys)=>{for(const key of keys)if(obj[key]!=null&&obj[key]!=='')return obj[key];return null;},firstNumber:(obj,keys)=>({value:Number(obj[keys.find(k=>obj[k]!=null)]||0)}),uid:prefix=>prefix+'-'+(++seq),userLabel:()=> 'tester',serverTimestamp:()=>new Date('2026-10-28T05:00:00Z'),dateFrom:x=>x?new Date(x):null,formatNumber:String,money:x=>'NT$ '+Number(x).toLocaleString('en-US'),query:(selector,form)=>selector==='[type="submit"]'?submit:form.fields[selector.match(/name="([^"]+)"/)[1]],queryAll:()=>[],catalogById:id=>{const p=state.internalProducts.find(p=>p.docId===id);return p?{...p,internal:p}:null;},normalizeInternal:(raw,id)=>({...raw,docId:id}),mergeCatalog(){},replaceLiveSearchHtml(){},productSearchResultsHtml:()=>'',writeAudit:async()=>{},toast(){},clearProductEditorState(){},loadProductsOnly:async()=>{},setTimeout(){},location:{},dateText:x=>new Date(x).toISOString().slice(0,10),sum:(arr,fn)=>arr.reduce((a,x)=>a+fn(x),0),queueInventorySyncInTransaction(){},resetPurchaseEntry(){},loadAll:async()=>{}};
-  for(const name of ['supplierById','normalizeCostLayers','statsFromLayers','normalizePurchase','normalizeInventory','productStockPurchase','adjustFifoLayers','rebaseCostLayersToAverage','addFifoLayer','revisePurchaseLayers','saveProduct','saveProductChanges','savePurchase'])vm.runInNewContext(extract(name),context);
+  for(const name of ['supplierById','normalizeCostLayers','statsFromLayers','normalizePurchase','normalizeInventory','productStockPurchase','adjustFifoLayers','rebaseCostLayersToAverage','addFifoLayer','revisePurchaseLayers','productSaveValues','productSaveNotice','refreshProductSaveForm','reconcileProductSave','saveProduct','saveProductChanges','savePurchase'])vm.runInNewContext(extract(name),context);
   context.chooseProductStockSave=async details=>{choices++;if(options.waitChoice)await options.waitChoice;if(options.cancel)return null;return {mode:options.mode||'purchase',supplierId:'',supplier:'',receivedAt:'',paymentStatus:'unknown',...options.choice};};
   return {context,state,rows,form,submit,raw,save:()=>context.saveProduct(form,{keepOpen:true}),list:collection=>[...rows].filter(([key])=>key.startsWith(collection+'/')).map(([,value])=>value),get commits(){return commits;},get choices(){return choices;}};
 }
@@ -87,8 +88,53 @@ test('decreases and unchanged stock do not offer or create receipts',async()=>{
 test('cancel and transaction failure leave all records unchanged and re-enable save',async()=>{
   for(const opts of [{cancel:true},{failCommit:true}]){const f=fixture(opts);await assert.rejects(f.save());assert.equal(f.list('products')[0].currentStock,0);assert.equal(f.list('purchases').length,0);assert.equal(f.list('inventory').length,0);assert.equal(f.list('queue').length,0);assert.equal(f.submit.disabled,false);}
 });
-test('concurrent inventory or metadata changes reject the stale product save',async()=>{
-  for(const opts of [{concurrent:true},{concurrentMetadata:true}]){const f=fixture(opts);await assert.rejects(f.save(),/重新整理/);assert.equal(f.list('purchases').length,0);assert.equal(f.list('inventory').length,0);assert.equal(f.commits,0);}
+test('concurrent inventory changes reject a stale receipt and refresh the form without a page reload',async()=>{
+  const f=fixture({concurrent:true,fields:{internalName:'保留我的新名稱'}});
+  await assert.rejects(f.save(),/本次尚未儲存或入庫/);
+  assert.equal(f.list('purchases').length,0);assert.equal(f.list('inventory').length,0);assert.equal(f.commits,0);
+  assert.equal(f.form.fields.currentStock.value,1);assert.equal(f.form.fields.internalName.value,'保留我的新名稱');assert.equal(f.submit.disabled,false);
+  await f.save();assert.equal(f.list('purchases').length,0);assert.equal(f.list('products')[0].currentStock,1);
+  f.form.fields.currentStock.value=4;await f.save();assert.equal(f.list('purchases').length,1);assert.equal(f.list('purchases')[0].items[0].qty,3);
+});
+
+test('media updates and sync acknowledgements do not block a receipt or get overwritten',async()=>{
+  const changes={imageUrls:['new-photo'],productVideoUrls:['new-video'],reservedStock:2,saleRewardPercent:8,source:'import',enabled:false,platformPriceSync:{MOMO:{status:'synced',ack:'latest'}}};
+  const f=fixture({concurrentMetadata:true,serverChanges:changes});await f.save();
+  const p=f.list('products')[0];for(const [key,value] of Object.entries(changes))assert.deepEqual(p[key],value,key);
+  assert.equal(p.currentStock,4);assert.equal(f.list('purchases').length,1);assert.equal(f.list('priceQueue').length,0);
+});
+
+test('unedited names, hidden fields and prices retain newer server values',async()=>{
+  const f=fixture({serverChanges:{internalName:'後台新名稱',originalName:'後台原名',momoPrice:800,note:'新的備註'}});await f.save();
+  const p=f.list('products')[0];assert.equal(p.internalName,'後台新名稱');assert.equal(p.originalName,'後台原名');assert.equal(p.momoPrice,800);assert.equal(p.note,'新的備註');
+  assert.equal(f.form.fields.internalName.value,'後台新名稱');assert.equal(f.form.fields.momoPrice.value,800);assert.equal(f.list('priceQueue').length,0);
+});
+
+test('same-field edits conflict atomically while retaining the draft for a reviewed retry',async()=>{
+  const f=fixture({after:0,fields:{internalName:'我的名稱'},serverChanges:{internalName:'另一人的名稱'}});
+  await assert.rejects(f.save(),/你修改的欄位/);assert.equal(f.commits,0);assert.equal(f.form.fields.internalName.value,'我的名稱');
+  assert.equal(JSON.parse(f.form.dataset.saveBaseline).internalName,'另一人的名稱');await f.save();assert.equal(f.list('products')[0].internalName,'我的名稱');
+});
+
+test('a metadata-only edit preserves concurrent inventory and refreshes the visible stock',async()=>{
+  const f=fixture({after:0,fields:{internalName:'新名稱'},serverChanges:{currentStock:8,averageCost:500,costLayers:[{qtyRemaining:8,unitCost:500}],inventoryValue:4000}});
+  await f.save();const p=f.list('products')[0];assert.equal(p.currentStock,8);assert.equal(p.averageCost,500);assert.equal(p.inventoryValue,4000);assert.equal(p.costLayers.length,1);
+  assert.equal(f.form.fields.currentStock.value,8);assert.equal(f.form.fields.averageCost.value,500);assert.equal(f.list('inventory').length,0);
+});
+
+test('a catalog refresh cannot silently replace the baseline of an open edited form',async()=>{
+  const f=fixture();f.form.dataset.saveBaseline=JSON.stringify(f.context.productSaveValues(f.raw));
+  f.state.internalProducts[0].currentStock=3;f.rows.get('products/p1').currentStock=3;
+  await assert.rejects(f.save(),/本次尚未儲存或入庫/);assert.equal(f.list('purchases').length,0);assert.equal(f.form.fields.currentStock.value,3);
+});
+
+test('average or receipt-cost changes block stock edits, even if the quantity stays unchanged',async()=>{
+  for(const serverChanges of [{averageCost:490},{latestPurchaseCost:460}]){const f=fixture({serverChanges});await assert.rejects(f.save(),/本次尚未儲存或入庫/);assert.equal(f.commits,0);assert.equal(f.list('purchases').length,0);}
+});
+
+test('editing one platform price preserves other targets and fresh sync metadata',async()=>{
+  const f=fixture({after:0,fields:{momoPrice:800},serverChanges:{easyStorePrice:900,platformPriceSync:{MOMO:{status:'synced',ack:'new'},EasyStore:{status:'synced',targetPrice:900}}}});
+  await f.save();const p=f.list('products')[0];assert.equal(p.momoPrice,800);assert.equal(p.easyStorePrice,900);assert.equal(p.platformPriceSync.MOMO.targetPrice,800);assert.equal(p.platformPriceSync.MOMO.status,'pending');assert.equal(p.platformPriceSync.MOMO.ack,'new');assert.equal(p.platformPriceSync.EasyStore.targetPrice,900);assert.equal(f.list('priceQueue').length,1);
 });
 test('transaction retries, repeated saves and a failed post-save read never add stock twice',async()=>{
   const f=fixture({retry:true});await f.save();await f.save();assert.equal(f.list('purchases').length,1);assert.equal(f.list('inventory').length,1);assert.equal(f.list('products')[0].currentStock,4);

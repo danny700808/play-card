@@ -40,7 +40,8 @@ test('desktop SKU, barcode action and stock all occupy the same row',()=>{
 });
 const formSource=source.slice(source.indexOf('  function productFormHtml('),source.indexOf('  function listingCaseValue('));
 const formContext={attr:v=>String(v==null?'':v).replaceAll('&','&amp;').replaceAll('"','&quot;'),escapeHtml:v=>String(v||''),formatNumber:v=>v,productImagePanelHtml:()=>'<div>images</div>',productInlineMediaHtml:()=>'<div>three media columns</div>'};
-const renderForm=vm.runInNewContext(formSource+'\nproductFormHtml',formContext);
+const saveValuesSource=source.slice(source.indexOf('  function productSaveValues('),source.indexOf('  function productSaveNotice('));
+const renderForm=vm.runInNewContext(saveValuesSource+formSource+'\nproductFormHtml',{...formContext,clean:v=>v==null?'':String(v).trim(),numberOrNull:v=>v==null||v===''?null:Number(v)});
 test('editor A hides unwanted fields without losing their saved values',()=>{
  const html=renderForm({docId:'x',sku:'2040934',originalName:'音箱',storePrice:1500,easyStorePrice:1580,momoPrice:1680,coupangPrice:1600,internal:{brand:'M-VAVE',model:'Combo',barcode:'01234',category:'音箱',status:'inactive',note:'原備註'}});
  for(const [key,value] of Object.entries({brand:'M-VAVE',model:'Combo',barcode:'01234',category:'音箱',status:'inactive',note:'原備註'}))assert.ok(html.includes('type="hidden" name="'+key+'" value="'+value+'"'));

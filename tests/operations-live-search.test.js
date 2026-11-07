@@ -65,10 +65,12 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20261031-payroll-groups-v2/);
-    assert.match(html, /operations-phase1\.js\?v=20261031-payroll-groups-v2/);
+    assert.match(html, /operations-phase1\.css\?v=\d{8}-[^"\s]+/);
+    assert.match(html, /operations-phase1\.js\?v=\d{8}-[^"\s]+/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260830-shopee-native-description-v2/);
   }
+  const script = /operations-phase1\.js\?v=[^"\s]+/;
+  assert.equal(portal.match(script)[0], hub.match(script)[0], 'both entry points must use the same product save code');
 });
 
 test('merged variants show every SKU image and persist optional priority selections', () => {

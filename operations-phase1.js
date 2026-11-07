@@ -4482,7 +4482,7 @@ function ensureSalesClock(){
     const savedPriceOverrides=p&&p.platformPriceOverrides||{},priceOverrides={};
     [['easyStore',easyStorePrice],['momo',momoPrice],['coupang',coupangPrice]].forEach(function(row){priceOverrides[row[0]]=Object.prototype.hasOwnProperty.call(savedPriceOverrides,row[0])?savedPriceOverrides[row[0]]:sharedOnlinePrice!==''&&row[1]!==''&&Number(row[1])!==Number(sharedOnlinePrice);});
     const preserved=['brand','model','barcode','category','status','note'].map(function(key){const value=internal&&Object.prototype.hasOwnProperty.call(internal,key)?internal[key]:p&&p[key];return '<input type="hidden" name="'+key+'" value="'+attr(value==null?(key==='status'?'active':''):value)+'">';}).join('');
-    return '<section class="ops-inline-product-editor ops-product-editor-a" id="opsProductEditor"><form id="productForm" data-id="'+attr(p?p.docId:'')+'">'+preserved+'<input type="hidden" name="sharedOnlinePrice" value="'+attr(sharedOnlinePrice)+'">'
+    return '<section class="ops-inline-product-editor ops-product-editor-a" id="opsProductEditor"><form id="productForm" data-id="'+attr(p?p.docId:'')+'" data-save-baseline="'+attr(JSON.stringify(productSaveValues(internal||{})))+'">'+preserved+'<input type="hidden" name="sharedOnlinePrice" value="'+attr(sharedOnlinePrice)+'">'
       +'<div class="ops-inline-product-header"><div><div class="ops-blog-title-row"><h3>'+escapeHtml(title)+'</h3>'+(p?'<button class="ops-button" type="button" data-action="product-blog-open" data-id="'+attr(p.docId)+'">發布部落格</button>':'')+'</div>'+(p?'<div class="ops-inline-product-meta">SKU '+escapeHtml(p.sku||'未設定')+' ・ 庫存 '+escapeHtml(formatNumber(p.currentStock))+'</div>':'')+'</div>'
       +'<div class="ops-card-actions"><button class="ops-button ghost" type="button" data-action="product-edit-cancel">取消編輯</button><button class="ops-button primary" type="submit">儲存商品</button>'+(p&&p.internal?'<button class="ops-button ghost" type="button" data-action="product-archive" data-id="'+attr(p.docId)+'">'+(p.internal.productArchived?'恢復商品':'下架商品')+'</button>':'')+'</div></div>'
       +'<div class="ops-inline-product-layout"><div class="ops-inline-product-media">'+productImagePanelHtml(p)+'</div><div class="ops-inline-product-fields">'
@@ -6652,15 +6652,92 @@ executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,imageStandardV
     const supplier=supplierById(choice.supplierId),purchaseNo=uid('PUR'),createdAt=new Date();
     return {purchaseNo:purchaseNo,externalNo:'',receivedAt:receivedAt,supplierId:clean(choice.supplierId),supplier:clean(choice.supplier)||(supplier&&supplier.name)||'',items:[{productId:details.id,name:details.name,sku:details.sku,qty:qty,unitCost:unitCost,allocatedExtraCost:0,effectiveUnitCost:unitCost,lineTotal:qty*unitCost,layerId:'MANUAL-AVERAGE',costMethod:'WEIGHTED_AVERAGE_ROUNDED',beforeStock:details.before,beforeAverageCost:details.oldAverage,afterStock:details.after,afterAverageCost:calculated.averageCost}],subtotal:qty*unitCost,extraCost:0,totalCost:qty*unitCost,paymentStatus:['paid','unpaid'].includes(choice.paymentStatus)?choice.paymentStatus:'unknown',paymentDate:'',paymentMethod:'',costMethod:'WEIGHTED_AVERAGE_ROUNDED',source:'product-editor',note:'商品資訊快捷進貨',revisionHistory:[],createdAt:createdAt,createdBy:userLabel(),version:VERSION};
   }
+  function productSaveValues(product){
+    const value={},raw=product||{};
+    ['internalSku','internalName','barcode','model','brand','category','note'].forEach(function(key){value[key]=clean(raw[key]);});
+    value.status=clean(raw.status)||'active';
+    ['storePrice','sharedOnlinePrice','easyStorePrice','momoPrice','coupangPrice','latestPurchaseCost','averageCost'].forEach(function(key){value[key]=numberOrNull(raw[key]);});
+    ['currentStock','safetyStock'].forEach(function(key){value[key]=Number(raw[key]||0);});
+    return value;
+  }
+  function productSaveNotice(form,message){
+    if(!form.querySelector)return;
+    let notice=form.querySelector('[data-product-save-notice]');
+    if(!message){if(notice)notice.remove();return;}
+    if(!notice){notice=document.createElement('div');notice.dataset.productSaveNotice='1';notice.className='ops-alert';notice.setAttribute('role','alert');form.prepend(notice);}
+    notice.textContent=message;
+  }
+  function refreshProductSaveForm(form,product,previous,resetFields){
+    const values=productSaveValues(product);
+    Object.keys(values).forEach(function(key){
+      const input=query('[name="'+key+'"]',form);if(!input)return;
+      const unchanged=previous&&(typeof values[key]==='number'||values[key]===null?numberOrNull(input.value)===previous[key]:clean(input.value)===previous[key]);
+      if(!previous||unchanged||(resetFields||[]).includes(key))input.value=values[key]==null?'':values[key];
+      input.defaultValue=values[key]==null?'':values[key];
+    });
+    queryAll('[data-platform-price]',form).forEach(function(input){const key=clean(input.dataset.platformPrice),flags=product.platformPriceOverrides||{};if(Object.prototype.hasOwnProperty.call(flags,key))input.dataset.priceOverride=flags[key]?'1':'0';});
+    form.dataset.saveBaseline=JSON.stringify(values);
+  }
+  function reconcileProductSave(baseline,current,payload,inventoryChanged,quickPurchase){
+    const latest=productSaveValues(current),desired=productSaveValues(payload),patch={updatedAt:payload.updatedAt,updatedBy:payload.updatedBy,version:payload.version},conflicts=[];
+    // updatedAt also changes for images, media audits and platform acknowledgements.
+    // Compare the editor's original values, and write only fields the user changed.
+    Object.keys(desired).filter(function(key){return !['currentStock','averageCost'].includes(key);}).forEach(function(key){
+      if(desired[key]===baseline[key])return;
+      if(latest[key]!==baseline[key]&&latest[key]!==desired[key])conflicts.push(key);
+      patch[key]=payload[key];
+    });
+    if(inventoryChanged){
+      if(latest.currentStock!==baseline.currentStock||latest.averageCost!==baseline.averageCost||(quickPurchase&&latest.latestPurchaseCost!==baseline.latestPurchaseCost))conflicts.push('currentStock','averageCost','latestPurchaseCost');
+      ['currentStock','averageCost','costLayers','inventoryValue','costIncomplete'].forEach(function(key){patch[key]=payload[key];});
+    }
+    if(conflicts.length){
+      const inventoryConflict=conflicts.includes('currentStock')||conflicts.includes('averageCost');
+      const labels={internalSku:'SKU',internalName:'商品名稱',barcode:'條碼',model:'型號',brand:'品牌',category:'分類',note:'備註',status:'狀態',storePrice:'門市售價',sharedOnlinePrice:'共同網路售價',easyStorePrice:'EasyStore 售價',momoPrice:'MOMO 售價',coupangPrice:'酷澎售價',latestPurchaseCost:'最近一次進貨成本',safetyStock:'安全庫存'};
+      const changed=conflicts.filter(function(key){return labels[key];}).map(function(key){return labels[key]+'（最新：'+(latest[key]==null?'未設定':latest[key])+'；你的輸入：'+(desired[key]==null?'未設定':desired[key])+'）';}).join('、');
+      const message=inventoryConflict?'庫存或成本已有新的異動。已載入最新庫存 '+formatNumber(latest.currentStock)+' 件、平均成本 '+money(latest.averageCost)+'；本次尚未儲存或入庫。其他修改已保留，請確認庫存與成本後再儲存；若要入庫，請重新填入目標庫存，不必按 F5。':'你修改的欄位也已被其他作業更新：'+changed+'。本次尚未儲存，已保留你的輸入；再次儲存會採用你的輸入，請先核對，不必按 F5。';
+      const error=new Error(message);error.productSaveCurrent=current;error.productSaveResetFields=inventoryConflict?['currentStock','averageCost','latestPurchaseCost']:[];throw error;
+    }
+    if(Object.prototype.hasOwnProperty.call(patch,'internalName'))patch.originalName=patch.internalName;
+    if(Object.prototype.hasOwnProperty.call(patch,'storePrice'))patch.originalSalePrice=patch.storePrice;
+    const platformFields=[['EasyStore','easyStore','easyStorePrice'],['MOMO','momo','momoPrice'],['Coupang','coupang','coupangPrice']];
+    const changedPlatforms=platformFields.filter(function(pair){return Object.prototype.hasOwnProperty.call(patch,pair[2]);});
+    if(changedPlatforms.length){
+      patch.platformPricesInitialized=true;
+      // Preserve legacy fallback prices when the first explicit target is changed.
+      if(current.platformPricesInitialized!==true)platformFields.forEach(function(pair){if(!Object.prototype.hasOwnProperty.call(patch,pair[2]))patch[pair[2]]=latest[pair[2]];});
+      patch.platformPriceOverrides=Object.assign({},current.platformPriceOverrides||{});
+      patch.platformPriceSync=Object.assign({},current.platformPriceSync||{},{lastUpdatedAt:payload.platformPriceSync.lastUpdatedAt});
+      changedPlatforms.forEach(function(pair){
+        patch.platformPriceOverrides[pair[1]]=!!payload.platformPriceOverrides[pair[1]];
+        const next=payload.platformPriceSync[pair[0]],status=Object.assign({},(current.platformPriceSync||{})[pair[0]]||{});
+        ['targetPrice','status','message','requestedAt','autoSyncEnabled'].forEach(function(key){if(Object.prototype.hasOwnProperty.call(next,key))status[key]=next[key];});
+        patch.platformPriceSync[pair[0]]=status;
+      });
+    }
+    return patch;
+  }
   async function saveProduct(form,options){
     if(form.dataset.saving==='1')throw new Error('商品正在儲存，請稍候');
     form.dataset.saving='1';
     try{return await saveProductChanges(form,options);}
+    catch(error){
+      if(error.productSaveCurrent){
+        const current=error.productSaveCurrent,previous=JSON.parse(form.dataset.saveBaseline||'{}'),index=state.internalProducts.findIndex(function(item){return item.docId===current.docId;});
+        if(index>=0)state.internalProducts[index]=current;
+        refreshProductSaveForm(form,current,previous,error.productSaveResetFields);mergeCatalog();
+        replaceLiveSearchHtml('productSearchResults',productSearchResultsHtml());productSaveNotice(form,error.message);
+      }
+      throw error;
+    }
     finally{delete form.dataset.saving;const submit=query('[type="submit"]',form);if(submit)submit.disabled=false;}
   }
 
   async function saveProductChanges(form,options){
-    const requestedId=clean(form.dataset.id),p=requestedId?catalogById(requestedId):null;if(requestedId&&(!p||!p.internal))throw new Error('找不到中央商品主檔');
+    const requestedId=clean(form.dataset.id),cached=requestedId?catalogById(requestedId):null;if(requestedId&&(!cached||!cached.internal))throw new Error('找不到中央商品主檔');
+    // Keep the baseline tied to this form, even if a background catalog reload occurs.
+    const baseline=form.dataset.saveBaseline?JSON.parse(form.dataset.saveBaseline):productSaveValues(cached&&cached.internal),raw=cached?Object.assign({},cached.internal,baseline):{currentStock:0,costLayers:[]},p=cached?Object.assign({},cached,baseline,{internal:raw}):null;
+    form.dataset.saveBaseline=JSON.stringify(baseline);
     const data=new FormData(form),sku=normalizeCode(data.get('internalSku')),name=clean(data.get('internalName'));if(!sku)throw new Error('SKU 不可空白');if(!name)throw new Error('商品名稱不可空白');
     const duplicate=state.internalProducts.find(function(x){return x.internalSku===sku&&x.docId!==requestedId;});if(duplicate)throw new Error('此 SKU 已被其他商品使用：'+sku);
     const ref=requestedId?state.db.collection(COLLECTIONS.products).doc(requestedId):state.db.collection(COLLECTIONS.products).doc(),id=ref.id,oldStock=p?Number(p.currentStock||0):0,requestedStock=numberOrNull(data.get('currentStock'));if(requestedStock==null)throw new Error('現有庫存格式不正確');
@@ -6677,7 +6754,6 @@ executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,imageStandardV
       changeConfirmed=global.confirm('確定變動？\n\n'+changes.join('\n')+'\n\n確認後會留下修正紀錄，後續銷售使用此平均成本，之後進貨會按數量重新計算平均成本；既有銷售單不會自動重算。');
       if(!changeConfirmed){finalStock=oldStock;finalAverage=oldAverage;}
     }
-    const raw=p&&p.internal?p.internal:{currentStock:0,costLayers:[]};
     const quickPurchase=productStockPurchase(purchaseChoice,{id:id,name:name,sku:sku,before:oldStock,after:finalStock,oldAverage:oldAverage,unitCost:latest});
     const quickPurchaseRef=quickPurchase?state.db.collection(COLLECTIONS.purchases).doc():null;
     let layerResult=adjustFifoLayers(raw,finalStock,latest,{referenceType:p?'manualAdjustment':'manualOpening',referenceId:id,receivedAt:new Date().toISOString()});
@@ -6710,24 +6786,24 @@ executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,imageStandardV
     const payload={internalSku:sku,internalName:name,originalName:name,barcode:clean(data.get('barcode')),model:clean(data.get('model')),storePrice:prices.storePrice,originalSalePrice:prices.storePrice,sharedOnlinePrice:prices.sharedOnlinePrice,easyStorePrice:prices.easyStorePrice,momoPrice:prices.momoPrice,coupangPrice:prices.coupangPrice,platformPricesInitialized:true,platformPriceOverrides:platformPriceOverrides,latestPurchaseCost:latest,currentStock:finalStock,reservedStock:p?Number(p.reservedStock||0):0,safetyStock:numberOrNull(data.get('safetyStock'))||0,saleRewardPercent:p&&p.internal?p.internal.saleRewardPercent:null,status:clean(data.get('status'))||'active',brand:clean(data.get('brand')),category:clean(data.get('category')),note:clean(data.get('note')),costLayers:layerResult.layers,averageCost:layerResult.averageCost,inventoryValue:layerResult.inventoryValue,costIncomplete:layerResult.costIncomplete,platformPriceSync:nextPriceSync,importInitialized:true,enabled:true,source:p?clean(p.internal.source)||'manual':'manual',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
     if(!p){payload.createdAt=serverTimestamp();payload.createdBy=userLabel();payload.openingStock=quickPurchase?0:finalStock;payload.openingUnitCost=latest;}
     if(quickPurchase)payload.latestPurchaseCost=quickPurchase.items[0].unitCost;
-    let savedInventory=null;
+    let savedInventory=null,committedProduct=null;
     await state.db.runTransaction(async function(batch){
     const current=await batch.get(ref);
+    let savedPayload=payload;
     if(p){
       if(!current.exists)throw new Error('商品已不存在，請重新整理後再操作');
-      const currentRaw=current.data(),currentUpdated=dateFrom(currentRaw.updatedAt),oldUpdated=dateFrom(raw.updatedAt);
-      if(Number(currentRaw.currentStock||0)!==oldStock||numberOrNull(currentRaw.averageCost)!==oldAverage||(oldUpdated&&(!currentUpdated||currentUpdated.getTime()!==oldUpdated.getTime())))throw new Error('商品資料或庫存已被其他作業更新，請重新整理後再儲存，避免重複入庫');
+      savedPayload=reconcileProductSave(baseline,normalizeInternal(current.data(),id),payload,finalStock!==oldStock||averageChangeApplied,!!quickPurchase);
     }else if(current.exists)throw new Error('商品已儲存，請重新整理後再操作');
-    batch.set(ref,payload,{merge:true});
+    batch.set(ref,savedPayload,{merge:true});
+    committedProduct=normalizeInternal(Object.assign({},current.exists?current.data():{},savedPayload,{updatedAt:null}),id);
     if(quickPurchase)batch.set(quickPurchaseRef,Object.assign({},quickPurchase,{createdAt:serverTimestamp()}));
     if(needsSyncRequest){const syncRef=state.db.collection(COLLECTIONS.platformSyncRequests).doc();batch.set(syncRef,{requestId:syncRef.id,status:'pending',reason:'platform-price-change',productIds:[id],requestedAt:serverTimestamp(),requestedBy:userLabel(),source:'product-editor',version:VERSION});}
     if(finalStock!==oldStock||averageChangeApplied){const inventoryRef=state.db.collection(COLLECTIONS.inventory).doc();const movement={type:quickPurchase?'purchase':finalStock!==oldStock?(p?'adjustment':'opening'):'costAdjustment',productId:id,productName:name,sku:sku,qtyChange:finalStock-oldStock,beforeStock:oldStock,afterStock:finalStock,unitCost:quickPurchase?quickPurchase.items[0].unitCost:averageChangeApplied?layerResult.averageCost:latest,beforeAverageCost:oldAverage,afterAverageCost:layerResult.averageCost,costMethod:quickPurchase?'WEIGHTED_AVERAGE_ROUNDED':averageChangeApplied?'manualAverageRebase':'MANUAL_AVERAGE',referenceType:quickPurchase?'purchase':averageChangeApplied?'productAverageCostAdjustment':'productMaster',referenceId:quickPurchase?quickPurchase.purchaseNo:id,note:quickPurchase?'商品資訊快捷進貨'+(averageChangeApplied?'｜同步修正平均成本':''):averageChangeApplied?'手動修正平均成本'+(finalStock!==oldStock?'與庫存':''):(p?'商品資訊修改':'新增商品期初庫存'),occurredAt:quickPurchase?(quickPurchase.receivedAt||serverTimestamp()):serverTimestamp(),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION};batch.set(inventoryRef,movement);savedInventory=Object.assign({__id:inventoryRef.id},movement,{occurredAt:quickPurchase&&quickPurchase.receivedAt||new Date(),createdAt:new Date()});if(finalStock!==oldStock){const queueRef=state.db.collection(COLLECTIONS.platformInventoryQueue).doc(id);batch.set(queueRef,{productId:id,sku:sku,productName:name,targetStock:Math.max(0,finalStock),status:'pending',reason:quickPurchase?'purchase':p?'productEdit':'productCreate',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});}}
     });
     // Update the form baseline immediately after commit, before optional refresh/audit work.
     form.dataset.id=id;
-    query('[name="currentStock"]',form).value=finalStock;query('[name="averageCost"]',form).value=finalAverage==null?'':finalAverage;
-    if(quickPurchase)query('[name="latestPurchaseCost"]',form).value=payload.latestPurchaseCost;
-    const localProduct=normalizeInternal(Object.assign({},raw,payload,{updatedAt:null}),id),localIndex=state.internalProducts.findIndex(function(item){return item.docId===id;});
+    refreshProductSaveForm(form,committedProduct,productSaveValues(payload),['currentStock','averageCost','latestPurchaseCost']);productSaveNotice(form,'');
+    const localProduct=committedProduct,localIndex=state.internalProducts.findIndex(function(item){return item.docId===id;});
     if(localIndex>=0)state.internalProducts[localIndex]=localProduct;else state.internalProducts.push(localProduct);
     mergeCatalog();
     if(savedInventory)state.inventory.unshift(normalizeInventory(savedInventory));
@@ -6739,8 +6815,6 @@ executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,imageStandardV
         if(saved.exists){const normalized=normalizeInternal(saved.data(),id),index=state.internalProducts.findIndex(function(item){return item.docId===id;});if(index>=0)state.internalProducts[index]=normalized;else state.internalProducts.push(normalized);}
       }catch(error){console.warn('Product saved; refresh deferred',error);}
       mergeCatalog();
-      query('[name="currentStock"]',form).value=finalStock;query('[name="averageCost"]',form).value=finalAverage==null?'':finalAverage;
-      Array.from(form.elements||[]).forEach(function(input){if(input.name&&'defaultValue' in input)input.defaultValue=input.value;});
       replaceLiveSearchHtml('productSearchResults',productSearchResultsHtml());
       await writeAudit('儲存商品主檔','product',id,name+'｜'+sku);
       if(!quickPurchase&&!(options&&options.keepOpen))toast('商品已儲存',name,'success');return id;
