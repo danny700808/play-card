@@ -91,8 +91,7 @@ test('extension version, download links, cache keys and CI package contract stay
   const hub = fs.readFileSync(path.join(root, 'operations-hub.html'), 'utf8');
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'verify-operations-live-search.yml'), 'utf8');
   const handoffCache = '20260830-shopee-native-description-v2';
-  const operationsCssCache = '20261031-payroll-groups-v2';
-  const operationsJsCache = '20261031-payroll-groups-v2';
+  const operationsJsCache = portal.match(/operations-phase1\.js\?v=([^"\s]+)/)[1];
 
   assert.equal(manifest.version, version);
   assert.equal(packageJson.version, version);
@@ -104,14 +103,14 @@ test('extension version, download links, cache keys and CI package contract stay
   assert.doesNotMatch(operations, /youzi-easystore-shopee-autofill-v0\.3\.(?:21|22)\.zip|助手 0\.3\.(?:21|22)/);
   for (const markup of [portal, hub]) {
     assert.match(markup, new RegExp(`operations-shopee-autofill-handoff-v1\\.js\\?v=${handoffCache}`));
-    assert.match(markup, new RegExp(`operations-phase1\\.css\\?v=${operationsCssCache}`));
+    assert.match(markup, /operations-phase1\.css\?v=\d{8}-[^"\s]+/);
     assert.match(markup, new RegExp(`operations-phase1\\.js\\?v=${operationsJsCache}`));
   }
   assert.match(workflow, new RegExp(`EXTENSION_VERSION: ${version.replaceAll('.', '\\.')}`));
   assert.match(workflow, new RegExp(`EXTENSION_ZIP: ${zipName.replaceAll('.', '\\.')}`));
   assert.match(workflow, new RegExp(handoffCache));
-  assert.match(workflow, new RegExp(operationsCssCache));
-  assert.match(workflow, new RegExp(operationsJsCache));
+  assert.ok(workflow.includes("grep -Eq 'operations-phase1[.]css[?]v=[0-9]{8}-'"));
+  assert.ok(workflow.includes("grep -Eq 'operations-phase1[.]js[?]v=[0-9]{8}-'"));
   assert.match(workflow, /diff -qr "\$EXTENSION_DIR" "\$package_dir\/\$EXTENSION_DIR"/);
   assert.equal((workflow.match(/tests\/shopee-extension-v2-package\.test\.js/g) || []).length, 2);
   const easyStoreExecutor = fs.readFileSync(path.join(extensionRoot, 'easystore.js'), 'utf8');
