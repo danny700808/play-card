@@ -70,7 +70,8 @@
     .entry-method strong{font-size:21px}
     .entry-method-icon{position:absolute;left:12px;width:30px;height:30px;background:transparent!important;color:inherit!important;font-size:11px;border-radius:8px}
     .entry-method-icon svg{width:28px;height:28px}
-    .entry-intro,.entry-device-note,.entry-form-copy,.entry-method small,.entry-role-copy small,.entry-loading-view small{display:none}
+    .entry-intro,.entry-device-note,.entry-method small,.entry-role-copy small,.entry-loading-view small{display:none}
+    .entry-form-copy{font-size:15px;line-height:1.65;text-align:left;margin:0 0 18px}
     .entry-toolbar{justify-content:center;margin:20px 0 0;order:3}
     .entry-toolbar a{display:none}
     #setupView:not(.hidden),#emailView:not(.hidden),#otpView:not(.hidden){display:flex;flex-direction:column}
@@ -83,7 +84,8 @@
     .entry-card .btn.primary{min-height:54px;font-size:19px;border-radius:10px;background:#237a66;color:white}
     .entry-card button:focus-visible,.entry-card input:focus-visible{outline:3px solid #74bba7;outline-offset:3px}
     .entry-otp-heading{margin:0}
-    .entry-otp-heading span{display:none}
+    .entry-otp-heading span{display:block;font-size:16px;line-height:1.6;overflow-wrap:anywhere;margin:0 0 12px;color:#102b3a}
+    .entry-otp-help{font-size:15px;line-height:1.7;text-align:left;margin:0 0 18px;padding:12px 14px;border-radius:10px;background:#edf6f2;color:#234b40}
     .entry-otp-code{letter-spacing:.7em;padding-left:1em!important;font-size:30px!important;height:68px}
     .entry-code-wrap{position:relative}
     .entry-code-wrap .entry-otp-code{position:absolute;inset:0;margin:0;border:0;background:transparent;color:transparent;caret-color:transparent;z-index:1}
@@ -137,7 +139,7 @@
           <a href="index.html">返回首頁</a>
         </div>
         <h2 class="entry-form-title" id="setupFormTitle">第一次使用</h2>
-        <p class="entry-form-copy" id="setupFormCopy">LINE 授權已完成。只需這一次核對資料，完成後就會直接進入。</p>
+        <p class="entry-form-copy" id="setupFormCopy">LINE 授權已完成。請填寫自己的 Email，並到該信箱收取四碼驗證碼，完成首次綁定。</p>
         <form class="stack" id="setupForm"></form>
       </div>
 
@@ -147,7 +149,7 @@
           <a href="index.html">返回首頁</a>
         </div>
         <h2 class="entry-form-title" id="emailFormTitle">Email 驗證登入</h2>
-        <p class="entry-form-copy" id="emailFormCopy">填寫資料後，系統會寄出四碼驗證碼。</p>
+        <p class="entry-form-copy" id="emailFormCopy">驗證碼會寄到您填寫的 Email 信箱。請開啟自己的信箱收信，再回來輸入四碼驗證碼。</p>
         <form class="stack" id="emailForm"></form>
       </div>
 
@@ -156,9 +158,10 @@
           <button type="button" id="backToIdentity">返回</button>
           <a href="index.html">返回首頁</a>
         </div>
-        <div class="entry-otp-heading"><strong>輸入驗證碼</strong><span id="otpDestination"></span></div>
+        <div class="entry-otp-heading"><strong>請到 Email 收取驗證碼</strong><span id="otpDestination" role="status" aria-live="polite"></span></div>
+        <p class="entry-otp-help" id="otpHelp">請打開自己的 Email 信箱，找到「柚子樂器」寄來的驗證信，再回到這裡輸入四碼。沒有看到信件時，請檢查垃圾郵件，並確認 Email 是否填對。</p>
         <form class="stack" id="otpForm">
-          <div class="field entry-code-wrap"><input id="loginCode" aria-label="四碼驗證碼" class="entry-otp-code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4}" maxlength="4" required><div class="entry-code-boxes" aria-hidden="true"><span>－</span><span>－</span><span>－</span><span>－</span></div></div>
+          <div class="field entry-code-wrap"><input id="loginCode" aria-label="四碼驗證碼" aria-describedby="otpDestination otpHelp" class="entry-otp-code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4}" maxlength="4" required><div class="entry-code-boxes" aria-hidden="true"><span>－</span><span>－</span><span>－</span><span>－</span></div></div>
           <div class="entry-otp-meta">有效時間：<strong id="otpCountdown">300 秒</strong></div>
           <button class="btn primary" type="submit">確認登入</button>
         </form>
@@ -350,8 +353,8 @@
         selectedRole = role;
         pendingFlow = 'regular';
         document.getElementById('emailFormTitle').textContent = 'Email 登入';
-        document.getElementById('emailFormCopy').textContent = '填寫一次資料並輸入四碼驗證碼，完成後會直接進入。';
-        emailForm.innerHTML = identityFields(role, '寄送驗證碼', 'data-email-cancel');
+        document.getElementById('emailFormCopy').textContent = '驗證碼會寄到您填寫的 Email 信箱。請開啟自己的信箱收信，再回來輸入四碼驗證碼。';
+        emailForm.innerHTML = identityFields(role, '寄送驗證碼到 Email', 'data-email-cancel');
         showOnly(emailView);
         const first = emailForm.querySelector('input');
         if (first) setTimeout(function () { first.focus(); }, 50);
@@ -365,8 +368,8 @@
         pendingFlow = 'line-registration';
         lineSetupToken = token;
         document.getElementById('setupFormTitle').textContent = '首次綁定';
-        document.getElementById('setupFormCopy').textContent = 'LINE 授權已完成。為了確認資料屬於您本人，這一次需核對姓名、電話與 Email；完成後日後直接登入。';
-        setupForm.innerHTML = identityFields(role, '寄送驗證碼', '');
+        document.getElementById('setupFormCopy').textContent = 'LINE 授權已完成。請填寫姓名、電話與自己的 Email，並到該信箱收取四碼驗證碼；完成首次綁定後，日後可直接用 LINE 登入。';
+        setupForm.innerHTML = identityFields(role, '寄送驗證碼到 Email', '');
         showOnly(setupView);
         const first = setupForm.querySelector('input');
         if (first) setTimeout(function () { first.focus(); }, 80);
@@ -476,7 +479,7 @@
           if (!result.challengeToken) throw new Error('驗證碼寄送失敗，請稍後再試。');
           pendingFlow = flow;
           pendingChallenge = result.challengeToken;
-          document.getElementById('otpDestination').textContent = '四碼已寄到 ' + (result.maskedEmail || '您的 Email') + '。';
+          document.getElementById('otpDestination').textContent = '驗證碼已寄至：' + (result.maskedEmail || '您填寫的 Email 信箱') + '。';
           otpForm.reset();
           renderCode();
           showOnly(otpView);
@@ -623,7 +626,7 @@
             pendingChallenge = result.challengeToken;
             recoveredOtp = true;
             document.getElementById('resendOtp').textContent = '重新申請';
-            document.getElementById('otpDestination').textContent = result.maskedEmail || '';
+            document.getElementById('otpDestination').textContent = '請到 ' + (result.maskedEmail || '您填寫的 Email 信箱') + ' 查看驗證碼，再回來輸入。';
             showOnly(otpView);
             startOtpCountdown(result.expiresInSeconds);
             otpForm.elements.code.focus();
