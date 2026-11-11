@@ -11,6 +11,13 @@
   function clean(v){return String(v==null?'':v).trim();}
   function lower(v){return clean(v).toLowerCase();}
   function formatLabelSku(value){const raw=clean(value).replace(/\s+/g,'');if(!raw)return '';if(/^\d{3}-/.test(raw))return raw;const match=raw.match(/^(\d{3})(\d{4})(.*)$/);return match?match[1]+'-'+match[2]+match[3]:raw;}
+  const skuOrder=new Intl.Collator('zh-Hant',{numeric:true,sensitivity:'base'});
+  function compareProductsBySku(a,b){
+    const left=formatLabelSku(a.sku),right=formatLabelSku(b.sku);
+    if(!left||!right){if(left)return -1;if(right)return 1;}
+    return skuOrder.compare(left,right)||skuOrder.compare(a.name,b.name)||
+      skuOrder.compare(a.variant,b.variant)||skuOrder.compare(a.id,b.id);
+  }
   // 原本只保留英數，中文會被清成空字串，造成「中文搜尋」變成所有商品都符合。
   // 僅移除 SKU 常見分隔符，保留中文、英文與數字一起比對。
   function compactCode(value){return lower(value).replace(/[\s\-_.\/\\]/g,'');}
@@ -163,7 +170,7 @@
     try{
       const result=await productRequest('inventoryCountProductsHttp',{action:'barcode'});
       if(generation!==authGeneration)return;
-      state.products=(result.products||[]).map(function(raw){return normalize({id:raw.id,data:function(){return raw;}});}).filter(function(p){return p.enabled&&p.status!=='inactive'&&p.status!=='discontinued';}).sort(function(a,b){const imageDiff=Number(!!b.imageUrl)-Number(!!a.imageUrl);return imageDiff||a.name.localeCompare(b.name,'zh-Hant',{numeric:true});});
+      state.products=(result.products||[]).map(function(raw){return normalize({id:raw.id,data:function(){return raw;}});}).filter(function(p){return p.enabled&&p.status!=='inactive'&&p.status!=='discontinued';}).sort(compareProductsBySku);
       applySearch();$('bpSearch').focus();
     }catch(err){
       if(generation!==authGeneration)return;
@@ -187,3 +194,4 @@
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })(window);
+
