@@ -1,8 +1,8 @@
 const test=require('node:test'), assert=require('node:assert/strict'), fs=require('node:fs'), vm=require('node:vm');
 const source=fs.readFileSync(__dirname+'/../shipping-local-print.js','utf8');
 const model=require('./shipping-ui/model.js'), tick=()=>new Promise(setImmediate);
-function harness({channel='MOMO',history='prepared',handlingAction='',delay=false,printFailure=false}={}){
-  const elements=new Map(), calls=[];let records=0,confirmations=0,release,printed=false;
+function harness({channel='MOMO',history='prepared',handlingAction='',delay=false,printFailure=false,submittedCallback=false,saveFailure=false}={}){
+  const elements=new Map(), calls=[];let records=0,submissions=0,confirmations=0,release,printed=false;
   const wait=new Promise(r=>release=r);
   class Element{
     constructor(){this.children=[];this.open=true;}
@@ -24,9 +24,9 @@ function harness({channel='MOMO',history='prepared',handlingAction='',delay=fals
       throw Error(url);
     }};
   vm.runInNewContext(source,ctx);
-  window.YouziLocalPrint.attach({channel,handlingAction,orderNo:'TEST1234567890',documentReady:true,items:[{name:'測試商品',sku:'204-4749-17',quantity:1}]},{print:'/original.pdf'},async()=>records++);
+  window.YouziLocalPrint.attach({channel,handlingAction,orderNo:'TEST1234567890',documentReady:true,items:[{name:'測試商品',sku:'204-4749-17',quantity:1}]},{print:'/original.pdf'},async()=>records++,submittedCallback?async()=>{assert.equal(printed,true);submissions++;if(saveFailure)throw Error('save offline');}:undefined);
   const box=elements.get('localPrintControls');
-  return {window,elements,calls,release,button:box.children[0],status:box.children[1],records:()=>records,confirmations:()=>confirmations,
+  return {window,elements,calls,release,button:box.children[0],status:box.children[1],records:()=>records,submissions:()=>submissions,confirmations:()=>confirmations,
     prints:()=>calls.filter(c=>c.url.endsWith('/print'))};
 }
 for(const channel of ['MOMO','酷澎','蝦皮','官網'])test(channel+' new print prepares silently then submits exactly once',async()=>{
@@ -56,4 +56,18 @@ test('lost print response is not retried or recorded as success',async()=>{
  const h=harness({printFailure:true});await tick();await h.button.onclick();await tick();
  assert.equal(h.prints().length,1);assert.equal(h.records(),0);assert.match(h.status.textContent,/尚未確認/);
 });
+
+test('dedicated queue callback runs once only after a confirmed submission',async()=>{
+ const h=harness({submittedCallback:true});await tick();assert.equal(h.submissions(),0);
+ await h.button.onclick();assert.equal(h.submissions(),1);assert.equal(h.records(),0);assert.equal(h.prints().length,1);
+});
+test('failed or uncertain print never moves an order to processed',async()=>{
+ const h=harness({submittedCallback:true,printFailure:true});await tick();await h.button.onclick();
+ assert.equal(h.submissions(),0);assert.equal(h.records(),0);assert.equal(h.prints().length,1);
+});
+test('handling save error does not reprint and identifies paper as already submitted',async()=>{
+ const h=harness({submittedCallback:true,saveFailure:true});await tick();await h.button.onclick();
+ assert.equal(h.prints().length,1);assert.equal(h.submissions(),1);assert.match(h.status.textContent,/已送出，請勿重複列印/);
+});
+
 

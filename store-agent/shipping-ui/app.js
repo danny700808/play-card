@@ -147,6 +147,42 @@ async function markHandled(key,action){
     notice(action==='reopen'?'已移回未處理。':'已保存處理紀錄。');
   }catch(e){notice(e.message,true);}
 }
+async function recordLocalSubmission(printedRow){
+  // A confirmed Windows submission is enough for the packing work queue;
+  // it does not assert that paper came out or that the parcel was handed over.
+  const row=data.orders.find(r=>r.key===printedRow.key);
+  if(!row)return;
+  if(row.orderNo!==printedRow.orderNo||(row.tracking&&printedRow.tracking&&row.tracking!==printedRow.tracking)){
+    notice('貨運單已送印，但目前訂單的物流資料已變更，請核對後再標記處理狀態。',true);return;
+  }
+  const fields=['handled','handlingAction','handlingSource','handledAt','printCount'];
+  const before=Object.fromEntries(fields.map(k=>[k,row[k]]));
+  const stronger=['printed','shipped'].includes(row.handlingAction)||['shipped','cancelled'].includes(row.stage);
+  const helperDocument=row.platform==='EasyStore'&&row.channel==='蝦皮';
+  const action=helperDocument?'processed':'print_requested';
+  const submittedAt=new Date().toISOString();
+  if(!stronger)Object.assign(row,{handled:true,handlingAction:action,handlingSource:'副機送印',handledAt:submittedAt});
+  if(!helperDocument)row.printCount=(row.printCount||0)+1;
+  const following=selected===row.key;
+  if(following){activeWork='done';selected=row.key;}
+  render();
+  if(following&&$('documentDialog').open)$('documentDialog').close();
+  notice('貨運單已送印，已移至「已處理」，正在保存紀錄；請確認出紙。');
+  try{
+    // Shopee originals live on this PC, so the host's /print-event endpoint
+    // (which requires a host document) cannot be used for these labels.
+    if(helperDocument){if(!stronger)await api('/api/handling',{key:row.key,action:'processed'});}
+    else await api('/api/print-event',{key:row.key});
+    notice('貨運單已送印，處理紀錄已保存；需要補印可在「已處理」開啟。');
+  }catch(e){
+    // Do not let a failed save look durable. Never resend paper to retry a save.
+    const current=data.orders.find(r=>r.key===row.key);
+    if(current===row&&(stronger||current.handledAt===submittedAt&&current.handlingSource==='副機送印')){
+      Object.assign(current,before);if(selected===row.key){activeWork=before.handled?'done':'pending';}render();
+    }
+    notice('貨運單已送印，但處理紀錄未保存：'+e.message+'。請勿重複列印，確認出紙後可按「我已印單」補記。',true);
+  }
+}
 function provideDocument(row){
   const input=document.createElement('input');input.type='file';input.accept='application/pdf,.pdf';
   input.onchange=async()=>{
@@ -262,7 +298,7 @@ function presentDocument(row,links,recordPrint){
   const combined=row?.documentKinds?.includes('combined');
   $('combinedDocument').hidden=!combined;$('combinedDocument').href=links.combined;
   $('openDocument').onclick=recordPrint;$('combinedDocument').onclick=recordPrint;
-  window.YouziLocalPrint?.attach(row,links,recordPrint);
+  window.YouziLocalPrint?.attach(row,links,recordPrint,()=>recordLocalSubmission(row));
   $('confirmPrinted').onclick=()=>markHandled(key,'printed');
   $('shipmentOptions').hidden=true;$('documentStatus').textContent='貨運單已備妥。';
   $('documentControls').hidden=false;
@@ -291,10 +327,15 @@ async function prepareShopee(row){
       if(own===documentGeneration)$('documentStatus').textContent=message;
     });
     if(own!==documentGeneration||!$('documentDialog').open||(remote&&!window.ShippingTransport.loggedIn()))return;
+    // Keep the verified logistics number for an immediate reprint in this view.
+    // The host may not have published its next order snapshot yet.
+    if(data.orders.find(r=>r.key===row.key)===row){
+      Object.assign(row,{tracking:result.tracking,canDownload:true,canCreate:false});renderDetail();
+    }
     const url=URL.createObjectURL(new Blob([result.pdf],{type:'application/pdf'}));
     externalDocumentUrls.push(url);
-    // Acquiring/queueing a label is not proof of paper output. Only the user's
-    // shared "已印好" control confirms printed handling for extension labels.
+    // Acquisition alone does not finish packing. The local print callback moves
+    // this order only after a confirmed submission, without claiming handover.
     presentDocument({...row,tracking:result.tracking},{label:url,print:url,preview:result.preview},async()=>{});
   }catch(e){if(own===documentGeneration)documentError(e);}
   finally{documentBusy(false);}
@@ -358,3 +399,4 @@ if(remote)window.ShippingTransport.ready(initializeWorkbench);
 else initializeWorkbench();
 // Poll while this workbench is visible. Reading orders never creates shipments.
 setInterval(()=>{if(!document.hidden&&!busy&&!document.querySelector('dialog[open]')&&(!remote||window.ShippingTransport.loggedIn()))refresh();},300000);
+

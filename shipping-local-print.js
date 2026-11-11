@@ -42,7 +42,7 @@
     $('localPrintControls')?.remove();
     currentButton = null;
   }
-  function attach(row, links, recordPrint) {
+  function attach(row, links, recordPrint, recordSubmitted) {
     reset();
     if (!row || !links || !['MOMO', '蝦皮', '酷澎', '官網'].includes(row.channel)) return;
     const own = generation;
@@ -158,11 +158,12 @@
         if (result.status !== 'submitted') throw Error('送印結果不明，請先查看印表機。');
         // Submitted to Windows is not proof that labels physically printed.
         if (generation === own) {
-          status.textContent = `已送出 ${job.pages} 張，確認出紙後按「已印好」。`;
+          status.textContent = `已送出 ${job.pages} 張，正在更新處理紀錄…`;
           reprint = true;
           button.textContent = '重印貨運單';
         }
-        await recordPrint();
+        phase = '保存送印紀錄（已送出，請勿重複列印）';
+        await (recordSubmitted || recordPrint)();
       } catch (error) {
         if (generation === own) status.textContent = `訂單 ${row.orderNo} · ${phase}：${error.message}`;
       } finally {
@@ -173,5 +174,6 @@
   }
   window.YouziLocalPrint = {attach, reset};
 })();
+
 
 
