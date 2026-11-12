@@ -31,7 +31,10 @@
     for(const field of m.fields){
       const label=document.createElement('label');label.style.display='block';label.style.margin='12px 0';label.append(document.createTextNode(field.label+' '));
       const input=document.createElement(field.type==='select'?'select':'input');input.name=field.id;input.required=true;
-      if(field.type==='select')for(const option of field.options){const el=document.createElement('option');el.value=option.id;el.textContent=option.label;input.append(el);}
+      if(field.type==='select'){
+        for(const option of field.options){const el=document.createElement('option');el.value=option.id;el.textContent=option.label;input.append(el);}
+        if(typeof field.value==='string'&&field.options.some(option=>option.id===field.value))input.value=field.value;
+      }
       else{input.type='text';input.maxLength=100;input.value=field.value;}
       label.append(input);form.append(label);
     }
