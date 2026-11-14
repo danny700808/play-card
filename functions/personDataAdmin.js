@@ -531,7 +531,7 @@ async function approveProfile(group, request) {
   const profileRow = profile.row || {};
   const employeeRow = employees[0].row || {};
   const teacherId = first(Object.assign({}, employeeRow, profileRow), ['coursePortalTeacherId', 'legacyTeacherId', 'teacherId']) ||
-    clean(group.teacherIds && group.teacherIds[0]);
+    clean(group.teacherIds && group.teacherIds[0]) || 'external-' + hash(employees[0].docId).slice(0,24);
   const teachingPlan = await prepareTeachingAbilitySubjects({
     db,
     FieldValue: FV,
@@ -571,6 +571,7 @@ async function approveProfile(group, request) {
     teachingAbilities,
     teachingItems: teachingAbilities.map((row) => row.item).join('、'),
     subjectIds: assignmentPatch ? assignmentPatch.effectiveSubjectIds : teachingPlan.subjectIds,
+    coursePortalTeacherId: teacherId,
     active: true,
     accountStatus: 'active',
     employmentStatus: 'active',
@@ -586,6 +587,7 @@ async function approveProfile(group, request) {
     status: 'approved',
     profileStatus: 'approved',
     progressStatus: '已建立為外聘老師',
+    coursePortalTeacherId: teacherId,
     approvedAt: FV.serverTimestamp(),
     approvedBy: actorOf(request),
     teachingAbilities,
@@ -596,7 +598,8 @@ async function approveProfile(group, request) {
   teachingPlan.catalogWrites.forEach((write) => {
     batch.set(db.collection(SUBJECT_CATALOG_COLLECTION).doc(write.id), write.patch, { merge: true });
   });
-  if (assignmentRef && assignmentPatch) batch.set(assignmentRef, assignmentPatch, { merge: true });
+  if (assignmentRef && assignmentPatch) batch.set(assignmentRef, {...assignmentPatch,managerProfile:{...(assignmentSnapshot.data()?.managerProfile||{}),name:rowName(profileRow),phone:rowPhone(profileRow),active:true}}, { merge: true });
+  batch.set(db.collection('coursePortalRuntime').doc('scheduleVersion'),{version:FV.increment(1),updatedAt:FV.serverTimestamp(),updatedBy:'approve-teacher-profile'},{merge:true});
   batchAudit(batch, 'approve-profile', group, request);
   await batch.commit();
   return { ok: true, message: '已確認個人資料並啟用此外聘老師。' };
@@ -884,6 +887,10 @@ function normalizeEmailForAdmin(value) {
 
 async function personDataContractAction(data, request) {
   assertManager(request);
+  if (data && data.legacyContractId && data.action === 'approve') {
+    try { return await require('./teacherApprovalSync').createTeacherApprovalSync({db,FieldValue:FV})(clean(data.legacyContractId),actorOf(request)); }
+    catch(error) { throw new HttpsError('failed-precondition',error.message); }
+  }
   const assignmentId = clean(data && data.assignmentId);
   const action = clean(data && data.action);
   const reason = clean(data && data.reason);
