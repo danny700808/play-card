@@ -5753,6 +5753,10 @@ async function teacherAvailability(data) {
     throw new HttpsError('failed-precondition', '這個授課科目已停用或不存在。');
   }
   if (!targetStudentIds.length) throw new HttpsError('invalid-argument', '請先選擇學生。');
+  const teacherSubjects = firstArray(bundle.maps.teachers[session.teacherId] || {}, ['subjectIds', 'subjects']);
+  if (teacherSubjects.length && !teacherSubjects.includes(subjectId)) {
+    throw new HttpsError('permission-denied', '這個科目不在老師可授課的項目中。');
+  }
   const compatibleRooms = bundle.rooms.filter(sourceActive).filter((room) =>
     roomKind(room, roomSettingsMap[sourceId(room)] || {}) === 'normal' &&
     roomTeacherSchedulable(room, roomSettingsMap[sourceId(room)] || {}) &&

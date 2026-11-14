@@ -1807,6 +1807,10 @@
       const student = data.roster.find(row=>clean(row.id)===id);
       return !student || !Array.isArray(student.subjectIds) || !student.subjectIds.length || student.subjectIds.includes(subject.id);
     }));
+    if (context.subjectId && !allowedSubjects().some(subject => clean(subject.id) === clean(context.subjectId))) {
+      toast('原課程科目與老師目前的授課設定不一致，請聯絡櫃台確認科目對應後重新整理。', 'error');
+      return;
+    }
     if (!context.subjectId && studentSubjects.length === 1) context.subjectId = studentSubjects[0].id;
     if (!context.subjectId) {
       const rows = studentSubjects.map((subject) => `<button type="button" data-add-subject="${escapeHtml(subject.id)}"><b>${escapeHtml(subject.name)}</b><span>搜尋適合這項樂器的教室</span></button>`).join('');
