@@ -209,3 +209,11 @@ test('manager updates preserve teacher identity links and explicit inactive stat
   assert.equal(rows[0].employeeId, 'person1');
   assert.equal(rows[0].active, false);
 });
+
+test('teacher selection uses official IDs, preserves level and rejects unknown or duplicate subjects', async () => {
+  const db=fakeDb([doc('jazz',{source:{id:'jazz',name:'爵士鼓',active:true}}),doc('cajon',{source:{id:'cajon',name:'木箱鼓',active:true}})]);
+  const plan=await prepareTeachingAbilitySubjects({db,FieldValue,requireExisting:true,abilities:[{subjectId:'jazz',item:'爵士鼓',level:'專業'},{subjectId:'cajon',item:'木箱鼓',level:'普通'}]});
+  assert.deepEqual(plan.abilities,[{subjectId:'jazz',item:'爵士鼓',level:'專業'},{subjectId:'cajon',item:'木箱鼓',level:'普通'}]);
+  await assert.rejects(prepareTeachingAbilitySubjects({db,FieldValue,requireExisting:true,abilities:[{item:'鼓',level:'普通'}]}),/正式科目/);
+  await assert.rejects(prepareTeachingAbilitySubjects({db,FieldValue,requireExisting:true,abilities:[{item:'爵士鼓'},{item:'爵士鼓'}]}),/只能選擇一次/);
+});

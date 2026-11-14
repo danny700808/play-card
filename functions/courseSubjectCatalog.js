@@ -272,6 +272,10 @@ async function prepareTeachingAbilitySubjects(options) {
     // hidden alias with the same display name.
     if (nameMatched && nameMatched.kind === 'mirror') matched = nameMatched;
     if (!matched) matched = nameMatched;
+    if (source.requireExisting && (!matched || !matched.active || matched.name === '鼓')) {
+      throw new Error('請從正式科目清單選擇授課項目；鼓類請選爵士鼓或木箱鼓。');
+    }
+    if (source.requireExisting && resolved.some(row => row.subjectId === matched.id)) throw new Error('同一授課科目只能選擇一次。');
     if (!matched) {
       const id = catalogSubjectId(ability.item);
       matched = {

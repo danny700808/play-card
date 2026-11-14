@@ -2,6 +2,7 @@
 const {validateAssetUrl}=require('./privateContractAssets');
 const defaultTemplate=require('./legacyTeacherContractTemplate.json');
 const crypto=require('node:crypto');
+const {mergeSubjectRows,prepareTeachingAbilitySubjects}=require('./courseSubjectCatalog');
 const clean=v=>String(v==null?'':v).trim();
 const PROFILE_FIELDS=['name','mobile','email','teachingItems','teachingItemsText','teachingAbilities','bindingMethod','idNumber','birthDate','householdAddress','mailingAddress','address','contactAddress','emergencyContact','emergencyPhone'];
 const SIGNED_FIELDS=['identityUrls','signatureUrl','contractHtmlUrl','signedDate'];
@@ -12,7 +13,17 @@ function createLegacyTeacherForms({db,FieldValue,baseUrl,queueEmail,queueManager
   const ref=id=>{if(!/^[A-Za-z0-9_-]{1,150}$/.test(clean(id)))throw Error('簽約連結不完整。');return db.collection('externalTeacherContracts').doc(id);};
   async function authorize(id,token){const doc=await ref(id).get();if(!doc.exists)throw Error('找不到簽約資料。');const row=doc.data();if(!clean(token)||![row.bindingCode,row.onboardingToken].map(clean).filter(Boolean).includes(clean(token)))throw Error('簽約連結驗證失敗。');return {ref:doc.ref,row:{...row,id:doc.id}};}
   function bound(row){return ['bound','verified','已綁定','已驗證'].includes(clean(row.lineBindStatus))||['bound','verified','已綁定','已驗證'].includes(clean(row.emailBindStatus));}
-  async function template(){const doc=await db.collection('externalTeacherContractTemplates').doc('current').get();return {ok:true,template:doc.exists?{...defaultTemplate,...doc.data()}:defaultTemplate};}
+  async function template(){
+    const [doc,mirror,catalog]=await Promise.all([db.collection('externalTeacherContractTemplates').doc('current').get(),db.collection('opsEducationMirrorSubjects').where('sourceActive','==',true).get(),db.collection('coursePortalSubjectCatalog').get()]);
+    const subjectCatalog=mergeSubjectRows(mirror.docs.map(d=>({...d.data().source})),catalog.docs).filter(s=>s.active!==false&&s.name!=='鼓').map(s=>({id:s.id,name:s.name}));
+    return {ok:true,template:doc.exists?{...defaultTemplate,...doc.data()}:defaultTemplate,subjectCatalog};
+  }
+  async function selectedAbilities(input){
+    if(!Array.isArray(input.teachingAbilities)||!input.teachingAbilities.length)throw Error('請至少選擇一項授課科目與程度。');
+    const plan=await prepareTeachingAbilitySubjects({db,FieldValue,abilities:input.teachingAbilities,requireExisting:true});
+    if(!plan.abilities.length||plan.abilities.some(a=>!a.level))throw Error('請為每一項授課科目選擇程度。');
+    return plan.abilities;
+  }
   async function read(data){
     const {ref:docRef,row}=await authorize(data.id,data.token);
     const profile=await db.collection('externalTeacherProfiles').doc(data.id).get();
@@ -24,7 +35,7 @@ function createLegacyTeacherForms({db,FieldValue,baseUrl,queueEmail,queueManager
   }
   async function create(data){
     const input=data.record||{};if(JSON.stringify(input).length>80000)throw Error('基本資料過大。');
-    const basic=pick(input,PROFILE_FIELDS);basic.name=clean(basic.name);basic.mobile=clean(basic.mobile);basic.email=clean(basic.email).toLowerCase();
+    const basic=pick(input,PROFILE_FIELDS);if(input.teachingAbilities!==undefined)basic.teachingAbilities=await selectedAbilities(input);basic.name=clean(basic.name);basic.mobile=clean(basic.mobile);basic.email=clean(basic.email).toLowerCase();
     if(!basic.name||!basic.mobile||!['line','email','both'].includes(basic.bindingMethod))throw Error('請完整填寫基本資料。');
     if(basic.bindingMethod!=='line'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(basic.email))throw Error('請填寫正確 Email。');
     let docRef,old={};
@@ -51,12 +62,13 @@ function createLegacyTeacherForms({db,FieldValue,baseUrl,queueEmail,queueManager
   async function update(data){
     const {ref:docRef}=await authorize(data.id,data.token),input=data.record||{};
     if(JSON.stringify(input).length>100000)throw Error('資料過大。');
+    const abilities=input.teachingAbilities!==undefined?await selectedAbilities(input):undefined;
     let result;
     await db.runTransaction(async tx=>{
       const doc=await tx.get(docRef),before=doc.data();
       if(LOCKED.has(clean(before.status)))throw Error('契約已送出或確認，請由管理者退回補件。');
       const templateDoc=data.action==='submit'?await tx.get(db.collection('externalTeacherContractTemplates').doc('current')):null;
-      const patch=pick(input,PROFILE_FIELDS.concat(SIGNED_FIELDS));
+      const patch=pick(input,PROFILE_FIELDS.concat(SIGNED_FIELDS));if(abilities)patch.teachingAbilities=abilities;
       const policy={kind:'teacher',id:data.id,token:data.token,previous:[before.signatureUrl,before.contractHtmlUrl,...(before.identityUrls||[])].filter(Boolean)};
       for(const field of ['signatureUrl','contractHtmlUrl'])if(patch[field])validateAssetUrl(patch[field],policy);
       if(patch.identityUrls){if(!Array.isArray(patch.identityUrls)||patch.identityUrls.length>4)throw Error('證件附件數量不正確。');for(const url of patch.identityUrls)validateAssetUrl(url,policy);}

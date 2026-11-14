@@ -1,0 +1,12 @@
+const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');const {JSDOM}=require('jsdom');
+const html=fs.readFileSync('external-teacher-onboarding.html','utf8');
+const dom=new JSDOM('<div id="teachingAbilityRows"></div><input id="teachingItems">');
+const code=html.slice(html.indexOf('function textValue('),html.indexOf('async function createOrResumeBinding'));
+const c=vm.createContext({document:dom.window.document,teachingSubjectCatalog:[{id:'jazz',name:'爵士鼓'},{id:'box',name:'木箱鼓'}],esc:s=>String(s),clearFieldError(){},saveDraft(){}});vm.runInContext(code,c);
+vm.runInContext("setTeachingAbilities([{subjectId:'jazz',item:'爵士鼓',level:'專業'}]);",c);
+assert.equal(dom.window.document.querySelector('.teaching-ability-item').tagName,'SELECT');
+assert.deepEqual(JSON.parse(JSON.stringify(vm.runInContext('getTeachingAbilities()',c))),[{subjectId:'jazz',item:'爵士鼓',level:'專業'}]);
+vm.runInContext("addTeachingAbilityRow({subjectId:'box',item:'木箱鼓',level:'普通'});",c);assert.equal(vm.runInContext('getTeachingAbilities().length',c),2);
+vm.runInContext("setTeachingAbilities([{item:'鼓',level:'專業'}]);",c);assert.equal(vm.runInContext('getTeachingAbilities().length',c),0);assert.match(dom.window.document.querySelector('select').textContent,/原資料「鼓」請重新選擇/);
+vm.runInContext("setTeachingAbilities([]);",c);assert.equal(dom.window.document.querySelector('.teaching-ability-level').value,'');
+console.log('PASS onboarding picker: official IDs and levels, multiple subjects, unresolved legacy warning, explicit level selection');

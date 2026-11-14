@@ -3405,6 +3405,7 @@ async function teacherUtilitySaveProfileDraft(data) {
       db,
       FieldValue,
       abilities: teachingAbilities,
+      requireExisting: true,
       approveNew: false,
       profileId,
       teacherId: clean(session.teacherId),

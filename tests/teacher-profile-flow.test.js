@@ -31,10 +31,10 @@ test('teacher profile is a stable standalone page, not a profile-and-contract wi
   assert.match(page, /id="profileMailingAddress"/);
   assert.match(page, /id="profileTeachingList"/);
   assert.match(page, /id="profileSubjectCatalog"/);
-  assert.match(page, /新項目會加入共用科目清單/);
+  assert.match(page, /請從正式科目清單選擇/);
   assert.match(page, /收費與老師拆帳由管理者另外設定/);
   assert.match(runtime, /teaching-level/);
-  assert.match(runtime, /subject\.setAttribute\('list', 'profileSubjectCatalog'\)/);
+  assert.match(runtime, /const subject = document\.createElement\('select'\)/);
   assert.match(runtime, /subjectId:\s*clean\(matched && matched\.id\) \|\| preservedId/);
   assert.match(runtime, /function renderSubjectCatalog\(\)/);
   assert.match(runtime, /Object\.freeze\(\['初學', '入門', '普通', '良好', '專業', '專精'\]\)/);
@@ -45,9 +45,9 @@ test('teacher profile is a stable standalone page, not a profile-and-contract wi
   assert.match(runtime, /function setBirthDateValue\(value\)/);
   assert.match(runtime, /document\.createElement\('select'\)/);
   assert.match(runtime, /請選擇程度/);
-  assert.match(runtime, /source\.proficiency\) \|\| '普通'/);
+  assert.match(runtime, /const savedLevel = clean\(source.level \|\| source.degree \|\| source.proficiency\)/);
   assert.doesNotMatch(runtime, /level\.placeholder\s*=|例如：初階～進階/);
-  assert.match(page, /teacher-profile\.js\?v=20261101-teacher-return/);
+  assert.match(page, /teacher-profile\.js\?v=20261114-subject-picker/);
   assert.match(page, /LINE/);
   assert.match(page, /Email/);
   assert.match(page, /profile-title-row[\s\S]*profileLineStatus[\s\S]*profileEmailStatus/);

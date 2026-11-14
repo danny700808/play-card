@@ -169,13 +169,15 @@
     subjectField.className = 'field';
     const subjectLabel = document.createElement('label');
     subjectLabel.textContent = '授課項目';
-    const subject = document.createElement('input');
+    const subject = document.createElement('select');
     subject.className = 'teaching-subject';
-    subject.setAttribute('list', 'profileSubjectCatalog');
-    subject.maxLength = 80;
-    subject.placeholder = '例如：鋼琴';
-    subject.value = clean(source.item || source.name || source.subject);
-    subject.dataset.subjectId = clean(source.subjectId || source.id);
+    const matched = subjectCatalogRows().find(row => row.id === source.subjectId || row.name === clean(source.item || source.name));
+    const prompt = document.createElement('option'); prompt.value='';
+    prompt.textContent = !matched && source.item ? `原資料「${source.item}」請重新選擇` : '請選擇授課科目';
+    subject.appendChild(prompt);
+    subjectCatalogRows().filter(row=>row.name!=='鼓').forEach(row=>{const option=document.createElement('option');option.value=row.name;option.textContent=row.name;subject.appendChild(option);});
+    subject.value = matched ? matched.name : '';
+    subject.dataset.subjectId = matched ? matched.id : '';
     subject.dataset.subjectName = subject.value;
     subjectField.append(subjectLabel, subject);
     const levelField = document.createElement('div');
@@ -184,7 +186,7 @@
     levelLabel.textContent = '程度';
     const level = document.createElement('select');
     level.className = 'teaching-level';
-    const savedLevel = clean(source.level || source.degree || source.proficiency) || '普通';
+    const savedLevel = clean(source.level || source.degree || source.proficiency);
     const placeholder = document.createElement('option');
     placeholder.value = '';
     placeholder.textContent = '請選擇程度';
@@ -391,6 +393,9 @@
   }
   async function payload() {
     const value = formValues();
+    const rows = document.querySelectorAll('#profileTeachingList .teaching-row');
+    if (!value.teachingAbilities.length || value.teachingAbilities.length !== rows.length || value.teachingAbilities.some(a=>!a.subjectId || !a.level)) throw new Error('請為每一列選擇授課科目與程度。');
+    if (new Set(value.teachingAbilities.map(a=>a.subjectId)).size !== value.teachingAbilities.length) throw new Error('同一授課科目只能選擇一次。');
     const files = pendingIdentityFiles.slice();
     if (files.length > 2) throw new Error('一次最多選擇 2 張照片。');
     value.identityImages = [];
