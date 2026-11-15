@@ -3,6 +3,7 @@ const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const admin = require('firebase-admin');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { recipientFields, notificationRecipientKey } = require('./portalNotificationPolicy');
+const { isRegistrationOnly } = require('./teacherRegistrationPolicy');
 const clean = value => String(value == null ? '' : value).trim();
 const BASE = 'https://danny700808.github.io/play-card';
 function registerPortalContractNotices(exports) {
@@ -84,10 +85,13 @@ function registerPortalContractNotices(exports) {
     } else recipients.push({ channel: 'line', target: 'admin', targetRole: 'admin', targetEmployeeId: 'PRIMARY_MANAGER_LINE', emailFallbackEnabled: true });
     for (let n = 0; n < recipients.length; n++) {
       const ref = db.collection('notificationQueue').doc(`contract-${legacy ? 'legacy' : 'assignment'}-${id}-${status}-${n}`);
-      const body = approved
+      const registrationApproved = legacy && approved && isRegistrationOnly(row);
+      const body = registrationApproved
+        ? `${name}老師您好，您的老師資料已通過審核，可進入老師課務入口。\n請至「其他 → 我的資料」補填本人台新銀行戶名與帳號；尚未開戶可使用頁面上的 Richart 線上開戶連結。\n契約尚未開放，日後另行通知簽署。\n${BASE}/teacher-course-portal.html`
+        : approved
         ? `${name}老師您好，您的契約已由柚子樂器確認生效。\n合約年度：${year}\n契約期間：${period}\n您可以至老師入口的「其他 → 合約」查看契約內容。\n${BASE}/teacher-course-portal.html`
         : `${name}老師已送出契約，等待管理者確認。\n合約年度：${year}\n契約期間：${period}\n${BASE}/external-teacher-admin.html`;
-      try { await ref.create({ ...recipients[n], title: approved ? '契約確認通知' : '老師合約待確認', body,
+      try { await ref.create({ ...recipients[n], title: registrationApproved ? '老師資料審核通過' : approved ? '契約確認通知' : '老師合約待確認', body,
         status: '待發送', source: 'portal-contract-confirmation', createdAt: admin.firestore.FieldValue.serverTimestamp() }); }
       catch (error) { if (String(error.code) !== '6' && !/already.exists/i.test(String(error.code))) throw error; }
     }

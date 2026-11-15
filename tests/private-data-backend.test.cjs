@@ -29,14 +29,12 @@ test('public registration cannot supply an active account or elevated role and c
   const results=await Promise.allSettled([api(payload),api(payload)]);assert.equal(results.filter(row=>row.status==='fulfilled'&&row.value.ok).length,1);
   const employees=[...f.rows].filter(([path])=>path.startsWith('employees/'));assert.equal(employees.length,1);assert.equal(employees[0][1].role,'staff');assert.equal(employees[0][1].accountStatus,'pending');assert.equal(employees[0][1].manager,undefined);
 });
-test('a teacher submits only their own attachments and the server-owned contract template',async()=>{
-  const f=database({'externalTeacherContracts/t1':{bindingCode:'secret',lineBindStatus:'bound',status:'waiting_contract',name:'Teacher',contractYear:2026},'externalTeacherContractTemplates/current':{title:'Template',version:'v2',clausesText:'Original terms'}});
-  const api=createLegacyTeacherForms({...f,baseUrl:'https://example.test/',queueManager:async(row,writer)=>writer.set(f.db.collection('notificationQueue').doc('teacher-submit'),row)});
-  const url=name=>'https://us-central1-youzi-c1b74.cloudfunctions.net/privateContractAssetHttp?'+new URLSearchParams({kind:'teacher',id:'t1',token:'secret',path:'external-teachers/t1/private/'+name+'.png'});
-  const request={id:'t1',token:'secret',action:'submit',record:{idNumber:'ID',signatureUrl:url('sig'),identityUrls:[url('id')],contractText:'Tampered terms',templateVersion:'fake'}};
-  await assert.rejects(api.update({...request,record:{...request.record,contractHtmlUrl:'javascript:alert(1)'}}));
-  const result=await api.update(request);assert.equal(result.record.contractText,'Original terms');assert.equal(result.record.templateVersion,'v2');assert(f.rows.has('notificationQueue/teacher-submit'));
-  await assert.rejects(api.update(request),/已送出/);
+test('legacy contract submissions remain closed even from a cached signing page',async()=>{
+  const f=database({'externalTeacherContracts/t1':{bindingCode:'secret',lineBindStatus:'bound',status:'waiting_contract',name:'Teacher'}});
+  const api=createLegacyTeacherForms({...f,baseUrl:'https://example.test/',queueManager:async()=>{}});
+  const before=structuredClone([...f.rows]);
+  await assert.rejects(api.update({id:'t1',token:'secret',action:'submit',record:{signatureUrl:'old-signature'}}),/契約尚未開放/);
+  assert.deepEqual([...f.rows],before);
 });
 test('notification preparation failure cannot leave a created employee or teacher contract behind',async()=>{
   const f=database(),fail=async()=>{throw Error('queue unavailable');};
