@@ -6,10 +6,9 @@
 <link rel="icon" href="enrollment-assets/assets/logo.png"><link rel="stylesheet" href="enrollment-assets/style.css">
 </head>
 <body>
-<div class="preview-banner">邀請測試 · 完成 LINE 授權後會送出報名</div>
 <header class="site-header"><span class="brand"><img src="enrollment-assets/assets/logo.png" alt="" width="42" height="48"><span>柚子樂器</span></span><h1>課程報名</h1></header>
 <main>
-<section id="accessPanel" class="panel narrow access-panel"><h2 id="accessHeading">正在確認報名連結</h2><p id="accessMessage" role="status">請稍候…</p><button type="button" class="secondary" id="retryAccess" hidden>重新嘗試</button><button type="button" class="text-button" id="returnToForm" hidden>返回表單重新確認</button></section>
+<section id="accessPanel" class="panel narrow access-panel"><h2 id="accessHeading">正在載入報名表</h2><p id="accessMessage" role="status">請稍候…</p><button type="button" class="secondary" id="retryAccess" hidden>重新嘗試</button><button type="button" class="text-button" id="returnToForm" hidden>返回表單重新確認</button></section>
 <nav class="progress" aria-label="報名步驟" hidden>
 <button type="button" data-step="1" aria-current="step"><span>1</span>選課程</button><i></i>
 <button type="button" data-step="2" disabled><span>2</span>時間與資料</button><i></i>
@@ -71,5 +70,5 @@
 </dialog>
 <dialog id="dateLimitDialog" class="info-dialog" aria-labelledby="dateLimitTitle"><h2 id="dateLimitTitle">這個日期還太遠囉</h2><p id="dateLimitMessage"></p><button type="button" class="primary full" data-close="dateLimitDialog">重新選擇日期</button></dialog>
 <dialog id="privacyDialog" class="info-dialog" aria-labelledby="privacyTitle"><button type="button" class="close-dialog icon-button" data-close="privacyDialog" aria-label="關閉資料使用說明">×</button><h2 id="privacyTitle">資料使用說明</h2><p>姓名、手機、Email、課程、希望上課的時間與其他需求，以及授權取得的 LINE 帳號識別資料，會提供柚子樂器處理報名、聯絡與排課。</p><p>勾選同意後，系統會暫存這份資料並帶你前往 LINE。成功授權並返回此頁後，才會正式送至教室後台；取消授權時，報名尚未完成。</p><p>授權期間，這個瀏覽器分頁會暫存填寫內容，方便取消後返回修改。完成後清除暫存內容；需要修改已送出的資料時，請聯絡教室。</p><button type="button" class="primary full" data-close="privacyDialog">我知道了</button></dialog>
-<script src="enrollment-assets/app.js"></script>
+<script src="enrollment-assets/app.js?v=20261116-direct"></script>
 </body></html>

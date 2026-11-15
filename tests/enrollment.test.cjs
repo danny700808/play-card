@@ -34,6 +34,19 @@ function harness(){
 test('server scheduling policy includes day 45 and correct weekday/weekend hours',()=>{
  const n=Date.parse('2026-11-15T04:15:00Z');for(const [d,t,expected] of [['2026-12-30','20:00',true],['2026-12-31','13:00',false],['2026-11-16','13:00',false],['2026-11-17','12:00',false],['2026-11-17','12:30',true],['2026-11-21','10:00',true],['2026-11-21','20:30',false],['2026-11-21','13:15',false],['2026-11-15','12:00',false],['2026-02-29','13:00',false]])assert.equal(dateValid(d,t,n),expected,d+' '+t);
 });
+test('direct visitor requires no invitation, but still needs consent and verified LINE plus browser proof',async()=>{
+ const h=harness();assert.equal((await h.publicApi({action:'status'})).consentVersion,CONSENT_VERSION);
+ await assert.rejects(h.start({token:''},{consent:false}),/同意/);assert.equal(h.count('oauth'),0);
+ const s=await h.start({token:''});assert.equal(h.count('invites'),0);assert.equal(h.count('records'),0);
+ const c=await h.callback(s);assert(c.ticket);assert.equal(h.count('records'),0);
+ await assert.rejects(h.publicApi({action:'redeem',ticket:c.ticket,verifier:random()}));
+ const r=await h.publicApi({action:'redeem',ticket:c.ticket,verifier:s.verifier}),again=await h.publicApi({action:'redeem',ticket:c.ticket,verifier:s.verifier});assert.equal(again.receiptId,r.receiptId);
+ const row=h.rows.get(C.records+'/'+r.receiptId);assert.equal(row.source,'direct');assert.equal(row.inviteId,'');assert.equal(h.count('records'),1);assert.equal(h.count('invites'),0);assert.equal(h.count('notificationQueue'),0);
+});
+test('direct visitors cannot bypass validation or the existing request rate limit',async()=>{
+ const h=harness();await assert.rejects(h.start({token:''},{returnUrl:'https://evil.invalid/'}));await assert.rejects(h.start({token:''},{form:{...h.form,date:'2026-11-16'}}));
+ for(let n=0;n<20;n++)await h.start({token:''});await assert.rejects(h.start({token:''}),/操作較頻繁/);assert.equal(h.count('records'),0);
+});
 test('invites and manager actions require actual authorization',async()=>{
  const h=harness();await assert.rejects(h.service.adminApi({data:{action:'list',role:'admin'}}),/管理者/);await assert.rejects(h.service.adminApi({auth:{uid:'student',token:{role:'student'}},data:{action:'createInvite'}}),/管理者/);
  await assert.rejects(h.publicApi({action:'inviteStatus',invite:random()}),/到期/);const i=await h.invitation();assert.equal(h.count('invites'),1);assert(!JSON.stringify([...h.rows]).includes(i.token));await h.publicApi({action:'inviteStatus',invite:i.token});

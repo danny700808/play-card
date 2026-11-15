@@ -3,7 +3,7 @@
 const $=id=>document.getElementById(id), courses=[];
 const assetBase=new URL('.',document.currentScript?.src||new URL('app.js',location.href));
 const API='https://asia-east1-youzi-c1b74.cloudfunctions.net/enrollmentPublicHttp',CONTEXT='youzi.enrollment.pending.v1',CONSENT_VERSION='enrollment-line-2026-11-15-v1';
-let inviteToken='',submitBusy=false;
+let submitBusy=false;
 let catalogLoaded=false;
 const state={step:1,category:'全部',search:'',course:null,plan:null,date:'',time:'',contact:null};
 const todayKey=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -175,7 +175,7 @@ $('privacyButton').onclick=()=>showDialog('privacyDialog');
 const random=()=>btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
 const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(b=>b.toString(16).padStart(2,'0')).join('');
 function readContext(){try{const c=JSON.parse(sessionStorage.getItem(CONTEXT)||'null');if(c&&c.expiresAt>Date.now())return c;sessionStorage.removeItem(CONTEXT);}catch(e){}return null;}
-function saveContext(c){try{sessionStorage.setItem(CONTEXT,JSON.stringify(c));}catch(e){throw new Error('請允許這個瀏覽器暫存表單，或改用 Safari／Chrome 開啟原邀請連結。');}}
+function saveContext(c){try{sessionStorage.setItem(CONTEXT,JSON.stringify(c));}catch(e){throw new Error('請允許這個瀏覽器暫存表單，或改用 Safari／Chrome 開啟報名網址。');}}
 async function request(action,data={}){
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),25000);
  try{const response=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'omit',body:JSON.stringify({action,...data}),signal:controller.signal});const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.message||'暫時無法連線，請稍後再試。');return result;}
@@ -188,10 +188,10 @@ async function prepareLine(){
  submitBusy=true;syncConsent();$('submitError').textContent='';
  try{
   const form={courseId:state.course.id,optionId:state.plan.id,date:state.date,time:state.time,...state.contact};
-  const previous=readContext(),same=previous?.form&&JSON.stringify(previous.form)===JSON.stringify(form)&&previous.invite===inviteToken;
-  const pending={invite:inviteToken,verifier:random(),submissionKey:same?previous.submissionKey:random(),form,expiresAt:Date.now()+30*60000};
+  const previous=readContext(),same=previous?.form&&JSON.stringify(previous.form)===JSON.stringify(form);
+  const pending={verifier:random(),submissionKey:same?previous.submissionKey:random(),form,expiresAt:Date.now()+30*60000};
   saveContext(pending);
-  const result=await request('start',{invite:inviteToken,form,consent:true,consentVersion:CONSENT_VERSION,challenge:await digest(pending.verifier),submissionKey:pending.submissionKey,returnUrl:location.origin+location.pathname});
+  const result=await request('start',{form,consent:true,consentVersion:CONSENT_VERSION,challenge:await digest(pending.verifier),submissionKey:pending.submissionKey,returnUrl:location.origin+location.pathname});
   const target=new URL(result.authorizationUrl);if(target.origin!=='https://access.line.me'||target.pathname!=='/oauth2/v2.1/authorize')throw new Error('LINE 連結無效，請重新嘗試。');
   return target.href;
  }catch(e){$('submitError').textContent=e.message;return null;}
@@ -207,11 +207,11 @@ function showCompletion(r){
  $('officialLine').href='https://lin.ee/Fx5Y2mL';window.scrollTo({top:0,behavior:'instant'});$('successHeading').focus({preventScroll:true});
 }
 function resetForm(){Object.assign(state,{step:1,category:'全部',search:'',course:null,plan:null,date:'',time:'',contact:null});$('detailsForm').reset();$('search').value='';$('dateYear').innerHTML='';$('dateMonth').innerHTML='';$('dateDay').innerHTML='';$('dateError').textContent='';$('timeError').textContent='';$('submitError').textContent='';resetConsent();}
-$('restart').onclick=async()=>{saveContext({invite:inviteToken,expiresAt:Date.now()+14*86400000});resetForm();await boot();};
+$('restart').onclick=async()=>{saveContext({expiresAt:Date.now()+30*60000});resetForm();await boot();};
 function access(heading,message,retry=false){
  for(let n=1;n<=4;n++)$('step'+n).hidden=true;
  document.querySelector('.progress').hidden=true;$('bottomBar').hidden=true;$('accessPanel').hidden=false;
- $('accessHeading').textContent=heading;$('accessMessage').textContent=message;$('retryAccess').hidden=!retry;$('returnToForm').hidden=!retry||!readContext()?.invite;
+ $('accessHeading').textContent=heading;$('accessMessage').textContent=message;$('retryAccess').hidden=!retry;$('returnToForm').hidden=!retry;
 }
 function restoreForm(p){
  const f=p.form;if(!f)return false;
@@ -221,22 +221,18 @@ function restoreForm(p){
  renderCatalog();go(slotsFor(f.date).includes(f.time)?3:2);return true;
 }
 async function boot(){
- access('正在確認報名連結','請稍候…');
- const fragment=new URLSearchParams(location.hash.slice(1));let pending=readContext();
- const incoming=fragment.get('invite');
- if(incoming){pending=pending?.invite===incoming?pending:{invite:incoming,expiresAt:Date.now()+14*86400000};}
- inviteToken=incoming||pending?.invite||'';
+ access('正在載入報名表','請稍候…');
+ const fragment=new URLSearchParams(location.hash.slice(1)),pending=readContext();
  const ticket=fragment.get('enrollmentTicket')||pending?.ticket,error=fragment.get('enrollmentError');
  try{
   if(ticket&&pending?.verifier){
    saveContext({...pending,ticket});history.replaceState(null,'',location.pathname+location.search);
    access('正在完成報名','LINE 授權已返回，正在確認送出結果…');
    const result=await request('redeem',{ticket,verifier:pending.verifier});
-   saveContext({invite:inviteToken,ticket,verifier:pending.verifier,expiresAt:Math.min(pending.expiresAt,Date.now()+9*60000)});showCompletion(result);return true;
+   saveContext({ticket,verifier:pending.verifier,expiresAt:Math.min(pending.expiresAt,Date.now()+9*60000)});showCompletion(result);return true;
   }
-  if(ticket){history.replaceState(null,'',location.pathname+location.search);throw new Error('請回到原本填寫報名表的瀏覽器完成，或重新開啟教室提供的邀請連結。');}
-  if(!inviteToken){access('目前採邀請測試','請使用教室提供的報名連結。');return false;}
-  await request('inviteStatus',{invite:inviteToken});saveContext(pending||{invite:inviteToken,expiresAt:Date.now()+14*86400000});
+  if(ticket){history.replaceState(null,'',location.pathname+location.search);throw new Error('請回到原本填寫報名表的瀏覽器完成，或返回表單重新填寫。');}
+  await request('status');
   if(location.hash)history.replaceState(null,'',location.pathname+location.search);
   $('accessPanel').hidden=true;go(1);
   const loaded=await loadCatalog();if(!loaded)return false;

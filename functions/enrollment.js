@@ -44,11 +44,11 @@ function createEnrollmentService({db,catalog,now=Date.now,stamp=()=>Date.now()})
   await db.runTransaction(async tx=>{const r=(await tx.get(ref)).data()||{},count=r.until>now()?r.count:0;if(count>=max)fail('操作較頻繁，請稍後再試。','resource-exhausted');tx.set(ref,{count:count+1,until:r.until>now()?r.until:now()+3600000,expiresAt:now()+86400000});});
  }
  async function start(d,request){
-  const i=await invite(d.invite);
+  const i=clean(d.invite)?await invite(d.invite):{key:''};
   if(d.consent!==true||d.consentVersion!==CONSENT_VERSION||!/^[a-f0-9]{64}$/.test(clean(d.challenge))||!token(d.submissionKey))fail('請先確認資料並勾選 LINE 綁定同意。','invalid-argument');
   const returnUrl=d.returnUrl===SITE?SITE:PAGE;
   if(d.returnUrl&&![PAGE,SITE].includes(d.returnUrl))fail('報名返回網址無效。','invalid-argument');
-  const f=await form(d.form);await rate('ip|'+clean(request?.ip||'unknown'),20);await rate('invite|'+i.key,150);
+  const f=await form(d.form);await rate('ip|'+clean(request?.ip||'unknown'),20);if(i.key)await rate('invite|'+i.key,150);
   const state='en_'+random(),oauthVerifier=random();
   await col('oauth').doc(hash(state)).create({status:'pending',form:f,inviteId:i.key,submissionKey:d.submissionKey,challenge:d.challenge,consentVersion:CONSENT_VERSION,consentAt:now(),returnUrl,callbackUrl:CALLBACK,oauthVerifier,createdAt:now(),expiresAt:now()+600000});
   const p=new URLSearchParams({response_type:'code',client_id:'2010902226',redirect_uri:CALLBACK,state,scope:'openid profile',bot_prompt:'normal',code_challenge:crypto.createHash('sha256').update(oauthVerifier).digest('base64url'),code_challenge_method:'S256'});
@@ -68,8 +68,8 @@ function createEnrollmentService({db,catalog,now=Date.now,stamp=()=>Date.now()})
    if(!/^U[a-f0-9]{32}$/i.test(p.lineUserId||''))fail('無法確認 LINE 帳號，請重新操作。');
    const grant=random();
    await db.runTransaction(async tx=>{
-    const fresh=(await tx.get(ref)).data(),i=(await tx.get(col('invites').doc(r.inviteId))).data();
-    if(fresh?.status!=='processing'||fresh.expiresAt<=now()||!activeInvite(i))fail('邀請或 LINE 驗證已失效，請重新操作。');
+    const fresh=(await tx.get(ref)).data(),i=r.inviteId?(await tx.get(col('invites').doc(r.inviteId))).data():null;
+    if(fresh?.status!=='processing'||fresh.expiresAt<=now()||(r.inviteId&&!activeInvite(i)))fail('LINE 驗證已失效，請重新操作。');
     tx.create(col('grants').doc(hash(grant)),{...r,oauthVerifier:'',status:'verified',profile:{lineUserId:p.lineUserId,lineDisplayName:clean(p.lineDisplayName).slice(0,100),lineFriendFlag:p.lineFriendFlag===true},expiresAt:now()+600000});
     tx.update(ref,{status:'complete',form:null,oauthVerifier:''});
    });
@@ -88,20 +88,21 @@ function createEnrollmentService({db,catalog,now=Date.now,stamp=()=>Date.now()})
   if(t.status!=='verified')fail('LINE 驗證尚未完成。');
   const f=await form(t.form);
   if(formKey(f)!==formKey(t.form))fail('課程資訊已更新，請重新確認報名。');
-  const key='enr-'+hash(t.inviteId+'|'+t.submissionKey).slice(0,32),recordRef=col('records').doc(key);
+  const key='enr-'+hash((t.inviteId||'direct')+'|'+t.submissionKey).slice(0,32),recordRef=col('records').doc(key);
   return db.runTransaction(async tx=>{
-   const g=(await tx.get(ref)).data(),ir=col('invites').doc(t.inviteId),i=(await tx.get(ir)).data(),existing=(await tx.get(recordRef)).data();
+   const g=(await tx.get(ref)).data(),ir=t.inviteId?col('invites').doc(t.inviteId):null,i=ir?(await tx.get(ir)).data():null,existing=(await tx.get(recordRef)).data();
    if(!g||g.challenge!==hash(d.verifier)||g.expiresAt<=now())fail('LINE 驗證已失效。');
    if(g.status==='used'&&existing)return receipt(existing,key);
-   if(g.status!=='verified'||!activeInvite(i))fail('測試邀請已失效，請聯絡教室。');
+   if(g.status!=='verified'||(ir&&!activeInvite(i)))fail('LINE 驗證或報名連結已失效，請重新操作。');
    if(existing&&(existing.line.lineUserId!==g.profile.lineUserId||formKey(existing.form)!==formKey(g.form)))fail('這份報名已經送出，請重新開始另一份報名。');
-   const r=existing||{form:g.form,line:g.profile,inviteId:g.inviteId,inviteLabel:i.label||'測試邀請',status:'received',version:1,consent:{version:g.consentVersion,acceptedAt:g.consentAt,verifiedAt:now()},createdAt:now(),updatedAt:now(),studentIds:[],messages:[],managerNote:''};
-   if(!existing){tx.create(recordRef,r);tx.update(ir,{usedCount:Number(i.usedCount||0)+1});}
+   const r=existing||{form:g.form,line:g.profile,inviteId:g.inviteId||'',inviteLabel:i?.label||'直接報名',source:ir?'legacy-invite':'direct',status:'received',version:1,consent:{version:g.consentVersion,acceptedAt:g.consentAt,verifiedAt:now()},createdAt:now(),updatedAt:now(),studentIds:[],messages:[],managerNote:''};
+   if(!existing){tx.create(recordRef,r);if(ir)tx.update(ir,{usedCount:Number(i.usedCount||0)+1});}
    tx.update(ref,{status:'used',form:null,profile:null,receiptId:key});
    return receipt(r,key);
   });
  }
  async function publicApi(d,req){
+  if(d.action==='status')return {consentVersion:CONSENT_VERSION,officialLineUrl:OFFICIAL_LINE};
   if(d.action==='inviteStatus'){const i=await invite(d.invite);return {label:i.row.label||'課程報名',consentVersion:CONSENT_VERSION,officialLineUrl:OFFICIAL_LINE};}
   if(d.action==='start')return start(d,req);
   if(d.action==='redeem')return redeem(d);

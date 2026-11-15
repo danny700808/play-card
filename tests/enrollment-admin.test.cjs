@@ -1,6 +1,6 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),{JSDOM,VirtualConsole}=require('jsdom');
-test('admin inbox requires manager session, creates invitation, escapes details, and explicitly admits student',async()=>{
+test('admin inbox requires manager session, offers a direct registration URL, escapes details, and explicitly admits student',async()=>{
  const errors=[],calls=[],vc=new VirtualConsole();vc.on('jsdomError',e=>errors.push(e.message));
  const dom=new JSDOM(fs.readFileSync('enrollment-admin.html','utf8'),{url:'https://danny700808.github.io/play-card/enrollment-admin.html',runScripts:'outside-only',virtualConsole:vc});
  const w=dom.window,d=w.document,$=id=>d.getElementById(id);let authorized=0,admitted=false;
@@ -18,13 +18,13 @@ test('admin inbox requires manager session, creates invitation, escapes details,
  w.confirm=()=>true;w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
  const settled=async()=>{for(let n=0;n<10;n++)await new Promise(r=>setImmediate(r));};
  w.eval(fs.readFileSync('enrollment-admin.js','utf8'));await settled();assert.match($('notice').textContent,/1 份/);assert.equal($('records').querySelectorAll('img').length,0);
- $('createInvite').click();await settled();assert.match($('inviteUrl').value,/#invite=/);assert.equal($('openInvite').href,$('inviteUrl').value);
+ assert.equal($('registrationUrl').value,'https://danny700808.github.io/play-card/enrollment.html');assert.equal($('openRegistration').href,$('registrationUrl').value);assert.equal($('createInvite'),null);assert(!calls.some(c=>['invites','createInvite'].includes(c.action)));
  d.querySelector('[data-open]').click();await settled();assert($('detailDialog').open);assert.equal($('detailContent').querySelectorAll('script,img').length,0);assert.match($('detailContent').textContent,/2800～3000/);
  $('admit').click();await settled();assert(admitted);assert.equal($('admit'),null);assert.match($('detailNotice').textContent,/建檔完成/);assert.equal(authorized,calls.length);assert(!calls.some(c=>c.action==='message'));assert.deepEqual(errors,[]);w.close();
 });
 test('native form loads all course image assets from its own asset directory and private data collections are not client allowlisted',()=>{
  const html=fs.readFileSync('enrollment.html','utf8'),js=fs.readFileSync('enrollment-assets/app.js','utf8');
- assert.match(html,/src="enrollment-assets\/app.js"/);assert.match(js,/document.currentScript/);assert(!html.includes('lineDialog'));assert.match(html,/id="accessPanel"/);
+ assert.match(html,/src="enrollment-assets\/app.js\?v=20261116-direct"/);assert.match(js,/document.currentScript/);assert(!html.includes('lineDialog'));assert.match(html,/id="accessPanel"/);
  for(let n=1;n<=23;n++)assert(fs.existsSync('enrollment-assets/assets/course-'+String(n).padStart(2,'0')+'.jpg'));
  const rules=fs.readFileSync('firestore.rules','utf8');assert(!/onlineEnrollment/.test(rules));assert.match(rules,/match \/\{document=\*\*\} \{\s+allow read, write: if false;/);
  const routes=require('../internal-workspace-routes');assert.deepEqual(routes.pageContext('/enrollment-admin.html','','').map(n=>n.id),['root','enrollment','online-enrollment']);

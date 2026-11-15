@@ -22,11 +22,6 @@ function render(){
  $('more').hidden=!cursor;
 }
 async function load(more=false){const r=await call('list',more?{cursor}:{});rows=more?rows.concat(r.records):r.records;cursor=r.nextCursor;render();$('notice').textContent='已載入 '+rows.length+' 份完成 LINE 綁定的報名。';}
-async function invitations(){
- const r=await call('invites');
- $('invites').innerHTML=r.invites.length?r.invites.map(v=>'<div class="row"><div>'+esc(v.label)+'<div class="meta">收到 '+v.usedCount+' 份 · '+(v.active&&v.expiresAt>Date.now()?'有效至 '+esc(date(v.expiresAt)):'已停用或到期')+'</div></div>'+(v.active?'<button class="secondary" data-revoke="'+esc(v.id)+'">停用</button>':'')+'</div>').join(''):'<p>尚未建立測試連結。</p>';
- $('invites').querySelectorAll('[data-revoke]').forEach(b=>b.onclick=()=>act(async()=>{await call('revokeInvite',{id:b.dataset.revoke});await invitations();$('notice').textContent='此測試連結已停用。';}));
-}
 async function openDetail(id){
  const data=await call('detail',{id});selected=data.record;const r=selected,f=r.form;
  $('detailTitle').textContent=f.name+(f.secondName?'、'+f.secondName:'')+'｜報名資料';$('detailNotice').textContent='';
@@ -44,7 +39,6 @@ async function openDetail(id){
 }
 $('closeDetail').onclick=()=>$('detailDialog').close();
 $('reload').onclick=()=>act(()=>load());$('more').onclick=()=>act(()=>load(true));$('search').oninput=render;$('statusFilter').onchange=render;
-$('createInvite').onclick=()=>act(async()=>{const r=await call('createInvite',{label:$('inviteLabel').value});$('newInvite').hidden=false;$('inviteUrl').value=r.url;$('openInvite').href=r.url;await invitations();$('notice').textContent='測試連結已建立，請複製後提供給測試者。';});
-$('copyInvite').onclick=async()=>{try{await navigator.clipboard.writeText($('inviteUrl').value);$('notice').textContent='已複製測試連結。';}catch(e){$('inviteUrl').select();$('notice').textContent='請長按或使用複製功能保存連結。';}};
-act(async()=>{await load();await invitations();});
+$('copyRegistration').onclick=async()=>{try{await navigator.clipboard.writeText($('registrationUrl').value);$('notice').textContent='已複製報名網址。';}catch(e){$('registrationUrl').select();$('notice').textContent='請長按或使用複製功能保存網址。';}};
+act(()=>load());
 })();
