@@ -16,7 +16,8 @@ function harness({fixture=database(),env={},tokenFails=false}={}){
     'firebase-admin':admin,crypto,
     './courseLoginPolicy':require('../functions/courseLoginPolicy'),
     './unifiedLogin':{createUnifiedLogin:()=>({issue:async()=> 'fixture-ticket'})},
-    './coursePortal':{}
+    './coursePortal':{},
+    './enrollment':{callback:async(req,res,{exchange,profile})=>{const token=await exchange('enrollment-code',TW,'browser-pkce-fixture');await profile(token.access_token);res.redirect(302,'https://danny700808.github.io/play-card/enrollment.html#enrollmentTicket=fixture');}}
   };
   vm.runInNewContext(source,{module,exports:module.exports,require:name=>{if(!(name in imports))throw Error('Unexpected import '+name);return imports[name];},process:{env},URL,URLSearchParams,Buffer,Date,setTimeout,console:{error(){}},fetch:async(url,options)=>{
     calls.push({url,options});
@@ -39,6 +40,11 @@ function harness({fixture=database(),env={},tokenFails=false}={}){
 test('new authorizations for all portal roles pin the exact Taiwan callback in server state',async()=>{
  const h=harness();
  for(const type of ['teacher','student','renter','unified']){const s=await h.start(type);assert.equal(s.url.searchParams.get('client_id'),'2010902226');assert.equal(s.url.searchParams.get('redirect_uri'),TW);assert.equal(s.row.callbackUrl,TW);assert.equal(s.row.type,type);}
+});
+
+test('enrollment state routes through verified LINE exchange and includes PKCE verifier',async()=>{
+ const h=harness(),r=await h.callback({state:'en_'+'e'.repeat(43),code:'fixture-code'});
+ assert.match(r.url,/enrollmentTicket/);const exchange=h.calls.find(c=>c.url.endsWith('/token'));const p=new URLSearchParams(exchange.options.body);assert.equal(p.get('code_verifier'),'browser-pkce-fixture');assert.equal(p.get('redirect_uri'),TW);assert(h.calls.some(c=>c.url.endsWith('/profile')));
 });
 test('pre-migration pending login without callback metadata still exchanges against the US URL',async()=>{
  const h=harness(),s=await h.start();delete s.row.callbackUrl;

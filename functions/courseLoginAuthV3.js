@@ -125,7 +125,7 @@ function lineQueryValue(req, key) {
   return clean(Array.isArray(value) ? value[0] : value);
 }
 
-async function exchangeLineAuthorizationCode(code, callbackUrl) {
+async function exchangeLineAuthorizationCode(code, callbackUrl, codeVerifier) {
   const secret = clean(LINE_LOGIN_CHANNEL_SECRET.value());
   if (!secret) throw new Error('LINE Login Channel secret 尚未設定。');
 
@@ -136,6 +136,7 @@ async function exchangeLineAuthorizationCode(code, callbackUrl) {
     client_id: LINE_LOGIN_CHANNEL_ID,
     client_secret: secret
   });
+  if (codeVerifier) body.set('code_verifier', codeVerifier);
   const response = await fetch('https://api.line.me/oauth2/v2.1/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -282,6 +283,7 @@ async function lineLoginCallback(req, res) {
   }
 
   const state = lineQueryValue(req, 'state');
+  if (state.startsWith('en_')) return require('./enrollment').callback(req, res, {exchange:exchangeLineAuthorizationCode,profile:lineLoginProfile});
   if (state.startsWith('sc_')) return require('./sharedCalendar').lineCallback(req, res, {exchange:exchangeLineAuthorizationCode,profile:lineLoginProfile});
   const code = lineQueryValue(req, 'code');
   const providerError = lineQueryValue(req, 'error');

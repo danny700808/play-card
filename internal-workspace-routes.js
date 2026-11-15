@@ -1,6 +1,7 @@
 /* Navigation only: permissions and business actions stay in their existing pages. */
 (function(root){
  const groups = {
+  "enrollment": {"label":"招生／線上報名","home":"enrollment-admin.html","links":[["報名收件匣與測試邀請","enrollment-admin.html"]],"pages":["enrollment-admin.html"]},
   "hr": {
     "label": "人事薪資",
     "home": "hr-payroll-settings-hub.html",
@@ -330,6 +331,7 @@
  const leaf=(id,label,href,extra)=>Object.assign({id,label,href},extra||{});
  const branch=(id,label,children,extra)=>Object.assign({id,label,children},extra||{});
  const tree=branch('root','管理工作區',[
+  branch('enrollment','招生／線上報名',[leaf('online-enrollment','報名收件匣與測試邀請','enrollment-admin.html')]),
   branch('people','人事',[
    branch('staff','專職人員',[
     leaf('staff-mobile','手機版檢視','dashboard.html?preview=staff'),
