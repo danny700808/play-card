@@ -2419,6 +2419,8 @@ async function rateLimitPublicForm(req,purpose){
   await db.runTransaction(async tx=>{const doc=await tx.get(ref),row=doc.exists?doc.data():{},recent=now-Number(row.startedAt||0)<3600000,count=recent?Number(row.count||0):0;if(count>=20)throw new Error('操作過於頻繁，請稍後再試。');tx.set(ref,{startedAt:recent?row.startedAt:now,count:count+1,expiresAt:admin.firestore.Timestamp.fromMillis(now+7200000)});});
 }
 exports.legacyTeacherTemplateHttp=httpEndpoint(()=>legacyTeacherForms.template());
+const enrollmentCatalog=require('./enrollmentCatalog').createEnrollmentCatalog({db});
+exports.enrollmentCatalogHttp=httpEndpoint(()=>enrollmentCatalog());
 exports.legacyTeacherReadHttp=httpEndpoint(data=>legacyTeacherForms.read(data));
 exports.legacyTeacherCreateHttp=httpEndpoint(async(data,req)=>{await rateLimitPublicForm(req,'teacher-create');return legacyTeacherForms.create(data);});
 exports.legacyTeacherUpdateHttp=httpEndpoint(data=>legacyTeacherForms.update(data));
