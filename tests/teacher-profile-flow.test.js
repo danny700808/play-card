@@ -228,3 +228,10 @@ test('all manager contract links use the current annual contract manager', () =>
   assert.match(rules, /match \/teacherContractAssignments\/\{document=\*\*\} \{ allow read, write: if isManagerAuth\(\); \}/);
   assert.match(rules, /match \/teacherContractPrivateSnapshots\/\{document=\*\*\} \{ allow read, write: if false; \}/);
 });
+
+test('onboarding inline scripts compile as complete scripts before any form is shown', () => {
+  const page=read('external-teacher-onboarding.html');
+  for(const match of page.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)) {
+    assert.doesNotThrow(()=>new vm.Script(match[1]),'The whole onboarding script must parse, including shared top-level declarations');
+  }
+});
