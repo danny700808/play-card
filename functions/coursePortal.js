@@ -10531,7 +10531,7 @@ async function adminSaveLeaveReason(data) {
   return {ok:true};
 }
 
-async function adminSaveSchedule(data) {
+async function adminSaveSchedule(data, integration = {}) {
   const raw = data.event || {}, operationId = clean(data.operationId), mode = clean(data.mode || 'save');
   if (!/^[A-Za-z0-9_-]{1,160}$/.test(operationId) || !['save', 'delete', 'permanent_move'].includes(mode)) throw new HttpsError('invalid-argument', '排課操作識別碼無效。');
   const date = dateKey(raw.date), startTime = clean(raw.start || raw.startTime), duration = Number(raw.duration || raw.durationMinutes);
@@ -10597,7 +10597,8 @@ async function adminSaveSchedule(data) {
   const recurrenceEndDate = dateKey(data.repeatUntil);
   if (recurrenceEndDate && recurrenceEndDate < date) throw new HttpsError('invalid-argument', '結束日期不可早於開始日期。');
   const through = recurring ? (recurrenceEndDate && recurrenceEndDate < addDays(date, 180) ? recurrenceEndDate : addDays(date, 180)) : date;
-  const [bundle, roomSettings, policy, changes] = await Promise.all([scheduleBundle(date, through, teacherId, { adminWrite: true, studentIds: [...studentIds, clean(raw.renterStudentId)].filter(Boolean) }), db.collection('coursePortalRoomSettings').doc(roomId).get(), rentalPolicySettings(), clean(data.sourceEventId) || clean(data.sourceCourseId) ? db.collection('coursePortalScheduleChanges').where('active','==',true).get() : Promise.resolve({docs:[]})]);
+  const conflictStudentIds = [...new Set([...studentIds,...(integration.conflictStudentIds || [])])];
+  const [bundle, roomSettings, policy, changes] = await Promise.all([scheduleBundle(date, through, teacherId, { adminWrite: true, studentIds: [...conflictStudentIds, clean(raw.renterStudentId)].filter(Boolean) }), db.collection('coursePortalRoomSettings').doc(roomId).get(), rentalPolicySettings(), clean(data.sourceEventId) || clean(data.sourceCourseId) ? db.collection('coursePortalScheduleChanges').where('active','==',true).get() : Promise.resolve({docs:[]})]);
   let original = null;
   if (clean(data.sourceEventId) || clean(data.sourceCourseId)) {
     const sourceDate = dateKey(data.sourceDate) || date;
@@ -10616,11 +10617,13 @@ async function adminSaveSchedule(data) {
   if (!selectedRoom || !sourceActive(selectedRoom)) throw new HttpsError('failed-precondition', '教室不存在或已停用。');
   if (type !== 'rental' && (!bundle.maps.teachers[teacherId] || !sourceActive(bundle.maps.teachers[teacherId]) || !bundle.maps.subjects[subjectId])) throw new HttpsError('failed-precondition', '老師或科目已停用。');
   if (newStudent) bundle.maps.students[newStudent.id] = newStudent;
+  for(const student of integration.virtualStudents || []) bundle.maps.students[student.id] = student;
   if (studentIds.some(id => !bundle.maps.students[id])) throw new HttpsError('failed-precondition', '學生資料不存在。');
   const renterStudentId = type === 'rental' ? clean(raw.renterStudentId) : '';
   if (renterStudentId && !bundle.maps.students[renterStudentId]) throw new HttpsError('failed-precondition', '找不到所選學生，請重新搜尋。');
   const teacherSubjects = firstArray(bundle.maps.teachers[teacherId] || {}, ['subjectIds']);
   if (type !== 'rental' && teacherSubjects.length && !teacherSubjects.includes(subjectId)) throw new HttpsError('failed-precondition', '老師沒有此科目的授課設定。');
+  if(integration.requireTeacherSubject&&!teacherSubjects.includes(subjectId))throw new HttpsError('failed-precondition','老師授課科目剛剛有變更，請重新選擇。');
   if (type !== 'rental' && !roomSupportsSubject(selectedRoom, subjectId, bundle, setting)) throw new HttpsError('failed-precondition', '教室不適合所選科目。');
   const resourceIds = requestedSubjectResourceIds(subjectId, bundle);
   const closureCheckDates=[];
@@ -10639,7 +10642,7 @@ async function adminSaveSchedule(data) {
       if (!explicitlyOpen) throw new HttpsError('failed-precondition', `${day} 不在開放排課時段內，請在教室設定開放完整上課時段。`);
     }
     if (!roomAllowsInterval(selectedRoom, setting, day, startTime, endTime, subjectId, type === 'rental' ? 'rental' : 'schedule')) throw new HttpsError('failed-precondition', `${day} 教室時段規則不允許此安排。`);
-    const conflict = bundle.resourceEvents.find(row => row.date === day && eventBlocksResource(row) && (!original || row.id !== original.id) && overlaps(startTime,endTime,row.startTime,row.endTime) && (row.roomId === roomId || teacherId && row.teacherId === teacherId || (row.studentIds || []).some(id => studentIds.includes(id)) || sharedResourceConflict([row],resourceIds)));
+    const conflict = bundle.resourceEvents.find(row => row.date === day && eventBlocksResource(row) && (!original || row.id !== original.id) && overlaps(startTime,endTime,row.startTime,row.endTime) && (row.roomId === roomId || teacherId && row.teacherId === teacherId || (row.studentIds || []).some(id => conflictStudentIds.includes(id)) || sharedResourceConflict([row],resourceIds)));
     if (conflict) throw new HttpsError('already-exists', `${day} 的教室、老師、學生或共用樂器已被占用。`);
   }
   if (mode !== 'delete' && ['fixed','single'].includes(type) && duration === 30 && (!original || eventLessonUnits(original) !== 0.5) && raw.halfHourAcknowledged !== true) throw new HttpsError('failed-precondition', '請先確認30分鐘增課提醒，並於接下來四堂課內再安排30分鐘。');
@@ -10668,6 +10671,9 @@ async function adminSaveSchedule(data) {
       return;
     }
     if (Number(version.data()?.version || 0) !== expectedVersion) throw new HttpsError('aborted', '課表剛剛已更新，請重新載入後再確認空位。');
+    // Internal hooks are supplied by the verified enrollment service, never by callable JSON.
+    // Complete every integration read before the scheduler starts any writes.
+    const applyIntegration = integration.prepare ? await integration.prepare(tx,{id,event,course:payload,tuitionPeriod:enrollmentPeriod}) : null;
     if (enrollmentPeriod) {
       const periodRef = db.collection(TUITION_PERIODS).doc(enrollmentPeriod.id);
       const existingPeriod = await tx.get(periodRef);
@@ -10685,6 +10691,7 @@ async function adminSaveSchedule(data) {
       tx.create(periodRef,{...enrollmentPeriod,updatedAt:FieldValue.serverTimestamp()});
     }
     for (const doc of superseded) tx.set(doc.ref,{active:false,supersededBy:id,updatedAt:FieldValue.serverTimestamp()},{merge:true});
+    if(applyIntegration)applyIntegration(tx);
     tx.create(target,{...payload,requestHash,createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
     tx.set(scheduleVersionRef(),{version:expectedVersion+1,updatedAt:FieldValue.serverTimestamp(),updatedBy:'manager-schedule'},{merge:true});
   });
@@ -13678,6 +13685,19 @@ async function managerScheduleCatalog() {
   return {ok:true,feePlans,subjects,teachers};
 }
 
+async function enrollmentScheduleContext() {
+ return withPortalReads(async()=>{
+  const [catalog,rooms,settings,groups]=await Promise.all([managerScheduleCatalog(),mirrorRows('rooms'),db.collection('coursePortalRoomSettings').get(),readCourseGroups()]);
+  const subjects=catalog.subjects.filter(sourceActive).map(s=>({id:sourceId(s),name:clean(s.name)}));
+  const bundle={maps:{subjects:Object.fromEntries(subjects.map(s=>[s.id,s]))}},byRoom=new Map(settings.docs.map(d=>[d.id,d.data()]));
+  return {subjects,teachers:catalog.teachers.filter(sourceActive).map(t=>({id:sourceId(t),name:clean(t.name),subjectIds:firstArray(t,['subjectIds'])})),
+   feePlans:catalog.feePlans.filter(p=>sourceActive(p)&&p.listed!==false&&feePlanConfigured(p)).map(p=>({id:sourceId(p),subjectId:clean(p.subjectId),name:clean(p.name),amount:Number(p.amount),lessonCount:Number(p.lessonCount),splitType:clean(p.splitType),splitValue:Number(p.splitValue||0)})),
+   rooms:rooms.filter(r=>sourceActive(r)&&roomKind(r)!=='holding').map(r=>({id:sourceId(r),name:clean(r.name),subjectIds:subjects.filter(s=>roomSupportsSubject(r,s.id,bundle,byRoom.get(sourceId(r))||{})).map(s=>s.id)})),groups};
+ })();
+}
+
+async function commitEnrollmentSchedule(data,integration){return withPortalReads(()=>adminSaveSchedule(data,integration))();}
+
 // Counts use the same resolved calendar as the timetable; search never loads it.
 function studentEnrollmentCounts(bundle, day, groups = [], profiles = [], listKind = '') {
   const regular=new Map(),irregular=new Map();
@@ -14073,6 +14093,8 @@ function registerCoursePortal(exportsObject, helpers = {}) {
 }
 
 module.exports = {
+  enrollmentScheduleContext,
+  commitEnrollmentSchedule,
   mobileTeacherRoster,
   mobileTeacherRead,
   mobilePortalRead,

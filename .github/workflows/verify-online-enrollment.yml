@@ -1,0 +1,36 @@
+name: Verify Online Enrollment
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'enrollment*.html'
+      - 'enrollment*.js'
+      - 'enrollment*.css'
+      - 'enrollment-assets/**'
+      - 'functions/enrollment*.js'
+      - 'functions/coursePortal.js'
+      - 'functions/courseLoginAuthV3.js'
+      - 'tests/enrollment*.cjs'
+      - 'tests/course-manager-schedule.test.js'
+      - '.github/workflows/verify-online-enrollment.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: npm ci --prefix functions --ignore-scripts --no-audit --no-fund
+      - run: npm install --prefix "$RUNNER_TEMP/enrollment-tests" --ignore-scripts --no-audit --no-fund jsdom@30.1.1
+      - name: Verify enrollment and shared scheduling
+        run: |
+          node --check functions/enrollmentScheduling.js
+          node --check enrollment-scheduling-ui.js
+          NODE_PATH="$RUNNER_TEMP/enrollment-tests/node_modules" node --test tests/enrollment.test.cjs tests/enrollment-scheduling.test.cjs tests/enrollment-admin.test.cjs tests/course-manager-schedule.test.js tests/course-login-region-migration.test.cjs tests/management-tree.test.cjs

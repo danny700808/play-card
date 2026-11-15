@@ -6,7 +6,11 @@
 
 服務端驗證同意版本、課程、班別、時段及聯絡資料，並保留操作頻率限制。OAuth 採 PKCE，另以瀏覽器持有的 verifier 兌換完成授權的短效 ticket。使用者授權並返回原分頁後才產生正式報名紀錄；分頁暫存姓名電話在成功後清除。不保存 LINE access token。原有邀請流程僅保留相容已開始的舊授權，不再由新表單或後台產生。
 
-後台可核對資料、記錄聯絡進度、明確選擇新建或連結既有學生，再進原課務系統排課。相同姓名／電話只是候選提示，不會自動合併。每次建檔與人工 LINE 訊息有重複防護；收件、授權及建檔本身不會寄訊息。只有管理者確認發送時，才進入既有 notificationQueue。未確認為官方 LINE 好友者可先用電話或官方 LINE 後台聯絡。佇列的「已發送」不代表已讀。
+後台可核對資料、記錄聯絡進度、明確選擇新建或連結既有學生，並直接編輯正式課程的科目、老師、日期、時間、教室、固定頻率及收費方案。原始報名資料保留不覆寫；「儲存安排」只存草稿。勾選已與學生確認安排後，「確認排課」會沿用既有排課檢查，將學生、LINE 綁定、固定課程、未繳費期別及報名狀態一次寫入。相同姓名／電話只是候選提示，不會自動合併。
+
+同一份報名使用固定的排課操作編號及版本檢查，重試不會多建課程或學費。預設每週固定上課，也可選隔週；後續期別沿用原課務規則。新雙人班保留兩位學生與 LINE 綁定，共用一個課程和學費期別。已有其他分組的學生，必須先在課務確認分組，避免影響既有課程。已確認的排課顯示結果，後續調課導回正式課表。
+
+收件、授權、建檔及排課本身不寄 LINE 訊息；只有管理者確認發送時，才進入既有 notificationQueue。未確認為官方 LINE 好友者可先用電話或官方 LINE 後台聯絡。佇列的「已發送」不代表已讀。
 
 新集合 `onlineEnrollmentInvites`、`onlineEnrollmentOAuth`、`onlineEnrollmentGrants`、`onlineEnrollmentSubmissions`、`onlineEnrollmentLimits` 不在前端 Firestore allowlist，僅由 Admin SDK 存取。過期授權及頻率限制資料每日清理，正式報名不隨暫存清理。
 
@@ -16,8 +20,8 @@ Firebase 精準部署：`enrollmentPublicHttp`、`enrollmentAdmin`、`enrollment
 
 前端 `enrollment.html` 和 `enrollment-assets/` 是 enrollment preview Site 的 `dist/` 同版副本，HTML 的 CSS、JS、logo 路徑改為 `enrollment-assets/`；JS 以自身 script URL 解析課程圖片。修改時同步更新兩份並保持 Sites 的 owner-only 分享設定。對外填寫與朋友測試一律使用原 GitHub 系統的固定報名網址。
 
-測試：`node --test tests/enrollment.test.cjs tests/enrollment-admin.test.cjs tests/course-login-region-migration.test.cjs tests/management-tree.test.cjs`。Site 另有 `test-flow.cjs`（可用 `LIVE_CATALOG=1` 檢查正式科目資料）。涵蓋取消、重複、過期、撤回邀請、資料變更、LINE proof、安全登入、確認建檔及管理畫面。
+測試：`node --test tests/enrollment.test.cjs tests/enrollment-scheduling.test.cjs tests/enrollment-admin.test.cjs tests/course-manager-schedule.test.js tests/course-login-region-migration.test.cjs tests/management-tree.test.cjs`。Site 另有 `test-flow.cjs`（可用 `LIVE_CATALOG=1` 檢查正式科目資料）。排課測試執行真正的共用排課函式，驗證衝突、交易失敗、重複及並行操作不留下部分建檔，並驗證收費方案變更、學生分組與管理畫面。
 
 測試資料使用隔離記憶體資料庫，不發送真實通知。上線冒煙測試以無邀請、無登入狀態開始及取消授權，不建立正式報名；真實手機 LINE 授權成功仍需填寫者自行完成。
 
-目前確認建檔後仍需前往既有課務頁安排正式課程。將老師、日期時間、科目及方案編輯整合成報名後台的一次確認排課，是使用者另提出、尚待確認實作的後續流程。
+排課整合由 `enrollmentScheduling.js` 組織，`coursePortal.js` 僅增加內部交易掛鉤及共用選單橋接，不接受前端傳入掛鉤。`enrollmentAdmin` 為 180 秒／1 GiB；只需精準部署此函式即可發布排課後台變更。瀏覽器新選單使用 `enrollment-scheduling-ui.js`，無修改公開招生頁或 LINE 授權流程。

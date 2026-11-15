@@ -26,7 +26,7 @@ function assertManager(r){
  if(!r?.auth?.uid||!(t.admin===true||t.manager===true||t.owner===true||['admin','manager','owner','主管','管理者'].includes(role)||clean(t.email).toLowerCase()==='danny700808@gmail.com'))fail('請先以管理者帳號登入。','permission-denied');
  return clean(t.email||r.auth.uid);
 }
-function createEnrollmentService({db,catalog,now=Date.now,stamp=()=>Date.now()}){
+function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Date.now()}){
  const col=k=>db.collection(C[k]),row=async(k,key)=>(await col(k).doc(key).get()).data();
  function activeInvite(r){return r&&r.active===true&&r.expiresAt>now()&&Number(r.usedCount||0)<Number(r.maxSubmissions||100);}
  async function invite(raw){if(!token(raw))fail('請使用教室提供的測試邀請連結。','permission-denied');const key=hash(raw),r=await row('invites',key);if(!activeInvite(r))fail('這個測試邀請已到期或停止使用，請聯絡教室。','permission-denied');return {key,row:r};}
@@ -134,12 +134,13 @@ function createEnrollmentService({db,catalog,now=Date.now,stamp=()=>Date.now()})
   }
   if(!id(d.id))fail('報名編號無效。','invalid-argument');
   const ref=col('records').doc(d.id),r=(await ref.get()).data();if(!r)fail('找不到這份報名。','not-found');
+  if(['scheduleOptions','saveScheduleDraft','confirmSchedule'].includes(d.action))return require('./enrollmentScheduling').createEnrollmentScheduling({db,scheduler,matches,now,stamp}).run(d,r,actor);
   if(d.action==='detail'){
    const messages=await Promise.all((r.messages||[]).slice(-30).map(async m=>{const q=(await db.collection('notificationQueue').doc(m.queueId).get()).data()||{};return {...m,status:q.status||'待發送',error:q.lastError||''};}));
    return {record:{id:d.id,...r,messages},matches:await matches(r)};
   }
   if(d.action==='update'){
-   if(!['received','contacted','admitted','closed'].includes(d.status)||(d.status==='admitted'&&!r.studentIds?.length))fail('處理狀態無效。');
+   if(!['received','contacted','admitted','scheduled','closed'].includes(d.status)||(d.status==='admitted'&&!r.studentIds?.length)||(d.status==='scheduled'&&!r.schedule)||(r.schedule&&!['scheduled','closed'].includes(d.status)))fail('處理狀態無效。');
    const note=clean(d.note);if(note.length>2000)fail('備註最多 2000 字。');
    await db.runTransaction(async tx=>{const v=(await tx.get(ref)).data();if(v.version!==d.version)fail('資料已更新，請重新開啟。','aborted');tx.update(ref,{status:d.status,managerNote:note,version:v.version+1,updatedAt:now(),updatedBy:actor});});return {ok:true};
   }
@@ -188,7 +189,7 @@ function createEnrollmentService({db,catalog,now=Date.now,stamp=()=>Date.now()})
 let service;
 function instance(){
  if(service)return service;const admin=require('firebase-admin');if(!admin.apps.length)admin.initializeApp();const db=admin.firestore();
- service=createEnrollmentService({db,catalog:require('./enrollmentCatalog').createEnrollmentCatalog({db}),stamp:()=>admin.firestore.FieldValue.serverTimestamp()});return service;
+ service=createEnrollmentService({db,catalog:require('./enrollmentCatalog').createEnrollmentCatalog({db}),scheduler:{context:()=>require('./coursePortal').enrollmentScheduleContext(),commit:(data,integration)=>require('./coursePortal').commitEnrollmentSchedule(data,integration)},stamp:()=>admin.firestore.FieldValue.serverTimestamp()});return service;
 }
 function register(exports){
  const origins=['https://danny700808.github.io',new URL(SITE).origin,/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/];
@@ -197,7 +198,7 @@ function register(exports){
   try{if((req.rawBody?.length||0)>20000)fail('表單內容過大。','invalid-argument');const result=await instance().publicApi(req.body||{},req);res.json({ok:true,...result});}
   catch(e){const status=e.code==='permission-denied'?403:e.code==='resource-exhausted'?429:400;res.status(status).json({ok:false,message:e instanceof HttpsError?e.message:'暫時無法處理，請稍後再試。'});}
  });
- exports.enrollmentAdmin=onCall({region:['asia-east1','us-central1'],cors:origins,timeoutSeconds:60,memory:'256MiB'},r=>instance().adminApi(r));
+ exports.enrollmentAdmin=onCall({region:['asia-east1','us-central1'],cors:origins,timeoutSeconds:180,memory:'1GiB'},r=>instance().adminApi(r));
  exports.enrollmentCleanup=onSchedule({region:'asia-east1',schedule:'every day 04:30',timeZone:'Asia/Taipei'},()=>instance().cleanup());
 }
 module.exports={register,createEnrollmentService,callback:(req,res,deps)=>instance().callback(req,res,deps),dateValid,assertManager,CONSENT_VERSION,PAGE,SITE,C};
