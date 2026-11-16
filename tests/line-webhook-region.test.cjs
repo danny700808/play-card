@@ -33,7 +33,7 @@ test('distinct event IDs and channels do not suppress legitimate new events',asy
 test('missing event identifier cannot reach a business handler',async()=>{
  const f=database();let count=0;await assert.rejects(processor(f).run({...event,webhookEventId:''},async()=>{count++;}));assert.equal(count,0);assert.equal(f.rows.size,0);
 });
-const source=fs.readFileSync('functions/index.js','utf8');
+const source=fs.readFileSync('functions/index.js','utf8').replace(/\r\n/g,'\n');
 test('signature verification authenticates raw bytes and rejects missing, forged or altered bodies',()=>{
  const start=source.indexOf('function validLineWebhookSignature'),end=source.indexOf('const lineWebhookEvents',start);
  const c={normalizeText:v=>String(v||'').trim(),LINE_CHANNEL_SECRET:{value:()=> 'fixture-secret'},process:{env:{}},crypto,Buffer};vm.runInNewContext(source.slice(start,end),c);

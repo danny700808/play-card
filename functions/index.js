@@ -2249,6 +2249,10 @@ function validLineWebhookSignature(req) {
 }
 
 const lineWebhookEvents = require('./lineWebhookEvents').createLineWebhookEvents({db,FieldValue:admin.firestore.FieldValue,channelId:'2006335686',region:process.env.FUNCTION_REGION});
+const handleTeacherRegistrationLineEvent = require('./teacherRegistrationLineBinding').createTeacherRegistrationLineBinding({
+  db, FieldValue: admin.firestore.FieldValue, replyLineMessage, getLineProfile,
+  getPrimaryManagerLineRecipient, baseUrl: webBaseUrl()
+});
 async function handleLineWebhookMessage(event) {
   if (event.type !== 'message') return;
   if (!event.message || event.message.type !== 'text') return;
@@ -2258,6 +2262,8 @@ async function handleLineWebhookMessage(event) {
   const replyToken = event.replyToken;
 
   if (await require('./sharedCalendarLine').createSharedLine({db}).handle(event, replyLineMessage)) return;
+
+  if (await handleTeacherRegistrationLineEvent(event)) return;
 
   if (await handleExternalTeacherLineEvent(event)) {
     return;

@@ -1,0 +1,40 @@
+name: Verify Teacher Registration LINE
+on:
+  push:
+    branches: [main]
+    paths:
+      - functions/teacherRegistrationLineBinding.js
+      - functions/teacherApprovalSync.js
+      - functions/teacherRegistrationPolicy.js
+      - functions/legacyTeacherForms.js
+      - functions/index.js
+      - tests/teacher-registration-*.cjs
+      - tests/teacher-approval-sync.test.cjs
+      - tests/line-webhook-region.test.cjs
+      - .github/workflows/verify-teacher-registration-line.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - functions/teacherRegistrationLineBinding.js
+      - functions/teacherApprovalSync.js
+      - functions/teacherRegistrationPolicy.js
+      - functions/legacyTeacherForms.js
+      - functions/index.js
+      - tests/teacher-registration-*.cjs
+      - tests/teacher-approval-sync.test.cjs
+      - tests/line-webhook-region.test.cjs
+      - .github/workflows/verify-teacher-registration-line.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix functions --ignore-scripts
+      - run: node --test tests/teacher-registration-line-binding.test.cjs tests/teacher-registration-only.test.cjs tests/teacher-approval-sync.test.cjs tests/line-webhook-region.test.cjs
