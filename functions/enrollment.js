@@ -143,7 +143,9 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
    const messages=await Promise.all((r.messages||[]).slice(-30).map(async m=>{const q=(await db.collection('notificationQueue').doc(m.queueId).get()).data()||{};return {...m,status:q.status||'待發送',error:q.lastError||''};}));
    const notice=r.managerNotification?.queueId?(await db.collection('notificationQueue').doc(r.managerNotification.queueId).get()).data():null;
    const managerNotification={queueId:r.managerNotification?.queueId||'',status:notice?.status||'尚未建立通知',error:notice?.lastError||'',sentAt:notice?.sentAt||null};
-   return {record:{id:d.id,...r,messages,managerNotification},matches:await matches(r)};
+   const confirmation=r.confirmationNotification?.queueId?(await db.collection('notificationQueue').doc(r.confirmationNotification.queueId).get()).data():null;
+   const confirmationNotification={...r.confirmationNotification,status:confirmation?.status||'尚未建立通知',error:confirmation?.lastError||'',sentAt:confirmation?.sentAt||null};
+   return {record:{id:d.id,...r,messages,managerNotification,confirmationNotification},matches:await matches(r)};
   }
   if(d.action==='update'){
    if(!['received','contacted','admitted','scheduled','closed'].includes(d.status)||(d.status==='admitted'&&!r.studentIds?.length)||(d.status==='scheduled'&&!r.schedule)||(r.schedule&&!['scheduled','closed'].includes(d.status)))fail('處理狀態無效。');

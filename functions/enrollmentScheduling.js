@@ -1,12 +1,13 @@
 'use strict';
 const crypto=require('crypto'),{HttpsError}=require('firebase-functions/v2/https');
+const confirmationMessage=require('./enrollmentConfirmationMessage');
 const clean=v=>String(v??'').trim(),hash=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
 const fail=(message,code='failed-precondition')=>{throw new HttpsError(code,message);};
 const planView=p=>({id:clean(p?.id),name:clean(p?.name),amount:Number(p?.amount),lessonCount:Number(p?.lessonCount),splitType:clean(p?.splitType),splitValue:Number(p?.splitValue||0)});
 const samePlan=(a,b)=>JSON.stringify(planView(a))===JSON.stringify(planView(b));
 function normalizeDraft(value={}){
- const d={subjectId:clean(value.subjectId),teacherId:clean(value.teacherId),roomId:clean(value.roomId),planId:clean(value.planId),date:clean(value.date),time:clean(value.time),duration:Number(value.duration||60),frequency:clean(value.frequency||'weekly'),note:clean(value.note),studentIds:Array.isArray(value.studentIds)?value.studentIds.map(clean):[],halfHourAcknowledged:value.halfHourAcknowledged===true};
- if([d.subjectId,d.teacherId,d.roomId,d.planId,...d.studentIds].some(v=>v&&!/^[\w-]{1,130}$/.test(v))||d.studentIds.length>2||d.note.length>1000||![30,60,90,120].includes(d.duration)||!['weekly','biweekly'].includes(d.frequency))fail('排課資料格式無效。');
+ const d={subjectId:clean(value.subjectId),teacherId:clean(value.teacherId),roomId:clean(value.roomId),planId:clean(value.planId),date:clean(value.date),time:clean(value.time),duration:Number(value.duration||60),frequency:clean(value.frequency||'weekly'),note:clean(value.note),studentMessageNote:clean(value.studentMessageNote),studentIds:Array.isArray(value.studentIds)?value.studentIds.map(clean):[],halfHourAcknowledged:value.halfHourAcknowledged===true};
+ if([d.subjectId,d.teacherId,d.roomId,d.planId,...d.studentIds].some(v=>v&&!/^[\w-]{1,130}$/.test(v))||d.studentIds.length>2||d.note.length>1000||d.studentMessageNote.length>500||![30,60,90,120].includes(d.duration)||!['weekly','biweekly'].includes(d.frequency))fail('排課資料格式無效。');
  if(d.date&&(!/^\d{4}-\d{2}-\d{2}$/.test(d.date)||!Number.isFinite(Date.parse(d.date+'T12:00:00+08:00'))||new Date(d.date+'T12:00:00+08:00').toISOString().slice(0,10)!==d.date))fail('請確認開始上課日期。');
  if(d.time&&!/^([01]\d|2[0-3]):(00|30)$/.test(d.time))fail('請以整點或半點選擇上課時間。');
  return d;
@@ -69,14 +70,21 @@ function createEnrollmentScheduling({db,scheduler,matches,now=Date.now,stamp=()=
      if(periods.docs.length||courses.docs.length)fail('學生已另有課程紀錄，請先在課務確認雙人班分組。');
     }
    }
-   savedSchedule={courseId:result.id,tuitionPeriodId:result.tuitionPeriod.id,studentIds:ids,studentNames:names,scheduleStudentId,subjectId:subject.id,subjectName:subject.name,teacherId:teacher.id,teacherName:teacher.name,roomId:room.id,roomName:room.name,date:draft.date,time:draft.time,endTime:result.event.endTime,duration:draft.duration,frequency:draft.frequency,plan:planView(result.tuitionPeriod.planSnapshot),confirmedWithStudentAt:now(),confirmedAt:now(),confirmedBy:actor,note:draft.note};
+   savedSchedule={courseId:result.id,tuitionPeriodId:result.tuitionPeriod.id,studentIds:ids,studentNames:names,scheduleStudentId,subjectId:subject.id,subjectName:subject.name,teacherId:teacher.id,teacherName:teacher.name,roomId:room.id,roomName:room.name,date:draft.date,time:draft.time,endTime:result.event.endTime,duration:draft.duration,frequency:draft.frequency,plan:planView(result.tuitionPeriod.planSnapshot),confirmedWithStudentAt:now(),confirmedAt:now(),confirmedBy:actor,note:draft.note,studentMessageNote:draft.studentMessageNote};
+   const body=confirmationMessage(savedSchedule,current.form);
+   if(data.expectedMessage!==body)fail('排課資料或通知內容已變更，請重新確認訊息預覽後再送出。');
+   if(current.line.lineUserId!==row.line.lineUserId)fail('報名者 LINE 身分已變更，請重新開啟資料。','aborted');
+   const queueId='enrollment-confirmed-'+data.id,queueRef=db.collection('notificationQueue').doc(queueId);
+   if((await tx.get(queueRef)).exists)fail('報名確認通知已建立，請重新開啟確認排課結果。','aborted');
+   const confirmationNotification={queueId,body,queuedAt:now()};
    return write=>{
     ids.forEach((sid,n)=>{
      if(newIds.has(sid))write.create(studentRefs[n],{id:sid,name:names[n],phone:row.form.phone,email:row.form.email,active:true,studentActive:true,managerCreated:true,managerNote:'由線上報名確認排課',enrollmentId:data.id,updatedAt:stamp(),updatedBy:actor});
      if(!bindingSnapshots[n].exists)write.create(bindingRefs[n],{id:bindingRefs[n].id,type:'student',studentId:sid,targetId:sid,targetName:names[n],name:names[n],phone:row.form.phone,email:row.form.email,status:'active',method:'line',lineUserId:row.line.lineUserId,lineDisplayName:row.line.lineDisplayName,lineFriendFlag:row.line.lineFriendFlag,authAccountId:hash('line-account|student|'+row.line.lineUserId),approvedAt:stamp(),approvedBy:actor,sourceEnrollmentId:data.id,createdAt:stamp()});
     });
     if(groupRef)write.create(groupRef,{...group,sourceCourseIds:[courseId],updatedAt:stamp(),createdBy:actor});
-    write.update(ref,{studentIds:ids,schedule:savedSchedule,scheduleDraft:{...draft,studentIds:ids},status:'scheduled',version:current.version+1,updatedAt:now(),updatedBy:actor});
+    write.create(queueRef,{queueId,channel:'line',status:'待發送',source:'online-enrollment-confirmed',eventCode:'online_enrollment_confirmed',targetLineUserId:current.line.lineUserId,targetName:names.join('、'),title:'柚子樂器｜報名確認',body,lineText:body,emailFallbackEnabled:false,enrollmentId:data.id,courseId:result.id,createdAt:stamp(),createdBy:actor});
+    write.update(ref,{studentIds:ids,schedule:savedSchedule,scheduleDraft:{...draft,studentIds:ids},confirmationNotification,status:'scheduled',version:current.version+1,updatedAt:now(),updatedBy:actor});
    };
   }});
   const final=(await ref.get()).data();if(!final?.schedule)fail('排課結果需要重新確認，請重新開啟這筆報名。');

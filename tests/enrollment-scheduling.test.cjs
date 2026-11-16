@@ -1,6 +1,7 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),crypto=require('node:crypto');
 const {createEnrollmentService}=require('../functions/enrollment');
+const confirmationMessage=require('../functions/enrollmentConfirmationMessage');
 const source=fs.readFileSync(require('path').join(__dirname,'../functions/coursePortal.js'),'utf8');
 function harness({pair=false,blockers=[]}={}){
  const row={form:{name:'測試甲',secondName:pair?'測試乙':'',subjectId:'piano',courseName:'古典鋼琴',optionName:pair?'雙人班':'單人班',phone:'0912345678',email:'test@example.invalid',date:'2026-11-21',time:'13:00'},line:{lineUserId:'U'+'a'.repeat(32),lineDisplayName:'已驗證測試',lineFriendFlag:true},consent:{verifiedAt:1},version:1,status:'received',studentIds:[],messages:[]};
@@ -24,19 +25,20 @@ function harness({pair=false,blockers=[]}={}){
  const scheduler={context:async()=>({...structuredClone(catalog),groups:structuredClone(groups())}),commit:(data,integration)=>c.adminSaveSchedule(data,integration)};
  const service=createEnrollmentService({db,catalog:async()=>({courses:[]}),scheduler,now:()=>Date.parse('2026-11-16T01:00:00Z'),stamp:()=>1});
  const call=data=>service.adminApi({auth:{uid:'manager',token:{role:'admin'}},data:{id:'enr-test',...data}});
- const request=()=>({action:'confirmSchedule',version:docs.get('onlineEnrollmentSubmissions/enr-test').version,confirmedWithStudent:true,expectedPlan:structuredClone(plans[0]),draft:{subjectId:'piano',teacherId:'teacher',roomId:'room',planId:'plan',date:'2026-11-28',time:'14:00',duration:60,frequency:'weekly',studentIds:pair?['new','new']:['new'],note:'已與學生確認'}});
+ const review=r=>{const d=r.draft,n=minutes(d.time)+d.duration;const endTime=String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');r.expectedMessage=confirmationMessage({...d,studentNames:[row.form.name,row.form.secondName].filter(Boolean),subjectName:catalog.subjects.find(x=>x.id===d.subjectId)?.name,teacherName:catalog.teachers.find(x=>x.id===d.teacherId)?.name,roomName:catalog.rooms.find(x=>x.id===d.roomId)?.name,endTime,plan:r.expectedPlan},row.form);return r;};
+ const request=()=>review({action:'confirmSchedule',version:docs.get('onlineEnrollmentSubmissions/enr-test').version,confirmedWithStudent:true,expectedPlan:structuredClone(plans[0]),draft:{subjectId:'piano',teacherId:'teacher',roomId:'room',planId:'plan',date:'2026-11-28',time:'14:00',duration:60,frequency:'weekly',studentIds:pair?['new','new']:['new'],note:'已與學生確認'}});
  const count=name=>[...docs.keys()].filter(p=>p.startsWith(name+'/')).length;
- return {docs,c,plans,db,catalog,scheduler,service,call,request,count,row:()=>docs.get('onlineEnrollmentSubmissions/enr-test')};
+ return {docs,c,plans,db,catalog,scheduler,service,call,request,count,review,row:()=>docs.get('onlineEnrollmentSubmissions/enr-test')};
 }
 test('schedule options and confirmation remain manager-only',async()=>{const h=harness();await assert.rejects(h.service.adminApi({data:{action:'scheduleOptions',id:'enr-test'}}),/管理者/);await assert.rejects(h.service.adminApi({auth:{uid:'student',token:{role:'student'}},data:{...h.request(),id:'enr-test'}}),/管理者/);assert.equal(h.docs.size,2);});
 test('draft changes persist separately from original request without scheduling or tuition',async()=>{const h=harness(),original=structuredClone(h.row().form);await h.call({action:'saveScheduleDraft',version:1,draft:h.request().draft});assert.deepEqual(h.row().form,original);assert.equal(h.row().scheduleDraft.date,'2026-11-28');assert.equal(h.row().version,2);assert.equal(h.docs.size,2);await assert.rejects(h.call({action:'saveScheduleDraft',version:1,draft:{}}),/資料已更新/);});
 test('one confirmation atomically commits recurring class, unpaid tuition, student, verified LINE and admission status',async()=>{
  const h=harness(),original=structuredClone(h.row().form),r=await h.call(h.request());assert.equal(r.ok,true);assert.deepEqual(h.row().form,original);assert.equal(h.row().status,'scheduled');assert.equal(h.row().schedule.date,'2026-11-28');
- assert.equal(h.count('coursePortalStudentProfiles'),1);assert.equal(h.count('coursePortalStudentBindings'),1);assert.equal(h.count('coursePortalTuitionPeriods'),1);assert.equal(h.count('coursePortalFixedCourses'),1);assert.equal(h.count('notificationQueue'),0);
+ assert.equal(h.count('coursePortalStudentProfiles'),1);assert.equal(h.count('coursePortalStudentBindings'),1);assert.equal(h.count('coursePortalTuitionPeriods'),1);assert.equal(h.count('coursePortalFixedCourses'),1);assert.equal(h.count('notificationQueue'),1);
  const course=h.docs.get('coursePortalFixedCourses/'+r.schedule.courseId),period=h.docs.get('coursePortalTuitionPeriods/'+r.schedule.tuitionPeriodId);assert.equal(course.frequencyWeeks,1);assert.equal(course.startDate,'2026-11-28');assert.equal(course.status,'scheduled');assert.equal(period.expectedAmount,2800);assert.equal(period.paidAmount,0);assert.equal(period.planSnapshot.splitValue,.6);assert.equal(period.lessonCount,4);assert.equal(period.periodNo,1);
  assert.equal((await h.call(h.request())).duplicate,true);assert.equal(h.count('coursePortalFixedCourses'),1);
 });
-test('concurrent confirmations cannot duplicate courses or tuition',async()=>{const h=harness(),r=h.request();await Promise.all([h.call(r),h.call(r)]);assert.equal(h.count('coursePortalFixedCourses'),1);assert.equal(h.count('coursePortalTuitionPeriods'),1);assert.equal(h.count('coursePortalStudentBindings'),1);});
+test('concurrent confirmations cannot duplicate courses or tuition',async()=>{const h=harness(),r=h.request();await Promise.all([h.call(r),h.call(r)]);assert.equal(h.count('coursePortalFixedCourses'),1);assert.equal(h.count('coursePortalTuitionPeriods'),1);assert.equal(h.count('coursePortalStudentBindings'),1);assert.equal(h.count('notificationQueue'),1);});
 test('future weekly collision leaves registration, bindings, student and tuition untouched',async()=>{const h=harness({blockers:[{id:'busy',date:'2026-12-05',startTime:'14:00',endTime:'15:00',roomId:'room',status:'scheduled'}]});await assert.rejects(h.call(h.request()),/2026-12-05/);assert.equal(h.docs.size,2);assert.equal(h.row().status,'received');});
 test('explicit student agreement, valid time, eligible teacher, and reviewed plan are mandatory',async()=>{
  for(const change of [r=>r.confirmedWithStudent=false,r=>r.draft.date='2026-02-30',r=>r.draft.time='14:15',r=>r.draft.date='2026-11-14',r=>r.draft.teacherId='not-teacher',r=>r.expectedPlan.amount=1,r=>r.draft.frequency='once',r=>r.draft.duration=30]){const h=harness(),r=h.request();change(r);await assert.rejects(h.call(r));assert.equal(h.docs.size,2);}
@@ -53,3 +55,34 @@ test('already admitted student is reused and cannot be swapped during confirmati
 });
 test('existing pair membership cannot be silently regrouped',async()=>{const h=harness();h.docs.set('coursePortalStudentProfiles/existing',{id:'existing',name:'測試甲',phone:'0912345678',active:true});h.docs.set('coursePortalStudentGroups/group',{id:'group',memberIds:['existing','another'],active:true});const r=h.request();r.draft.studentIds=['existing'];await assert.rejects(h.call(r),/分組/);assert.equal(h.count('coursePortalFixedCourses'),0);});
 test('native scheduler rechecks missing teaching subjects before applying admission hook',async()=>{const h=harness(),base=h.c.scheduleBundle;h.c.scheduleBundle=async()=>{const b=await base();b.maps.teachers.teacher.subjectIds=[];return b;};await assert.rejects(h.call(h.request()),/授課科目剛剛/);assert.equal(h.docs.size,2);});
+
+
+test('confirmed schedule queues exactly the reviewed message to the verified applicant, never internal payroll notes',async()=>{
+ const h=harness(),r=h.request();r.draft.studentMessageNote='請提早 10 分鐘到教室';r.draft.note='內部專用：分成 6/4';h.review(r);
+ await h.call({...r,targetLineUserId:'forged'});
+ const saved=h.row().confirmationNotification,q=h.docs.get('notificationQueue/'+saved.queueId);
+ assert.equal(q.body,r.expectedMessage);assert.equal(saved.body,q.body);assert.equal(q.targetLineUserId,h.row().line.lineUserId);assert.equal(q.eventCode,'online_enrollment_confirmed');assert.equal(q.emailFallbackEnabled,false);
+ assert.match(q.body,/2026\/11\/28（星期六） 14:00–15:00/);assert.match(q.body,/每週星期六/);assert.match(q.body,/2,800／4 堂/);assert.match(q.body,/請提早 10 分鐘/);assert(!/6\/4|分成|內部專用/.test(q.body));
+ q.status='發送失敗';q.lastError='LINE unavailable';const result=await h.call({action:'detail'});assert.equal(result.record.confirmationNotification.status,'發送失敗');assert.equal(result.record.confirmationNotification.error,'LINE unavailable');assert.equal(h.count('coursePortalFixedCourses'),1);
+ await h.call(r);assert.equal(h.count('notificationQueue'),1);assert.equal(q.status,'發送失敗');
+});
+
+test('changed notification preview or missing message approval cannot partially create class, tuition or notification',async()=>{
+ for(const update of [r=>delete r.expectedMessage,r=>r.expectedMessage+='changed',r=>r.draft.time='15:00',r=>r.draft.studentMessageNote='not reviewed']){
+  const h=harness(),r=h.request();update(r);await assert.rejects(h.call(r),/訊息預覽/);assert.equal(h.docs.size,2);
+ }
+});
+
+test('public message note can be saved without contacting anyone and is limited in length',async()=>{
+ const h=harness(),draft={...h.request().draft,studentMessageNote:'帶筆記本'};await h.call({action:'saveScheduleDraft',version:1,draft});assert.equal(h.row().scheduleDraft.studentMessageNote,'帶筆記本');assert.equal(h.count('notificationQueue'),0);
+ await assert.rejects(h.call({action:'saveScheduleDraft',version:2,draft:{...draft,studentMessageNote:'a'.repeat(501)}}),/格式/);
+});
+
+
+test('the existing LINE delivery service sends the exact preview without an extra header',async()=>{
+ const h=harness(),r=h.request();await h.call(r);const q=h.docs.get('notificationQueue/'+h.row().confirmationNotification.queueId);let pushed;
+ const delivery=fs.readFileSync(require('path').join(__dirname,'../functions/index.js'),'utf8');
+ const context={clean:v=>String(v||'').trim(),queueTargetLineUserId:r=>r.targetLineUserId,isValidLinePushTargetId:()=>true,getLineAccessToken:async()=> 'fixture-token',queueTitle:r=>r.title,queueBody:r=>r.body,lineImageUrlFromQueue:()=>'',...require('../functions/trialNotificationNotice'),fetch:async(url,options)=>{assert.equal(url,'https://api.line.me/v2/bot/message/push');pushed=JSON.parse(options.body);return {ok:true,status:200,text:async()=>'{}'};}};
+ vm.createContext(context);const start=delivery.indexOf('async function sendLinePush(');vm.runInContext(delivery.slice(start,delivery.indexOf('\n}',start)+2),context);await context.sendLinePush(q);
+ assert.equal(pushed.to,h.row().line.lineUserId);assert.equal(pushed.messages.length,1);assert.equal(pushed.messages[0].text,r.expectedMessage);
+});
