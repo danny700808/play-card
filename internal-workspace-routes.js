@@ -331,7 +331,7 @@
  const leaf=(id,label,href,extra)=>Object.assign({id,label,href},extra||{});
  const branch=(id,label,children,extra)=>Object.assign({id,label,children},extra||{});
  const tree=branch('root','管理工作區',[
-  branch('enrollment','招生／線上報名',[leaf('online-enrollment','報名收件匣與測試邀請','enrollment-admin.html')]),
+  branch('enrollment','招生／線上報名',[leaf('online-enrollment','報名收件匣','enrollment-admin.html?filter=pending')]),
   branch('people','人事',[
    branch('staff','專職人員',[
     leaf('staff-mobile','手機版檢視','dashboard.html?preview=staff'),
@@ -373,7 +373,8 @@
     branch('external-approvals','簽核',[
      leaf('external-profile','個資修改','profile-change-admin.html?identity=external'),
      leaf('external-registration','合作建檔','registration-approval.html?identity=external'),
-     leaf('external-contract-review','合約確認','external-teacher-admin.html?from=approval&filterStatus=submitted_pending_admin&source=teacher-hub')
+     leaf('external-teacher-review','新老師資料審核','external-teacher-admin.html?from=approval&filterStatus=submitted_pending_admin&reviewType=registration&source=teacher-hub'),
+     leaf('external-contract-review','合約確認','external-teacher-admin.html?from=approval&filterStatus=submitted_pending_admin&reviewType=contract&source=teacher-hub')
     ]),
     branch('external-work','公告與協助',[
      leaf('external-announcement','老師公告','announcement-admin.html?audience=external&source=teacher-hub'),
@@ -383,11 +384,9 @@
     leaf('external-goods','拿貨與詢價','teacher-goods-admin.html?source=teacher-hub'),
     leaf('external-forms','表單與證明','quotation-contract-hub.html?identity=external&source=teacher-hub')
    ],{common:[leaf('external-overview','老師總覽','teacher-hub.html')]}),
-   branch('recruit','應聘與入職',[
-    leaf('recruit-applications','應聘管理','application-admin.html'),
-    leaf('recruit-registration','註冊建檔','registration-approval.html',{preferred:true}),
-    leaf('recruit-notification','應聘通知設定','application-notification-settings.html')
-   ])
+   branch('recruit','員工入職',[
+    leaf('recruit-registration','註冊建檔','registration-approval.html',{preferred:true})
+   ],{common:[leaf('recruit-applications','舊版應聘管理','application-admin.html'),leaf('recruit-notification','舊版應聘通知設定','application-notification-settings.html')]})
   ],{badge:'badge-hr-payroll',common:[
    leaf('all-people','全體人員','employee-admin.html',{preferred:true}),
    leaf('all-schedule','共用班表','schedule-admin.html',{preferred:true}),
@@ -412,7 +411,7 @@
    leaf('work-employee','員工服務入口','dashboard.html')
   ],{badge:'badge-items',common:[leaf('work-notifications','通知設定','notification-settings.html'),leaf('work-line','通知檢查','line-notification-check.html')]}),
   branch('rental','租賃',[
-   leaf('rental-applications','申請與契約','rental-admin.html'),
+   leaf('rental-applications','待我處理','rental-admin.html?filter=pending'),
    leaf('rental-overdue','已逾期','rental-admin.html?filter=overdue'),
    leaf('rental-reminder','到期提醒中','rental-admin.html?filter=reminder'),
    leaf('rental-template','契約模板','rental-template-settings.html'),
@@ -464,6 +463,7 @@
   }
   const candidates=[...treeIndex.values()].filter(item=>score(item.node)>=0).sort((a,b)=>score(b.node)-score(a.node));
   if(candidates.length)return candidates[0].path;
+  if(file==='enrollment-admin.html')return treePath('online-enrollment');
   const key=resolve(path,search);
   const base={hr:'people',teachers:'external',approval:'approvals',work:'work',rental:'rental',forms:'forms',employee:'work'}[key];
   return base?treePath(base):treePath('root');

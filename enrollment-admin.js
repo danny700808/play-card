@@ -16,12 +16,12 @@ async function act(fn,target='notice'){
 }
 function render(){
  const q=$('search').value.trim().toLowerCase(),status=$('statusFilter').value;
- const found=rows.filter(r=>(!status||r.status===status)&&(!q||[r.form.name,r.form.secondName,r.form.phone,r.form.courseName,r.schedule?.subjectName,r.schedule?.teacherName,r.line.lineDisplayName].join(' ').toLowerCase().includes(q)));
+ const found=rows.filter(r=>(!status||(status==='pending'?window.ManagementPendingRecords.enrollmentPending(r):r.status===status))&&(!q||[r.form.name,r.form.secondName,r.form.phone,r.form.courseName,r.schedule?.subjectName,r.schedule?.teacherName,r.line.lineDisplayName].join(' ').toLowerCase().includes(q)));
  $('records').innerHTML=found.length?found.map(r=>'<article class="row"><div><strong>'+esc(r.form.name+(r.form.secondName?'、'+r.form.secondName:''))+'</strong> <span class="tag">'+esc(labels[r.status]||r.status)+'</span><div>'+esc((r.schedule?.subjectName||r.form.courseName)+' · '+r.form.optionName)+'</div><div class="meta">'+esc((r.schedule?'正式：'+r.schedule.date+' '+r.schedule.time+'｜'+r.schedule.teacherName:'希望：'+r.form.date+' '+r.form.time)+'｜'+r.form.phone)+'<br>LINE：'+esc(r.line.lineDisplayName)+' · '+esc(date(r.createdAt))+'</div></div><button data-open="'+esc(r.id)+'" class="secondary">查看與聯絡</button></article>').join(''):'<p class="empty">目前沒有符合的報名。</p>';
  $('records').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>act(()=>openDetail(b.dataset.open)));
  $('more').hidden=!cursor;
 }
-async function load(more=false){const r=await call('list',more?{cursor}:{});rows=more?rows.concat(r.records):r.records;cursor=r.nextCursor;render();$('notice').textContent='已載入 '+rows.length+' 份完成 LINE 身分驗證的報名，其中 '+rows.filter(r=>r.status==='received').length+' 份待聯絡。';}
+async function load(more=false){const r=$('statusFilter').value==='pending'?{records:await window.ManagementPendingRecords.readEnrollmentRows((name,data)=>call(data.action,data)),nextCursor:''}:await call('list',more?{cursor}:{});rows=more?rows.concat(r.records):r.records;cursor=r.nextCursor;render();$('notice').textContent='已載入 '+rows.length+' 份完成 LINE 身分驗證的報名，其中 '+rows.filter(r=>r.status==='received').length+' 份待聯絡。';}
 async function openDetail(id){
  const data=await call('detail',{id});selected=data.record;const r=selected,f=r.form;
  $('detailTitle').textContent=f.name+(f.secondName?'、'+f.secondName:'')+'｜報名資料';$('detailNotice').textContent='';
@@ -39,7 +39,8 @@ async function openDetail(id){
  try{await mount();}catch(e){$('scheduleHost').innerHTML='<p>'+esc(e.message||'排課選單暫時無法讀取。')+'</p><button id="retryScheduleOptions" class="secondary">重新讀取排課選單</button>';$('retryScheduleOptions').onclick=()=>act(()=>openDetail(id),'detailNotice');}
 }
 $('closeDetail').onclick=()=>$('detailDialog').close();
-$('reload').onclick=()=>act(()=>load());$('more').onclick=()=>act(()=>load(true));$('search').oninput=render;$('statusFilter').onchange=render;
+$('reload').onclick=()=>act(()=>load());$('more').onclick=()=>act(()=>load(true));$('search').oninput=render;$('statusFilter').onchange=()=>act(()=>load());
 $('copyRegistration').onclick=async()=>{try{await navigator.clipboard.writeText($('registrationUrl').value);$('notice').textContent='已複製報名網址。';}catch(e){$('registrationUrl').select();$('notice').textContent='請長按或使用複製功能保存網址。';}};
+if(new URLSearchParams(location.search).get('filter')==='pending')$('statusFilter').value='pending';
 act(async()=>{await load();const id=new URLSearchParams(location.search).get('enrollment');if(id&&/^enr-[\w-]{1,120}$/.test(id))await openDetail(id);});
 })();

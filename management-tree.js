@@ -42,8 +42,9 @@
   document.title=current.id==='root'?'管理樹狀圖':current.label+'｜管理樹狀圖';
   if(previous&&previous!==current.id)document.getElementById('managementCurrentNode')?.focus({preventScroll:true});previous=current.id;
  }
- function paint(b,count){b.textContent=count===null?'?':count?String(count):'';b.setAttribute('aria-label',count===null?'待處理數字未能讀取':count?'待處理 '+count+' 件':'');b.title=count===null?'讀取失敗，請重新整理':count?'待處理 '+count+' 件':'';}
- function setCount(id,count){counts[id]=count===null?null:Number(count)||0;const b=document.getElementById(id);if(b)paint(b,counts[id]);}
- window.InternalManagementTree={setCount,setNodeCount(id,count){const node=routes.treeNode(id);if(node)setCount(node.badge||'node-count-'+id,count);}};
+ function paint(b,count){const n=Number.isSafeInteger(count)&&count>0?count:0;b.textContent=n?String(n):'';b.hidden=!n;b.setAttribute('aria-label',n?'待處理 '+n+' 件':'');b.title=n?'待處理 '+n+' 件':'';}
+ function setCount(id,count){counts[id]=Number.isSafeInteger(count)&&count>=0?count:null;document.querySelectorAll('[id="'+id+'"]').forEach(b=>paint(b,counts[id]));}
+ function clearCounts(){for(const id of Object.keys(counts))setCount(id,null);host.querySelectorAll('.management-count').forEach(b=>paint(b,null));setCount('badge-approval',null);}
+ window.InternalManagementTree={setCount,clearCounts,setNodeCount(id,count){const node=routes.treeNode(id);if(node)setCount(node.badge||'node-count-'+id,count);}};
  window.addEventListener('hashchange',render);render();
 })();

@@ -4,6 +4,10 @@ on:
     branches: [main]
     paths:
       - 'management-tree.js'
+      - 'management-pending*.js'
+      - 'external-teacher-admin.html'
+      - 'rental-admin.html'
+      - 'tests/management-*.test.cjs'
       - 'personnel-approval-scope.js'
       - '*approval*.html'
       - 'leave.html'
@@ -28,4 +32,4 @@ jobs:
         with:
           node-version: 24
       - run: npm install --prefix "$RUNNER_TEMP/tree-tests" --ignore-scripts --no-audit --no-fund jsdom@30.1.1
-      - run: NODE_PATH="$RUNNER_TEMP/tree-tests/node_modules" node --test tests/management-tree.test.cjs tests/personnel-approval-scope.test.cjs tests/internal-workspace.test.cjs tests/hr-workspace.test.cjs tests/salary-atomic-save.test.cjs tests/parttime-payroll-loading.test.cjs
+      - run: NODE_PATH="$RUNNER_TEMP/tree-tests/node_modules" node --test tests/management-pending-audit.test.cjs tests/management-approval-counts.test.cjs tests/management-rental-alerts.test.cjs tests/management-tree.test.cjs tests/personnel-approval-scope.test.cjs tests/internal-workspace.test.cjs tests/hr-workspace.test.cjs tests/salary-atomic-save.test.cjs tests/parttime-payroll-loading.test.cjs

@@ -3,7 +3,7 @@ const {countsFor,rentalAlerts}=require('../management-pending-counts');
 const scope=require('../personnel-approval-scope'),routes=require('../internal-workspace-routes');
 const empty={leave:[],clock:[],temporary:[],profile:[],registration:[],contract:[]};
 test('overlapping overdue and reminder contracts count once at rental and root',()=>{
- const rows=[{kind:'application',caseKey:'new',needsReview:true},{kind:'contract',caseKey:'old',status:'到期提醒中',endDate:'2000-01-01'},{kind:'contract',caseKey:'upcoming',status:'到期提醒中',endDate:'2099-01-01'},{kind:'contract',caseKey:'returned',status:'已退租',endDate:'2000-01-01'},{kind:'contract',caseKey:'archived',status:'已封存',endDate:'2000-01-01'}];
+ const rows=[{kind:'application',caseKey:'new',status:'待店家確認'},{kind:'contract',caseKey:'old',status:'到期提醒中',endDate:'2000-01-01'},{kind:'contract',caseKey:'upcoming',status:'到期提醒中',endDate:'2099-01-01'},{kind:'contract',caseKey:'returned',status:'已退租',endDate:'2000-01-01'},{kind:'contract',caseKey:'archived',status:'已封存',endDate:'2000-01-01'}];
  const c=countsFor({...empty,rental:rows},[],scope);
  assert.equal(c['rental-overdue'],1);assert.equal(c['rental-reminder'],2);assert.equal(c.rental,3);assert.equal(c['rental-applications'],3);assert.equal(c.root,3);
  const failed=countsFor({...empty,rental:null},[],scope);assert.equal(failed['rental-overdue'],null);assert.equal(failed['rental-reminder'],null);assert.equal(failed.rental,null);
