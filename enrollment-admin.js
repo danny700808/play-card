@@ -6,7 +6,7 @@ let rows=[],cursor='',selected=null,busy=false,scheduleController=null;
 const pendingMessages=new Map();
 const random=()=>{const bytes=crypto.getRandomValues(new Uint8Array(32));return btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');};
 async function call(action,data={}){
- await window.YZManagerAuth.requireManager({next:'enrollment-admin.html'});
+ await window.YZManagerAuth.requireManager({next:'enrollment-admin.html'+location.search});
  return (await firebase.app().functions('asia-east1').httpsCallable('enrollmentAdmin',{timeout:180000})({action,...data})).data;
 }
 async function act(fn,target='notice'){
@@ -21,12 +21,12 @@ function render(){
  $('records').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>act(()=>openDetail(b.dataset.open)));
  $('more').hidden=!cursor;
 }
-async function load(more=false){const r=await call('list',more?{cursor}:{});rows=more?rows.concat(r.records):r.records;cursor=r.nextCursor;render();$('notice').textContent='已載入 '+rows.length+' 份完成 LINE 綁定的報名。';}
+async function load(more=false){const r=await call('list',more?{cursor}:{});rows=more?rows.concat(r.records):r.records;cursor=r.nextCursor;render();$('notice').textContent='已載入 '+rows.length+' 份完成 LINE 身分驗證的報名，其中 '+rows.filter(r=>r.status==='received').length+' 份待聯絡。';}
 async function openDetail(id){
  const data=await call('detail',{id});selected=data.record;const r=selected,f=r.form;
  $('detailTitle').textContent=f.name+(f.secondName?'、'+f.secondName:'')+'｜報名資料';$('detailNotice').textContent='';
  const field=(label,value,wide=false)=>'<div'+(wide?' class="wide"':'')+'><small>'+esc(label)+'</small>'+esc(value)+'</div>';
- const details=[field('課程／班別',f.courseName+' · '+f.optionName),field('原報名費用','NT$ '+f.price+'／'+f.lessons+' 堂'),field('希望上課時間',f.date+' '+f.time),field('電話',f.phone),field('Email',f.email),field('LINE 帳號',r.line.lineDisplayName+'（'+(r.line.lineFriendFlag?'已確認為官方 LINE 好友':'尚未確認加入好友')+'）'),field('其他需求',f.note||'無',true)].join('');
+ const details=[field('課程／班別',f.courseName+' · '+f.optionName),field('原報名費用','NT$ '+f.price+'／'+f.lessons+' 堂'),field('希望上課時間',f.date+' '+f.time),field('電話',f.phone),field('Email',f.email),field('LINE 帳號',r.line.lineDisplayName+'（'+(r.line.lineFriendFlag?'已確認為官方 LINE 好友':'尚未確認加入好友')+'）'),field('LINE 身分驗證',r.consent?.verifiedAt?'已確認 · '+date(r.consent.verifiedAt):'待核對'),field('正式學生資料',r.studentIds?.length?'已建立正式學生及 LINE 綁定':'待你確認排課後，建立正式學生及 LINE 綁定'),field('管理者 LINE 通知',(r.managerNotification?.status||'尚未建立通知')+(r.managerNotification?.error?' · '+r.managerNotification.error:'')),field('其他需求',f.note||'無',true)].join('');
  const names=[f.name,...(f.secondName?[f.secondName]:[])],candidates=data.matches||[];
  $('detailContent').innerHTML='<details open><summary>原報名資料與聯絡方式</summary><div class="detail-grid">'+details+'</div></details><div id="scheduleHost"><p>正在讀取正式排課選單…</p></div><h3>聯絡學生</h3><p class="meta">訊息由柚子樂器官方 LINE 發送，學生回覆可在官方 LINE 後台查看。</p><textarea id="messageText" rows="4" maxlength="2000" placeholder="輸入要傳給這位報名者的訊息"></textarea><div class="actions"><button id="sendMessage">確認發送 LINE 訊息</button><a class="button secondary" href="https://manager.line.biz/" target="_blank" rel="noopener noreferrer">開啟官方 LINE 後台</a><a class="button secondary" href="tel:'+esc(f.phone)+'">撥打電話</a></div><div id="messageHistory">'+(r.messages||[]).map(m=>'<div class="message">'+esc(m.text)+'<div class="meta">'+esc(date(m.createdAt)+' · '+m.status+(m.error?' · '+m.error:''))+'</div></div>').join('')+'</div><h3>處理紀錄</h3><label>狀態</label><select id="recordStatus">'+Object.entries(labels).map(([k,v])=>'<option value="'+k+'" '+(k===r.status?'selected ':'')+((k==='admitted'||k==='scheduled'&&!r.schedule||r.schedule&&!['scheduled','closed'].includes(k))?'disabled':'')+'>'+v+'</option>').join('')+'</select><label for="managerNote">管理備註</label><textarea id="managerNote" rows="3" maxlength="2000">'+esc(r.managerNote)+'</textarea><div class="actions"><button id="saveRecord" class="secondary">儲存處理紀錄</button></div>';
  $('sendMessage').disabled=!r.line.lineFriendFlag;
@@ -41,5 +41,5 @@ async function openDetail(id){
 $('closeDetail').onclick=()=>$('detailDialog').close();
 $('reload').onclick=()=>act(()=>load());$('more').onclick=()=>act(()=>load(true));$('search').oninput=render;$('statusFilter').onchange=render;
 $('copyRegistration').onclick=async()=>{try{await navigator.clipboard.writeText($('registrationUrl').value);$('notice').textContent='已複製報名網址。';}catch(e){$('registrationUrl').select();$('notice').textContent='請長按或使用複製功能保存網址。';}};
-act(()=>load());
+act(async()=>{await load();const id=new URLSearchParams(location.search).get('enrollment');if(id&&/^enr-[\w-]{1,120}$/.test(id))await openDetail(id);});
 })();

@@ -96,7 +96,11 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
    if(g.status!=='verified'||(ir&&!activeInvite(i)))fail('LINE 驗證或報名連結已失效，請重新操作。');
    if(existing&&(existing.line.lineUserId!==g.profile.lineUserId||formKey(existing.form)!==formKey(g.form)))fail('這份報名已經送出，請重新開始另一份報名。');
    const r=existing||{form:g.form,line:g.profile,inviteId:g.inviteId||'',inviteLabel:i?.label||'直接報名',source:ir?'legacy-invite':'direct',status:'received',version:1,consent:{version:g.consentVersion,acceptedAt:g.consentAt,verifiedAt:now()},createdAt:now(),updatedAt:now(),studentIds:[],messages:[],managerNote:''};
-   if(!existing){tx.create(recordRef,r);if(ir)tx.update(ir,{usedCount:Number(i.usedCount||0)+1});}
+   if(!existing){
+    const notice=require('./enrollmentNotifications').managerNotification(key,r,stamp()),queueRef=db.collection('notificationQueue').doc(notice.queueId),queued=await tx.get(queueRef);
+    r.managerNotification={queueId:notice.queueId,queuedAt:now()};
+    tx.create(recordRef,r);if(!queued.exists)tx.create(queueRef,notice);if(ir)tx.update(ir,{usedCount:Number(i.usedCount||0)+1});
+   }
    tx.update(ref,{status:'used',form:null,profile:null,receiptId:key});
    return receipt(r,key);
   });
@@ -137,7 +141,9 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
   if(['scheduleOptions','saveScheduleDraft','confirmSchedule'].includes(d.action))return require('./enrollmentScheduling').createEnrollmentScheduling({db,scheduler,matches,now,stamp}).run(d,r,actor);
   if(d.action==='detail'){
    const messages=await Promise.all((r.messages||[]).slice(-30).map(async m=>{const q=(await db.collection('notificationQueue').doc(m.queueId).get()).data()||{};return {...m,status:q.status||'待發送',error:q.lastError||''};}));
-   return {record:{id:d.id,...r,messages},matches:await matches(r)};
+   const notice=r.managerNotification?.queueId?(await db.collection('notificationQueue').doc(r.managerNotification.queueId).get()).data():null;
+   const managerNotification={queueId:r.managerNotification?.queueId||'',status:notice?.status||'尚未建立通知',error:notice?.lastError||'',sentAt:notice?.sentAt||null};
+   return {record:{id:d.id,...r,messages,managerNotification},matches:await matches(r)};
   }
   if(d.action==='update'){
    if(!['received','contacted','admitted','scheduled','closed'].includes(d.status)||(d.status==='admitted'&&!r.studentIds?.length)||(d.status==='scheduled'&&!r.schedule)||(r.schedule&&!['scheduled','closed'].includes(d.status)))fail('處理狀態無效。');

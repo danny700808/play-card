@@ -10,7 +10,7 @@
 
 同一份報名使用固定的排課操作編號及版本檢查，重試不會多建課程或學費。預設每週固定上課，也可選隔週；後續期別沿用原課務規則。新雙人班保留兩位學生與 LINE 綁定，共用一個課程和學費期別。已有其他分組的學生，必須先在課務確認分組，避免影響既有課程。已確認的排課顯示結果，後續調課導回正式課表。
 
-收件、授權、建檔及排課本身不寄 LINE 訊息；只有管理者確認發送時，才進入既有 notificationQueue。未確認為官方 LINE 好友者可先用電話或官方 LINE 後台聯絡。佇列的「已發送」不代表已讀。
+完成驗證並正式送出報名時，同一交易會建立一筆管理者 LINE 通知，固定 queueId 防止重複送出。通知由既有 notificationQueue 解析主要管理者，包含可直接開啟該筆報名的連結；未登入時先安全登入，再返回同一筆。管理後台顯示佇列的實際通知狀態。學生端顯示「LINE 身分已確認」，正式學生綁定仍在管理者確認排課後建立。學生聯絡訊息只有管理者明確按確認發送才建立。未確認為官方 LINE 好友者可先用電話或官方 LINE 後台聯絡。佇列的「已發送」不代表已讀。
 
 新集合 `onlineEnrollmentInvites`、`onlineEnrollmentOAuth`、`onlineEnrollmentGrants`、`onlineEnrollmentSubmissions`、`onlineEnrollmentLimits` 不在前端 Firestore allowlist，僅由 Admin SDK 存取。過期授權及頻率限制資料每日清理，正式報名不隨暫存清理。
 

@@ -41,7 +41,7 @@ test('direct visitor requires no invitation, but still needs consent and verifie
  const c=await h.callback(s);assert(c.ticket);assert.equal(h.count('records'),0);
  await assert.rejects(h.publicApi({action:'redeem',ticket:c.ticket,verifier:random()}));
  const r=await h.publicApi({action:'redeem',ticket:c.ticket,verifier:s.verifier}),again=await h.publicApi({action:'redeem',ticket:c.ticket,verifier:s.verifier});assert.equal(again.receiptId,r.receiptId);
- const row=h.rows.get(C.records+'/'+r.receiptId);assert.equal(row.source,'direct');assert.equal(row.inviteId,'');assert.equal(h.count('records'),1);assert.equal(h.count('invites'),0);assert.equal(h.count('notificationQueue'),0);
+ const row=h.rows.get(C.records+'/'+r.receiptId);assert.equal(row.source,'direct');assert.equal(row.inviteId,'');assert.equal(h.count('records'),1);assert.equal(h.count('invites'),0);assert.equal(h.count('notificationQueue'),1);
 });
 test('direct visitors cannot bypass validation or the existing request rate limit',async()=>{
  const h=harness();await assert.rejects(h.start({token:''},{returnUrl:'https://evil.invalid/'}));await assert.rejects(h.start({token:''},{form:{...h.form,date:'2026-11-16'}}));
@@ -63,7 +63,7 @@ test('cancelled, expired and replayed LINE states never create a submission',asy
 test('verified callback plus browser proof creates one receipt; concurrent retries are idempotent',async()=>{
  const h=harness(),i=await h.invitation(),s=await h.start(i),pending=h.rows.get(C.oauth+'/'+hash(s.state)),c=await h.callback(s);assert(c.ticket);assert.notEqual(c.ticket,s.state);assert.deepEqual(c.calls[0],['test-code',pending.callbackUrl,pending.oauthVerifier]);assert.equal(h.count('records'),0);
  await assert.rejects(h.publicApi({action:'redeem',ticket:c.ticket,verifier:random()}),/瀏覽器/);
- const result=await Promise.all([1,2,3].map(()=>h.publicApi({action:'redeem',ticket:c.ticket,verifier:s.verifier})));assert.equal(new Set(result.map(r=>r.receiptId)).size,1);assert.equal(h.count('records'),1);assert.equal(h.rows.get(C.invites+'/'+i.id).usedCount,1);assert.equal(h.count('notificationQueue'),0);
+ const result=await Promise.all([1,2,3].map(()=>h.publicApi({action:'redeem',ticket:c.ticket,verifier:s.verifier})));assert.equal(new Set(result.map(r=>r.receiptId)).size,1);assert.equal(h.count('records'),1);assert.equal(h.rows.get(C.invites+'/'+i.id).usedCount,1);assert.equal(h.count('notificationQueue'),1);
  const record=h.rows.get(C.records+'/'+result[0].receiptId);assert.equal(record.line.lineUserId,'U'+'a'.repeat(32));assert.equal(record.consent.version,CONSENT_VERSION);assert.equal(record.studentIds.length,0);assert.equal(h.rows.get(C.grants+'/'+hash(c.ticket)).form,null);
  // Retrying the same draft with a second successful OAuth callback must still dedupe.
  const s2=await h.start(i,{submissionKey:s.submissionKey}),c2=await h.callback(s2),r2=await h.publicApi({action:'redeem',ticket:c2.ticket,verifier:s2.verifier});assert.equal(r2.receiptId,result[0].receiptId);assert.equal(h.count('records'),1);
@@ -78,14 +78,29 @@ test('student creation requires manager choice, keeps existing matches untouched
  const v=h.rows.get(C.records+'/'+r.receiptId);await h.manager({action:'update',id:r.receiptId,version:v.version,status:'admitted',note:'checked'});await assert.rejects(h.manager({action:'update',id:r.receiptId,version:1,status:'closed',note:''}),/資料已更新/);
 });
 test('two-person enrollment creates distinct profiles and same verified LINE for both',async()=>{
- const h=harness(),{r}=await h.submit({form:{...h.form,optionId:'duo',secondName:'第二位學生'}});const v=await h.manager({action:'admit',id:r.receiptId,version:1,studentIds:['new','new']});assert.equal(new Set(v.studentIds).size,2);assert.equal(h.count('coursePortalStudentBindings'),2);assert.equal(h.count('notificationQueue'),0);
+ const h=harness(),{r}=await h.submit({form:{...h.form,optionId:'duo',secondName:'第二位學生'}});const v=await h.manager({action:'admit',id:r.receiptId,version:1,studentIds:['new','new']});assert.equal(new Set(v.studentIds).size,2);assert.equal(h.count('coursePortalStudentBindings'),2);assert.equal(h.count('notificationQueue'),1);
 });
 test('manual contact derives recipient from verified identity and de-duplicates a retried operation',async()=>{
- const h=harness(),{r}=await h.submit(),operationId=random(),args={action:'message',id:r.receiptId,text:'fixture message',operationId,targetLineUserId:'forged'};assert.equal(h.count('notificationQueue'),0);
- await h.manager(args);await h.manager(args);assert.equal(h.count('notificationQueue'),1);const row=[...h.rows.entries()].find(([k])=>k.startsWith('notificationQueue/'))[1];assert.equal(row.targetLineUserId,'U'+'a'.repeat(32));assert.equal(row.emailFallbackEnabled,false);await assert.rejects(h.manager({...args,text:'different'}),/編號已使用/);
+ const h=harness(),{r}=await h.submit(),operationId=random(),args={action:'message',id:r.receiptId,text:'fixture message',operationId,targetLineUserId:'forged'};assert.equal(h.count('notificationQueue'),1);
+ await h.manager(args);await h.manager(args);assert.equal(h.count('notificationQueue'),2);const row=[...h.rows.entries()].find(([k,v])=>k.startsWith('notificationQueue/')&&v.eventCode==='online_enrollment_contact')[1];assert.equal(row.targetLineUserId,'U'+'a'.repeat(32));assert.equal(row.emailFallbackEnabled,false);await assert.rejects(h.manager({...args,text:'different'}),/編號已使用/);
  h.rows.get(C.records+'/'+r.receiptId).line.lineFriendFlag=false;await assert.rejects(h.manager({...args,operationId:random()}),/官方 LINE/);
 });
 test('cleanup removes expired temporary data, keeps submitted records, and responses serialize cleanly',async()=>{
  const h=harness();await h.submit();const i=await h.invitation();await h.start(i);h.advance(3*86400000);assert((await h.service.cleanup())>0);assert.equal(h.count('oauth'),0);assert.equal(h.count('grants'),0);assert.equal(h.count('records'),1);
  const result=await h.manager({action:'list'});assert.equal(result.records.length,1);assert(!Object.hasOwn(result.records[0],'messages'));assert.equal(JSON.parse(JSON.stringify(result)).records.length,1);
+});
+
+
+test('only verified submissions notify the primary manager once, and detail reads actual delivery status',async()=>{
+ const h=harness(),i=await h.invitation(),s=await h.start(i),c=await h.callback(s,{profile:{lineFriendFlag:false}});
+ assert.equal(h.count('notificationQueue'),0);
+ await assert.rejects(h.publicApi({action:'redeem',ticket:c.ticket,verifier:random()}));assert.equal(h.count('notificationQueue'),0);
+ const r=await h.publicApi({action:'redeem',ticket:c.ticket,verifier:s.verifier});
+ const record=h.rows.get(C.records+'/'+r.receiptId),q=h.rows.get('notificationQueue/'+record.managerNotification.queueId);
+ assert.equal(q.targetRole,'manager');assert.equal(q.targetEmployeeId,'PRIMARY_MANAGER_LINE');assert.equal(q.targetLineUserId,undefined);assert.equal(q.emailFallbackEnabled,false);assert(!q.body.includes(record.line.lineUserId));
+ assert.equal(new URL(q.approvalUrl).searchParams.get('enrollment'),r.receiptId);assert.match(q.body,/尚未確認加入官方 LINE/);
+ assert.equal(h.count('coursePortalStudentBindings'),0);assert.equal(h.count('coursePortalStudentProfiles'),0);
+ for(let n=0;n<3;n++)await h.publicApi({action:'redeem',ticket:c.ticket,verifier:s.verifier});assert.equal(h.count('notificationQueue'),1);
+ q.status='已發送';q.sentAt=h.now();
+ const detail=await h.manager({action:'detail',id:r.receiptId});assert.equal(detail.record.managerNotification.status,'已發送');assert.equal(detail.record.managerNotification.sentAt,h.now());
 });

@@ -203,7 +203,7 @@ function showCompletion(r){
  for(let n=1;n<=4;n++)$('step'+n).hidden=n!==4;
  document.querySelector('.progress').hidden=true;$('bottomBar').hidden=true;
  $('successSummary').innerHTML=`<h3>${esc(r.courseName)}</h3><p>${esc(r.optionName)} · NT$ ${money(r.price)}／${esc(r.lessons)} 堂</p><p>${esc(r.name+(r.secondName?'、'+r.secondName:''))}</p><p>${displayDate(r.date)} ${esc(r.time)}–${endTime(r.time)}</p><p class="fine">報名編號：${esc(r.receiptId)}</p>`;
- $('successMessage').textContent=r.lineFriendFlag?'教室已收到資料，會透過 LINE 與你確認老師、時間及學費。':'教室已收到資料。請再點下方按鈕加入官方 LINE 好友，方便教室聯絡你。';
+ $('successMessage').textContent=r.lineFriendFlag?'報名與 LINE 聯絡資料已送至教室，課程尚未排定。教室會與你確認老師、時間及學費。':'報名與 LINE 身分已送至教室，課程尚未排定。請點下方按鈕加入官方 LINE 好友，方便教室聯絡你。';
  $('officialLine').href='https://lin.ee/Fx5Y2mL';window.scrollTo({top:0,behavior:'instant'});$('successHeading').focus({preventScroll:true});
 }
 function resetForm(){Object.assign(state,{step:1,category:'全部',search:'',course:null,plan:null,date:'',time:'',contact:null});$('detailsForm').reset();$('search').value='';$('dateYear').innerHTML='';$('dateMonth').innerHTML='';$('dateDay').innerHTML='';$('dateError').textContent='';$('timeError').textContent='';$('submitError').textContent='';resetConsent();}
