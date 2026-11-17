@@ -65,7 +65,21 @@
   function teacherById(id){return state.teachers.find(function(row){return row.id===id;})||{};}
   function roomById(id){return state.rooms.find(function(row){return row.id===id;})||{};}
   function studentById(id){return state.students.find(function(row){return row.id===id;})||{};}
-  function eventStudentNames(event){var names=(event.studentIds||[]).map(function(id){return studentById(id).name;}).concat(event.studentNames||[]);return Array.from(new Set(names.reduce(function(all,name){return all.concat(clean(name).split(/[、，,－]/));},[]).map(clean).filter(Boolean)));}
+  function eventStudentNames(event){
+    event=event||{};
+    var ids=Array.from(new Set((event.studentIds||[]).map(clean).filter(Boolean)));
+    var snapshots=Array.isArray(event.studentNames)?event.studentNames:(event.studentNames?[event.studentNames]:[]);
+    function parts(name){return clean(name).split(/[、，,－]/).map(clean).filter(Boolean);}
+    var fallback=snapshots.reduce(function(all,name){return all.concat(parts(name));},[]);
+    if(!ids.length)return Array.from(new Set(fallback));
+    if(ids.length===1){var current=clean(studentById(ids[0]).name);return current?parts(current):Array.from(new Set(fallback));}
+    var positional=snapshots.length===ids.length?snapshots:(fallback.length===ids.length?fallback:[]);
+    return ids.reduce(function(all,id,index){
+      // Student IDs identify people; a saved event label may contain an old spelling.
+      var current=clean(studentById(id).name),name=current||clean(positional[index])||'未命名學生';
+      return all.concat(parts(name));
+    },[]);
+  }
   function periodById(id){return state.tuitionPeriods.find(function(row){return row.id===id;})||{};}
   function feeById(id){return state.feePlans.find(function(row){return row.id===id;})||{};}
   function typeName(type){return {fixed:'固定課',single:'老師調課',rental:'教室租用',trial:'體驗課'}[type]||'課程';}

@@ -52,3 +52,19 @@ test('event and student entry points do not use the full workspace gate',()=>{
   assert.match(source,/if\(!isSandbox\(\)\|\|calendarPartial\(\)\)return/);
   assert.match(source,/\$\('tuitionStudent'\)\.disabled=!!id\|\|calendarPartial\(\)/);
 });
+
+for(const filename of ['course-scheduler.js','operations-course-inline-runtime.js']){
+ test(filename+': calendar uses the current name once for a corrected student record',()=>{
+  const code=fs.readFileSync(filename,'utf8'),ctx={Set,Array,clean:v=>String(v??'').trim(),studentById:id=>({name:'李燿宇'})};vm.createContext(ctx);vm.runInContext(code.slice(code.indexOf('  function eventStudentNames(event)'),code.indexOf('  function periodById')),ctx);
+  assert.deepEqual(Array.from(ctx.eventStudentNames({studentIds:['student'],studentNames:['李耀宇']})),['李燿宇']);
+  assert.deepEqual(Array.from(ctx.eventStudentNames({studentIds:['student','student'],studentNames:['李耀宇','李耀宇']})),['李燿宇']);
+ });
+ test(filename+': group members keep their identities and missing profiles retain the corresponding saved name',()=>{
+  const code=fs.readFileSync(filename,'utf8'),students={a:{name:'新甲'},b:{name:'新乙'},same:{name:'新甲'},group:{name:'甲－乙'}},ctx={Set,Array,clean:v=>String(v??'').trim(),studentById:id=>students[id]||{}};vm.createContext(ctx);vm.runInContext(code.slice(code.indexOf('  function eventStudentNames(event)'),code.indexOf('  function periodById')),ctx);
+  assert.deepEqual(Array.from(ctx.eventStudentNames({studentIds:['a','b'],studentNames:['舊甲','舊乙']})),['新甲','新乙']);
+  assert.deepEqual(Array.from(ctx.eventStudentNames({studentIds:['a','unknown'],studentNames:['舊甲','乙']})),['新甲','乙']);
+  assert.deepEqual(Array.from(ctx.eventStudentNames({studentIds:['a','same'],studentNames:['舊甲','舊甲']})),['新甲','新甲']);
+  assert.deepEqual(Array.from(ctx.eventStudentNames({studentIds:['group'],studentNames:['舊甲－舊乙']})),['甲','乙']);
+  assert.deepEqual(Array.from(ctx.eventStudentNames({studentIds:[],studentNames:['歷史學生']})),['歷史學生']);
+ });
+}
