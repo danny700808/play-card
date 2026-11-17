@@ -41,11 +41,12 @@ function createTeacherApprovalSync({db,FieldValue}){
  const profileId=clean(row.externalTeacherProfileId||row.portalProfileId||contractId);
  if(profileId.includes('/'))throw Error('老師資料識別碼格式錯誤。');
  const profileRef=db.collection('externalTeacherProfiles').doc(profileId),versionRef=db.collection('coursePortalRuntime').doc('scheduleVersion');
+ let loginReady=false;
  await db.runTransaction(async tx=>{
  const [current,employeeNow,assignment,version]=await Promise.all([tx.get(contractRef),tx.get(employeeRef),tx.get(assignmentRef),tx.get(versionRef)]);
  const latest=current.data()||{};assertReady(latest);
  if(isRegistrationOnly(latest)!==isRegistrationOnly(row))throw Error('老師審核類型剛剛已更新，請重新整理。');
- for(const field of ['name','teacherName','mobile','phone','signatureUrl','teachingAbilities','registrationOnly','profileSubmittedAt'])if(JSON.stringify(latest[field])!==JSON.stringify(row[field]))throw Error('老師資料剛剛已更新，請重新整理再核准。');
+ for(const field of ['name','teacherName','mobile','phone','email','emailBindStatus','signatureUrl','teachingAbilities','registrationOnly','profileSubmittedAt'])if(JSON.stringify(latest[field])!==JSON.stringify(row[field]))throw Error('老師資料剛剛已更新，請重新整理再核准。');
  if(clean(employeeNow.data()?.coursePortalTeacherId)&&employeeNow.data().coursePortalTeacherId!==teacherId)throw Error('老師歸屬剛剛已變更，請重新整理。');
  const prior=assignment.exists?assignment.data():{};
  if(prior.employeeId&&prior.employeeId!==employeeId)throw Error('排課老師已屬於另一位人員，請先確認歸屬。');
@@ -54,14 +55,18 @@ function createTeacherApprovalSync({db,FieldValue}){
  const common={employeeId,externalTeacherEmployeeId:employeeId,coursePortalTeacherId:teacherId,employeeRef:'employees/'+employeeId,updatedAt:FieldValue.serverTimestamp()};
  const registrationOnly=isRegistrationOnly(latest);
  const contact=employeeNow.data()||{};
+ const access=await require('./teacherRegistrationAccess').prepareApprovalAccess({db,tx,FieldValue,row:latest,employeeId,teacherId,profileId,contractId,actor});
+ loginReady=!!access;
  const status={status:'active',profileStatus:'active',contractStatus:registrationOnly?'not_requested':'active',progressStatus:registrationOnly?'老師資料已核准，可開始排課（契約尚未開放）':'管理端已確認，契約生效',confirmedBy:actor,confirmedAt:FieldValue.serverTimestamp()};
  tx.set(employeeRef,{...common,name:clean(row.name||row.teacherName),displayName:clean(row.name||row.teacherName),mobile:clean(row.mobile||row.phone),phone:clean(row.mobile||row.phone),email:clean(row.email),lineUserId:clean(latest.lineUserId||contact.lineUserId),lineBindStatus:clean(latest.lineUserId?latest.lineBindStatus:(contact.lineBindStatus||latest.lineBindStatus)),lineDisplayName:clean(latest.lineDisplayName||contact.lineDisplayName),identityType:'external',employeeType:'externalTeacher',role:'externalTeacher',isExternalTeacher:true,accountStatus:'active',employmentStatus:'active',hiddenFromActiveLists:false,...(registrationOnly?{}:{currentExternalContractId:contractId,externalTeacherContractId:contractId}),externalTeacherProfileId:profileId,portalProfileId:profileId,teachingAbilities:plan.abilities,subjectIds:subjects.effectiveSubjectIds,...(registrationOnly?{}:{latestExternalContractStatus:'active'}),profileReviewStatus:'approved'}, {merge:true});
  tx.set(assignmentRef,{...subjects,managerProfile:{...(prior.managerProfile||{}),name:clean(row.name||row.teacherName),phone:clean(row.mobile||row.phone),active:true},updatedBy:actor},{merge:true});
- tx.set(contractRef,{...common,...status,teachingAbilities:plan.abilities},{merge:true});
- tx.set(profileRef,{...common,...status,name:clean(row.name||row.teacherName),mobile:clean(row.mobile||row.phone),teachingAbilities:plan.abilities},{merge:true});
+ tx.set(contractRef,{...common,...status,...(access?access.marker:{}),teachingAbilities:plan.abilities},{merge:true});
+ tx.set(profileRef,{...common,...status,...(access?{...access.marker,...access.profileMetadata}:{}),name:clean(row.name||row.teacherName),mobile:clean(row.mobile||row.phone),teachingAbilities:plan.abilities},{merge:true});
+ if(access)access.write();
+ if(access)tx.set(employeeRef,{...access.marker,portalProfileVersion:2},{merge:true});
  tx.set(versionRef,{version:Number(version.data()?.version||0)+1,updatedAt:FieldValue.serverTimestamp(),updatedBy:'teacher-approval-sync'},{merge:true});
  });
- return {ok:true,status:'active',teacherId,employeeId,message:'已核准老師並同步排課名單與授課科目。'};
+ return {ok:true,status:'active',teacherId,employeeId,courseLoginReady:loginReady,message:loginReady?'已核准並開通老師課表，登入說明已排入 Email 通知。':'已核准老師並同步排課名單與授課科目；尚需完成 Email 驗證才能開通簡易登入。'};
  };
 }
 module.exports={createTeacherApprovalSync};

@@ -26,6 +26,13 @@
   }
   function saveProof(value){sessionStorage.setItem(key+'-proof',value);try{localStorage.setItem(key+'-browser-proof',JSON.stringify({value,expires:Date.now()+10*60*1000}));}catch(e){}}
   function clearTicket(){ticket='';sessionStorage.removeItem(key);sessionStorage.removeItem(key+'-proof');try{localStorage.removeItem(key+'-browser-proof');}catch(e){}}
+  async function prepareTeacherEntry(user){
+    if(!user||user.courseLoginReady!==true||user.identityType!=='external')return;
+    const linked=await call('personalWorkspace',{action:'open-role',role:'teacher'},true);
+    if(!linked.sessionToken)throw new Error('老師課表尚未開通，請聯絡管理者。');
+    localStorage.setItem('youzi.coursePortal.teacher.session.v1',linked.sessionToken);
+    sessionStorage.removeItem('youzi.coursePortal.teacher.session.v1');
+  }
   async function resumeSession(){
     if(!global.firebase||typeof global.firebase.auth!=='function'||typeof global.getUser!=='function')return false;
     const saved=global.getUser();if(!saved||saved.portalSessionBridge===true)return false;
@@ -37,6 +44,7 @@
       const manager=claims.manager===true;
       const restored={...saved,role:manager?'admin':claims.role,identityType:claims.identityType,isManagerAccount:manager,showSettingsZone:manager};
       global.saveUser(restored);localStorage.setItem('employeeSecureAuthVersion','1');
+      await prepareTeacherEntry(restored);
       global.redirectToLoginTarget(global.requestedLoginTarget()||global.loginDestination(restored));return true;
     }catch(e){return false;}
   }
@@ -61,6 +69,7 @@
       if(auth.setPersistence)await auth.setPersistence(global.firebase.auth.Auth.Persistence.LOCAL);
       await auth.signInWithCustomToken(result.token);
       global.saveUser(result.user);localStorage.setItem('employeeSecureAuthVersion','1');clearTicket();
+      await prepareTeacherEntry(result.user);
       const target=global.requestedLoginTarget()||global.loginDestination(result.user);
       global.redirectToLoginTarget(target);
     }else if(result.kind==='portal-session'){

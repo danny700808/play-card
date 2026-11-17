@@ -1137,6 +1137,10 @@ async function findEmailLoginAccount(type, email) {
   const rows = snapshot.docs
     .map((doc) => Object.assign({ __id: doc.id }, doc.data() || {}))
     .filter((row) => clean(row.status) === 'active' && row.emailVerified === true);
+  if(type==='teacher'){
+    const checks=await Promise.all(rows.map(row=>row.registrationAccessSource==='approved-teacher-registration-v1'?require('./teacherRegistrationAccess').registrationBindingActive(db,row):true));
+    for(let i=rows.length-1;i>=0;i--)if(!checks[i])rows.splice(i,1);
+  }
   const accountKeys = [...new Set(rows.map((row) =>
     clean(row.authAccountId) || (clean(row.lineUserId) ? `line:${clean(row.lineUserId)}` : '')
   ).filter(Boolean))];
@@ -1366,13 +1370,16 @@ async function authorizedBindingsForSession(session) {
     queries.push(collection.where(targetField, '==', targetId).get());
   }
   const snapshots = await Promise.all(queries);
-  return [...new Map(snapshots.flatMap((snapshot) => snapshot.docs).map((doc) => [
+  const rows=[...new Map(snapshots.flatMap((snapshot) => snapshot.docs).map((doc) => [
     doc.id,
     Object.assign({ __id: doc.id, __ref: doc.ref }, doc.data() || {})
   ])).values()].filter((row) =>
     clean(row.status) === 'active' &&
     (!targetId || clean(row[targetField]) === targetId)
   );
+  if(role!=='teacher')return rows;
+  const checks=await Promise.all(rows.map(row=>row.registrationAccessSource==='approved-teacher-registration-v1'?require('./teacherRegistrationAccess').registrationBindingActive(db,row):true));
+  return rows.filter((row,index)=>checks[index]);
 }
 
 async function touchAuthorizedBindings(session) {
@@ -2622,6 +2629,8 @@ async function resolveTeacherUtilityEmployee(session) {
   if(managerPreview&&managerPreview.role==='teacher'&&managerPreview.teacherId===teacherId&&managerPreview.managerPreviewEmployeeId)return resolveApprovedTeacherManagerPreview(managerPreview);
   const bindings = await authorizedBindingsForSession(session);
   if (!bindings.length) throw new HttpsError('permission-denied', '老師登入綁定已停用，請重新登入。');
+  const registrationBinding=bindings.find(row=>row.registrationAccessSource==='approved-teacher-registration-v1');
+  if(registrationBinding)return resolveApprovedTeacherManagerPreview({teacherId,managerPreviewEmployeeId:clean(registrationBinding.canonicalEmployeeId)});
   const managerLinkedEmployeeIds = [...new Set(bindings.filter((row) => row.linkedByManagerAt || row.linkedByManager)
     .map((row) => clean(row.personMasterId || row.canonicalEmployeeId)).filter(Boolean))];
   if (managerLinkedEmployeeIds.length > 1) {

@@ -55,7 +55,7 @@ function createLegacyTeacherForms({db,FieldValue,baseUrl,queueEmail,queueManager
       url.searchParams.set('verify','email');url.searchParams.set('emailToken',emailNonce);
       await queueEmail({queueId:'legacy-teacher-email-'+docRef.id+'-'+emailNonce.slice(0,8),channel:'email',targetEmail:row.email,targetName:row.name,title:'柚子樂器外聘老師資料驗證',body:'您好 '+row.name+' 老師，請由這個連結驗證 Email 並繼續填寫老師資料：\n'+url.href,source:'external-teacher-email-verify'},batch);
     }
-    await queueManager({title:'外聘老師基本資料已送出',body:'姓名：'+row.name+'\n'+new URL('external-teacher-admin.html?contractId='+encodeURIComponent(docRef.id),baseUrl).href,source:'external-teacher-created',contractId:docRef.id},batch);
+    // Notify the manager only after step 3 is submitted, when the record is reviewable.
     await batch.commit();
     return {ok:true,record:publicRow(row)};
   }

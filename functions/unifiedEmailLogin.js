@@ -89,8 +89,10 @@ function createUnifiedEmailLogin({ db, auth, FieldValue, sendEmail, findPortalAc
           const lineRef = db.collection('employeeLoginBindings').doc(hash('line-login|'+row.profile.lineUserId)), reverseRef = db.collection('employeeLoginOwners').doc(binding.uid);
           const existing = await tx.get(lineRef), reverse = await tx.get(reverseRef);
           if ((existing.exists && existing.data().uid !== binding.uid) || (reverse.exists && reverse.data().lineKey !== lineRef.id)) throw new HttpsError('already-exists','LINE 與原有帳號資料不一致，請聯絡管理者確認。');
+          const contact=await require('./teacherRegistrationAccess').prepareVerifiedLineContact({db,tx,FieldValue,account:found.account,lineProfile:row.profile});
           tx.set(lineRef,{...binding,linkedAt:FieldValue.serverTimestamp()});
           tx.set(reverseRef,{lineKey:lineRef.id,linkedAt:FieldValue.serverTimestamp()});
+          if(contact)contact.write();
         } else {
           const lineRef = db.collection('unifiedPortalEmailBindings').doc(hash('line-login|'+row.profile.lineUserId));
           const existing = await tx.get(lineRef);

@@ -160,6 +160,7 @@ function normalizeUser(account) {
     identityLabel: manager ? '管理者' : (identity === 'parttime' ? '工讀生' : (identity === 'external' ? '外聘老師' : '專職員工')),
     isPartTime: identity === 'parttime',
     isExternalTeacher: identity === 'external',
+    courseLoginReady: identity === 'external' && row.courseLoginReady === true && row.profileReviewStatus === 'approved',
     isManagerAccount: manager,
     showSettingsZone: manager || truthy(row.showSettingsZone || row['是否顯示設定區'] || row['可看設定區']),
     showApprovalZone: manager || truthy(row.showApprovalZone || row['可看審核區']),

@@ -59,6 +59,8 @@ function registerPortalContractNotices(exports) {
     if (!approved && !submitted) return;
     // Legacy submission already queues the manager notification in its callable.
     if (legacy && submitted) return;
+    // The approval transaction already queued the complete registration/login notice.
+    if (legacy && approved && isRegistrationOnly(row) && row.approvalNoticeQueueId) return;
     const db = admin.firestore();
     const id = event.params.id;
     let person = row;
