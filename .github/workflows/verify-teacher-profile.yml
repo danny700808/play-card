@@ -5,7 +5,9 @@ on:
     paths:
       - 'teacher-profile.*'
       - 'functions/coursePortal.js'
+      - 'functions/teacherManagerPreview.js'
       - 'tests/teacher-profile*'
+      - 'tests/teacher-manager-preview.test.cjs'
       - '.github/workflows/verify-teacher-profile.yml'
   workflow_dispatch:
 permissions:
@@ -25,3 +27,4 @@ jobs:
           NODE_PATH="$RUNNER_TEMP/profile-tests/node_modules" node tests/teacher-profile-buttons.cjs
           node tests/teacher-profile-bank-regression.cjs
           node --test tests/teacher-profile-flow.test.js tests/teacher-profile-change-review.test.js
+          node --test tests/teacher-manager-preview.test.cjs

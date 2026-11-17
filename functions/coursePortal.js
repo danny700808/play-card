@@ -2598,9 +2598,28 @@ function teacherUtilityProfileBundle(options) {
   return { profile, completenessSource };
 }
 
+async function resolveApprovedTeacherManagerPreview(preview) {
+  const target=await require('./teacherManagerPreview').approvedTeacherTarget(db,preview.teacherId);
+  if(!target||target.employeeId!==preview.managerPreviewEmployeeId)throw new HttpsError('permission-denied','老師資料已變更，請重新選擇已核准的老師。');
+  const {teacherId,employeeId,profileId,employee,profile:externalProfile}=target;
+  const privateSnapshot=await db.collection('teacherPrivateProfiles').doc(profileId).get();
+  const bundle=teacherUtilityProfileBundle({employeeId,employee,externalProfile,privateProfile:privateSnapshot.exists?privateSnapshot.data():{},bindings:[],sessionLineUserId:''});
+  const merged=bundle.completenessSource,missing=externalTeacherProfileMissingFields(merged);
+  const name=clean(merged.name||employee.name||employee.displayName)||'外聘老師';
+  return {employeeId,user:{id:employeeId,employeeId,name,displayName:name,email:employeeEmail(merged),phone:employeePhone(merged),mobilePhone:employeePhone(merged),
+    identityType:'external',identityLabel:'外聘老師',employeeType:'external',role:'externalTeacher',isExternalTeacher:true,
+    lineUserId:clean(merged.lineUserId),lineNotifyEnabled:!!clean(merged.lineUserId),accountStatus:'active',employmentStatus:'active',
+    legacyTeacherId:teacherId,coursePortalTeacherId:teacherId,externalTeacherProfileId:profileId,portalProfileId:profileId,
+    portalProfileVersion:TEACHER_PORTAL_PROFILE_VERSION,portalProfileSource:TEACHER_PORTAL_PROFILE_SOURCE,
+    portalSessionBridge:true,coursePortalTeacherCanonical:true,managerLinkedPerson:true,employeeRecordCreated:true},
+    profile:bundle.profile,profileComplete:missing.length===0,missingProfileFields:missing};
+}
+
 async function resolveTeacherUtilityEmployee(session) {
   const teacherId = clean(session && session.teacherId);
   if (!teacherId) throw new HttpsError('failed-precondition', '老師登入資料缺少老師編號，請重新登入。');
+  const managerPreview=mobilePreviewContext.current();
+  if(managerPreview&&managerPreview.role==='teacher'&&managerPreview.teacherId===teacherId&&managerPreview.managerPreviewEmployeeId)return resolveApprovedTeacherManagerPreview(managerPreview);
   const bindings = await authorizedBindingsForSession(session);
   if (!bindings.length) throw new HttpsError('permission-denied', '老師登入綁定已停用，請重新登入。');
   const managerLinkedEmployeeIds = [...new Set(bindings.filter((row) => row.linkedByManagerAt || row.linkedByManager)
@@ -14119,8 +14138,8 @@ module.exports = {
   managerCalendarFollowup
 };
 async function mobileTeacherRoster() {
-  const [bindings,teachers]=await Promise.all([db.collection('coursePortalTeacherBindings').where('status','==','active').get(),mirrorRows('teachers')]);
-  const ids=new Set(bindings.docs.map(d=>clean(d.data().teacherId)));
+  const [bindings,teachers,approved]=await Promise.all([db.collection('coursePortalTeacherBindings').where('status','==','active').get(),mirrorRows('teachers'),require('./teacherManagerPreview').approvedTeacherTargets(db)]);
+  const ids=new Set(bindings.docs.filter(d=>d.data().authAccountId||d.data().lineUserId).map(d=>clean(d.data().teacherId)).concat(approved.map(row=>row.teacherId)));
   return teachers.filter(t=>sourceActive(t)&&ids.has(sourceId(t))).map(t=>({id:sourceId(t),name:clean(t.name),identityType:'external',identityLabel:'外聘老師'})).sort((a,b)=>a.name.localeCompare(b.name,'zh-TW'));
 }
 async function mobileTeacherRead(teacherId,method,payload={}) {return mobilePortalRead('teacher',teacherId,method,payload);}
@@ -14128,8 +14147,16 @@ async function mobilePortalRead(role,targetId,method,payload={}) {
   if(!['teacher','renter'].includes(role))throw new HttpsError('permission-denied','不支援此檢視身分。');
   const bindings=await db.collection(role==='teacher'?'coursePortalTeacherBindings':'coursePortalRenterBindings').where(role==='teacher'?'teacherId':'renterId','==',clean(targetId)).get();
   const binding=bindings.docs.map(d=>d.data()).find(r=>r.status==='active'&&(r.authAccountId||r.lineUserId));
-  if(!binding)throw new HttpsError('permission-denied','這位老師尚無有效登入綁定。');
-  const session={role,[role==='teacher'?'teacherId':'renterId']:clean(targetId),authAccountId:clean(binding.authAccountId),lineUserId:clean(binding.lineUserId),authMethod:binding.lineUserId?'line':'email'};
+  let approved=null;
+  if(role==='teacher'){
+    const teachers=await mirrorRows('teachers');
+    if(!teachers.some(t=>sourceId(t)===clean(targetId)&&sourceActive(t)))throw new HttpsError('permission-denied','找不到已啟用的老師。');
+    if(!binding)approved=await require('./teacherManagerPreview').approvedTeacherTarget(db,clean(targetId));
+  }
+  if(!binding&&!approved)throw new HttpsError('permission-denied','找不到已核准的老師資料或有效登入綁定。');
+  // This context is reached only through the manager-authenticated preview API.
+  // It is never persisted and cannot be used as a real teacher login session.
+  const session={role,[role==='teacher'?'teacherId':'renterId']:clean(targetId),authAccountId:clean(binding&&binding.authAccountId),lineUserId:clean(binding&&binding.lineUserId),authMethod:binding?(binding.lineUserId?'line':'email'):'manager-preview',...(approved?{managerPreviewEmployeeId:approved.employeeId}:{})};
   const handlers={coursePortalTeacherData:teacherPortalData,coursePortalTeacherUtilitySession:teacherUtilitySession,coursePortalTeacherContractSession:teacherContractSession,coursePortalTeacherAvailability:teacherAvailability,coursePortalTeacherSlotOptions:teacherSlotOptions,coursePortalTeacherAttendanceCorrectionOptions:teacherAttendanceCorrectionOptions,coursePortalLessonHistory:courseLessonHistory,coursePortalRentalDayBoard:rentalDayBoard,coursePortalRentalWeekBoard:rentalWeekBoard,coursePortalRentalAvailability:rentalAvailability,coursePortalRentalMyBookings:rentalMyBookings,coursePortalRentalUseSettings:publicRentalSettings};
   method=clean(method).replace(/Taiwan$/,'');
   if(payload.save===true)throw new HttpsError('permission-denied','唯讀檢視不允許儲存。');
