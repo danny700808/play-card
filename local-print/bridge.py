@@ -290,7 +290,10 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as error:
             return self.reply(400, {'error': str(error)})
         source_digest = hashlib.sha256(channel.encode() + b'\0' + raw).hexdigest()
-        layout_key = json.dumps([FOOTER_VERSION, profile, method, payload.get('tracking',''), footer],
+        # A cached postal preview is valid only for the exact PDF/order binding.
+        # Keep existing non-postal cache keys so saved shipping labels are unchanged.
+        postal_binding = [payload.get('orderKey',''), payload.get('orderNo','')] if profile == POSTAL_PROFILE else []
+        layout_key = json.dumps([FOOTER_VERSION, profile, method, payload.get('tracking',''), footer] + postal_binding,
                                 sort_keys=True, ensure_ascii=False, separators=(',',':'))
         digest = hashlib.sha256((source_digest + '\0' + layout_key).encode()).hexdigest()
         history = [read_state(path.parent) for path in JOBS.glob('*/status.json')]
