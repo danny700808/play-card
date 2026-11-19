@@ -72,6 +72,25 @@ class DeliveryTests(unittest.TestCase):
         self.assertFalse(self.bridge.authorized(self.token, 'https://evil.test'))
         self.assertTrue(self.bridge.authorized(self.token, self.bridge.origin()))
 
+    def test_momo_deadline_requires_exact_order_and_official_page(self):
+        order={'key':'MOMO:66111900000001:001','orderNo':'66111900000001','externalId':'66111900000001'}
+        with ThreadPoolExecutor() as pool:
+            self.bridge.poll()
+            task=pool.submit(self.bridge.read,[order],2,'momo')
+            deadline=time.monotonic()+1;job=None
+            while not job and time.monotonic()<deadline:
+                job=self.bridge.poll()['job'];time.sleep(.001)
+            self.assertEqual(job['kind'],'momo')
+            result={**order,'shippingDeadlineText':'2026/11/20','evidenceUrl':'https://3p.momo.com.tw/order/all'}
+            for changes in ({'key':'MOMO:66111900000001:002'},{'orderNo':'66111900000002'},
+                            {'evidenceUrl':'https://evil.test/order/all'},{'shippingDeadlineText':'預計明天'}):
+                with self.assertRaises(ValueError):
+                    self.bridge.submit({'id':job['id'],'results':[{**result,**changes}]})
+            self.bridge.submit({'id':job['id'],'results':[result]})
+            found,error=task.result()
+            self.assertEqual(found[order['key']]['shippingDeadlineText'],'2026/11/20')
+            self.assertFalse(error)
+
     def test_deadline_roundtrip_retains_verified_order_binding(self):
         self.result['shippingDeadlineText'] = '2026/11/20 16:30'
         with ThreadPoolExecutor() as pool:

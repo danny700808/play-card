@@ -156,9 +156,10 @@ function renderDetail() {
     ? shopeeViaEasyStore ? shopeeHelperTarget + `<button id="shopeeDirectPrint" class="primary" ${busy?'disabled':''}>${ShippingModel.documentActionLabel(row)}</button>`
     : `<a class="action-link primary" href="${easyStoreOrder}" target="_blank" rel="noopener noreferrer">開啟 EasyStore 對應訂單 ↗</a>` : '';
   const savedDocument=ShippingModel.savedDocumentAvailable(row);
-  const shippingAction = row.platform==='EasyStore' ? (savedDocument?`<button id="showProvidedDocument" class="primary">${ShippingModel.documentActionLabel(row)}</button>`:externalAction)
+  const postal = row.documentType === 'postal-address-v1';
+  const shippingAction = row.platform==='EasyStore' ? (savedDocument?`<button id="showProvidedDocument" class="primary">${postal?'重印郵局標籤':ShippingModel.documentActionLabel(row)}</button>`:postal?`<button id="prepare" class="primary" ${!enabled||busy?'disabled':''}>產生郵局寄件標籤</button>`:externalAction)
     : `<button id="prepare" class="primary" ${(!enabled&&!savedDocument)||busy?'disabled':''}>${ShippingModel.documentActionLabel(row)}</button>`;
-  const shippingNote = row.platform==='EasyStore' && !row.documentReady
+  const shippingNote = postal ? row.blockReason || '依原訂單產生郵局寄件標籤，郵件條碼由郵局交寄時提供。' : row.platform==='EasyStore' && !row.documentReady
     ? row.stale?'訂單資料尚未更新，請先讀取最新訂單。'
       : ['cancelled','review'].includes(row.stage)?'此訂單已取消或需要核對，暫不開啟出貨。'
       : shopeeViaEasyStore?''
@@ -267,21 +268,26 @@ async function prepare(row) {
   }
   beginDocument(row);
   if(!row.canDownload&&row.platform==='Coupang'){
+    if(!Object.hasOwn(carriers,row.carrierCode)){
+      $('documentStatus').textContent='平台尚未提供可核對的配送方式，請先核對原訂單。';
+      $('documentPlaceholder').textContent='尚未建立出貨。';
+      return;
+    }
     $('documentStatus').textContent='請填寫這筆出貨使用的物流資料。';
     $('documentPlaceholder').textContent='出貨成功後，貨運單會顯示在這裡。';
     $('shipmentOptions').hidden=false;
-    $('shipmentOptions').innerHTML=`<label class="option-row">物流公司<select id="carrier" required><option value="">請選擇</option>${Object.entries(carriers).map(([k,v])=>`<option value="${k}" ${k===row.carrierCode?'selected':''}>${v}</option>`).join('')}</select></label><label id="outboundOption" class="option-row">宅配出貨地址代碼<input id="outbound" inputmode="numeric" pattern="[0-9]+" placeholder="酷澎已登記的出貨地址代碼"></label><label id="returnOption" class="option-row">超商退貨地址代碼<input id="returnCenter" placeholder="酷澎已登記的退貨地址代碼"></label><button type="submit" class="primary">確認出貨並取單</button>`;
+    $('shipmentOptions').innerHTML=`<div class="option-row">訂單配送方式：${escapeHtml(carriers[row.carrierCode])}</div><label id="outboundOption" class="option-row">宅配出貨地址代碼<input id="outbound" inputmode="numeric" pattern="[0-9]+" placeholder="酷澎已登記的出貨地址代碼"></label><label id="returnOption" class="option-row">超商退貨地址代碼<input id="returnCenter" placeholder="酷澎已登記的退貨地址代碼"></label><button type="submit" class="primary">確認出貨並取單</button>`;
     const chooseCarrier=()=>{
-      const home=['TWL_HCT','TWL_KERRY'].includes($('carrier').value);
-      const store=['TWL_FM','TWL_711'].includes($('carrier').value);
+      const home=['TWL_HCT','TWL_KERRY'].includes(row.carrierCode);
+      const store=['TWL_FM','TWL_711'].includes(row.carrierCode);
       $('outboundOption').hidden=!home;$('outbound').required=home;
       $('returnOption').hidden=!store;$('returnCenter').required=store;
     };
-    $('carrier').addEventListener('change',chooseCarrier);chooseCarrier();
+    chooseCarrier();
     $('shipmentOptions').onsubmit=e=>{
       e.preventDefault();
       if(busy)return;
-      obtainDocument(row,{carrier:$('carrier').value,outboundShippingPlaceCode:$('outbound').value,returnCenterCode:$('returnCenter').value});
+      obtainDocument(row,{carrier:row.carrierCode,outboundShippingPlaceCode:$('outbound').value,returnCenterCode:$('returnCenter').value});
     };
     // The host resolves a unique official shipping location. Keep the form
     // available only when a choice is required or that lookup fails.
@@ -294,7 +300,7 @@ async function prepare(row) {
 function documentSummary(row){
   const maskedMomo=row.channel==='MOMO'&&/[○◯●＊*]/.test(`${row.recipient||''}${row.address||''}`);
   $('documentSummary').innerHTML=`<div class="document-order">${badge(row)}<h3>${escapeHtml(row.orderNo)}</h3>${paidAmountHtml(row)}</div><div class="document-items">${packingItems(row).map(itemHtml).join('')}</div><div class="subline">${escapeHtml(row.recipient)}${row.pickupStore?' · '+escapeHtml(row.pickupStore):''}</div><div class="subline">${escapeHtml(row.address)}</div>${maskedMomo?'<p class="muted">MOMO 訂單資料已遮蔽部分姓名或地址；完整配送資訊請核對正式貨運單。</p>':''}${row.tracking?`<p class="tracking-number">物流單號：${escapeHtml(row.tracking)}</p>`:''}`;
-  $('printerHint').textContent=['MOMO','酷澎','蝦皮','官網'].includes(row.channel)?'使用副機 XP-420B；正在確認本機列印助手。':'請選擇這張貨運單使用的印表機與紙張。';
+  $('printerHint').textContent=['MOMO','酷澎','蝦皮','官網','LINE'].includes(row.channel)?'使用副機 XP-420B；正在確認本機列印助手。':'請選擇這張貨運單使用的印表機與紙張。';
   $('momoPasswordHint').hidden=row.channel!=='MOMO';
 }
 function beginDocument(row){
@@ -324,7 +330,7 @@ async function obtainDocument(row,options){
   try{
     await ShippingModel.obtainDocument(api,row,options,fresh=>{
       documentSummary({...row,...fresh});
-      $('documentStatus').textContent=fresh.action==='download'?'正在取回原貨運單…':'正在申請出貨，請勿重複操作…';
+      $('documentStatus').textContent=fresh.action==='download'?'正在取回原貨運單…':fresh.action==='postal'?'正在產生郵局寄件標籤…':'正在申請出貨，請勿重複操作…';
     });
     data=await api('/api/orders');activeWork='done';selected=row.key;render();
     $('documentStatus').textContent='貨運單已取得，正在傳回預覽與列印檔…';

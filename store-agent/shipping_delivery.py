@@ -15,6 +15,7 @@ class DeliveryBridge:
     def __init__(self, data_dir):
         self.path = Path(data_dir) / 'delivery-bridge.json'
         self.condition = threading.Condition()
+        self.read_lock = threading.Lock()
         self.last_seen = 0
         self.pending = None
 
@@ -44,7 +45,7 @@ class DeliveryBridge:
             if not p or p['expires'] <= self.last_seen or p['claimed']:
                 return {'job': None}
             p['claimed'] = True
-            return {'job': {'id': p['id'], 'orders': list(p['orders'].values())}}
+            return {'job': {'id': p['id'], 'orders': list(p['orders'].values()), 'kind': p.get('kind','shopee')}}
 
     def submit(self, body):
         with self.condition:
@@ -58,6 +59,16 @@ class DeliveryBridge:
             found = {}
             for row in incoming:
                 expected = p['orders'].get(row.get('key')) if isinstance(row, dict) else None
+                if p.get('kind') == 'momo':
+                    deadline = row.get('shippingDeadlineText') if isinstance(row, dict) else None
+                    if (not expected or any(row.get(k) != expected[k] for k in ('key','orderNo','externalId'))
+                            or not re.fullmatch(r'MOMO:\d{14,15}:\d{1,6}(?:,\d{1,6}){0,99}', row['key'])
+                            or row.get('evidenceUrl') != 'https://3p.momo.com.tw/order/all'
+                            or row['key'] in found or not isinstance(deadline,str)
+                            or not re.fullmatch(r'\d{4}[/-]\d{1,2}[/-]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?',deadline)):
+                        raise ValueError('Mismatched MOMO deadline result')
+                    found[row['key']] = {'shippingDeadlineText':deadline, 'evidenceUrl':row['evidenceUrl']}
+                    continue
                 name = row.get('deliveryMethod', '') if isinstance(row, dict) else ''
                 evidence = row.get('evidenceUrl', '') if isinstance(row, dict) else ''
                 if (not expected or row.get('orderNo') != expected['orderNo']
@@ -80,14 +91,27 @@ class DeliveryBridge:
             self.condition.notify_all()
             return {'ok': True}
 
-    def read(self, orders, timeout=55):
+    def read(self, orders, timeout=55, kind='shopee'):
+        # The platform refreshes run in parallel but the paired browser owns one
+        # short-lived job at a time. Never overwrite a lookup awaiting its reply.
+        started=time.monotonic()
+        if not self.read_lock.acquire(timeout=timeout):
+            return {}, 'timeout'
+        try:
+            return self._read(orders, max(.01, timeout-(time.monotonic()-started)), kind)
+        finally:
+            self.read_lock.release()
+
+    def _read(self, orders, timeout, kind):
+        if kind not in ('shopee','momo'):
+            raise ValueError('Unsupported delivery lookup')
         if not orders or not self.config():
             return {}, 'not-configured'
         with self.condition:
             if time.monotonic() - self.last_seen > 75:
                 return {}, 'offline'
             job = {'id': secrets.token_urlsafe(24), 'orders': {r['key']: r for r in orders},
-                   'expires': time.monotonic() + timeout, 'claimed': False, 'done': False}
+                   'expires': time.monotonic() + timeout, 'claimed': False, 'done': False, 'kind':kind}
             self.pending = job
             try:
                 self.condition.wait_for(lambda: job['done'], timeout)

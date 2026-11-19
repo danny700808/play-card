@@ -56,6 +56,15 @@ class ShippingTests(unittest.TestCase):
     def test_large_package_id_stays_string(self):
         self.assertEqual(self.row["packageId"], "9007199254740993")
 
+    def test_checkout_carrier_cannot_be_replaced_or_guessed(self):
+        with patch.object(self.w, 'fresh_cp', return_value=copy.deepcopy(self.row)):
+            with self.assertRaisesRegex(ShippingError, '原訂單不一致'):
+                self.w.preview(self.key, {**self.options, 'carrier':'TWL_FM'})
+        missing = {**self.row, 'carrierCode':''}
+        with patch.object(self.w, 'fresh_cp', return_value=missing):
+            with self.assertRaisesRegex(ShippingError, '不以手動選項替代'):
+                self.w.preview(self.key, self.options)
+
     def test_screen_delivery_requires_fresh_matching_evidence_and_never_overrides_api(self):
         raw = {"id": 123, "name": "ORDER", "source_name": "shopee-taiwan", "updated_at": "v1"}
         row = normalize_es(raw)

@@ -5,7 +5,7 @@ const vm=require('node:vm');
 const model=require('./shipping-ui/model.js');
 
 function harness({rowChanges={},carrier='7-11店到店',shippingMethod,prepareStatus='prepared',prepareError='',printError='',documentOk=true,
-  layouts=['packing-footer-v1'],replyLayout='packing-footer-v1',channel='MOMO',profiles=['momo-cvs-v1'],replyProfile='momo-cvs-v1',replyPages=1,printLink=true}={}){
+  layouts=['packing-footer-v1'],replyLayout='packing-footer-v1',channel='MOMO',profiles=['momo-cvs-v1'],replyProfile='momo-cvs-v1',replyPages=1,replyBarcodes=1,printLink=true}={}){
   const elements=new Map(),calls=[];
   function el(){return {style:{},children:[],open:true,disabled:false,textContent:'',setAttribute(){},
     append(...nodes){this.children.push(...nodes);},prepend(node){this.children.unshift(node);elements.set(node.id,node);},
@@ -20,7 +20,7 @@ function harness({rowChanges={},carrier='7-11店到店',shippingMethod,prepareSt
       calls.push({url,body});
       if(url==='https://example.test/label.pdf')return {ok:documentOk,blob:async()=>new Blob(['%PDF-1.7\nlabel'])};
       if(url.endsWith('/health'))return {ok:true,json:async()=>({service:'youzi-shipping-print',printProfiles:profiles,packingLayouts:layouts})};
-      if(url.endsWith('/prepare'))return {ok:!prepareError,json:async()=>prepareError?{error:prepareError}:{jobId:'job-1',status:body.reprint?'prepared':prepareStatus,alreadySubmitted:prepareStatus==='preview',layoutVersion:replyLayout,preview:'data:image/png;base64,cHJldmlldw==',pages:replyPages,printProfile:replyProfile,paperMm:[100,150]}};
+      if(url.endsWith('/prepare'))return {ok:!prepareError,json:async()=>prepareError?{error:prepareError}:{jobId:'job-1',status:body.reprint?'prepared':prepareStatus,alreadySubmitted:prepareStatus==='preview',layoutVersion:replyLayout,preview:'data:image/png;base64,cHJldmlldw==',pages:replyPages,barcodeCount:replyBarcodes,printProfile:replyProfile,paperMm:[100,150]}};
       if(url.endsWith('/print'))return {ok:!printError,json:async()=>printError?{error:printError}:{status:'submitted'}};
       throw Error('Unexpected endpoint');
     }});
@@ -150,4 +150,15 @@ test('unpaid Shopee 425 reaches both preview and reprint footer with the existin
   assert.equal(body.packingFooter.paidCurrency,'TWD');
  }
  assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,1);
+});
+for (const channel of ['官網','LINE']) test(channel+' postal labels require the explicit barcode-free profile', async()=>{
+ const config={channel,carrier:'自訂物流',shippingMethod:'postal',profiles:['postal-address-v1'],replyProfile:'postal-address-v1',replyLayout:'postal-address-v1',replyBarcodes:0,rowChanges:{key:'EasyStore:123',tracking:'',documentType:'postal-address-v1'}};
+ const h=harness(config);await new Promise(setImmediate);await h.button.onclick();
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,1);
+ const body=h.calls.find(c=>c.url.endsWith('/prepare')).body;
+ assert.equal(body.printProfile,'postal-address-v1');assert.equal(body.tracking,'');
+ for(const changes of [{profiles:[]},{replyLayout:'packing-footer-v1'},{replyBarcodes:1}]){
+  const bad=harness({...config,...changes});await new Promise(setImmediate);await bad.button.onclick();
+  assert.equal(bad.calls.filter(c=>c.url.endsWith('/print')).length,0);
+ }
 });

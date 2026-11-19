@@ -24,6 +24,8 @@ import requests
 from shipping_images import match_product_image
 from shipping_delivery import DeliveryBridge
 from shipping_deadlines import deadline_fields
+from shipping_momo_deadlines import lookup as lookup_momo_deadlines
+from shipping_es_delivery import selected_delivery
 from shipping_payments import easystore_payment, coupang_payment, momo_payment
 
 TZ = timezone(timedelta(hours=8))
@@ -106,7 +108,7 @@ def normalize_es(o):
              "pending" if status == "unfulfilled" else
              "partial" if status in ("partial", "partially_fulfilled") else
              "shipped" if status == "fulfilled" else "review")
-    return {**easystore_payment(o), "key": "EasyStore:" + text(o["id"]), "platform": "EasyStore",
+    row = {**easystore_payment(o), "key": "EasyStore:" + text(o["id"]), "platform": "EasyStore",
             "channel": channel(o.get("source_name")), "sourceName": text(o.get("source_name")),
             "orderNo": text(o.get("name") or o.get("order_number") or o.get("number")),
             "internalOrderNo": text(o.get("order_number")),
@@ -125,6 +127,12 @@ def normalize_es(o):
                                if f.get("tracking_number")),
             "items": items, "canCreate": False, "canDownload": False,
             "blockReason": "尚待接通 EasyStore／蝦皮正式貨運單服務；讀取訂單不會申請出貨。"}
+    if row['channel'] in ('官網', 'LINE') and not row['tracking'] and stage == 'pending':
+        row.update(selected_delivery(o))
+        if row.get('shippingMethod') == 'postal':
+            row['canCreate'] = bool(row['recipient'] and row['phone'] and row['address'] and items)
+            row['blockReason'] = '' if row['canCreate'] else '郵局標籤缺少收件資料或商品明細。'
+    return row
 
 
 def cp_carrier(o):
@@ -478,8 +486,61 @@ class Workbench:
             for o in orders:
                 rows.extend(normalize_momo(o))
             if len(orders) < 100:
-                return rows
+                return self.enrich_momo_deadlines(rows, start.date())
         raise ShippingError("MOMO 超過 30 頁，未完整讀取。")
+
+    def enrich_momo_deadlines(self, rows, start):
+        targets = {r['orderNo'] for r in rows if r['stage'] not in ('cancelled', 'shipped')}
+        if not targets:
+            return rows
+        expires = time.monotonic() + 40
+        def query(lo, hi):
+            found = set()
+            for page in range(1, 31):
+                remaining = expires - time.monotonic()
+                if remaining < 2:
+                    raise TimeoutError('MOMO deadline read timeout')
+                response = requests.post('https://api3p.momo.com.tw/VendorApi/OrderQuery',
+                    headers=source.momo_headers(self.config['momo']['momo_token']),
+                    timeout=(min(3, remaining/2), min(12, remaining/2)),
+                    json={'queryDateType': 'LastShipDate', 'fromDate': lo.isoformat(),
+                          'toDate': hi.isoformat(), 'deliveryType': 'All',
+                          'storeDeliveryType': 'All', 'orderStatus': 'All',
+                          'pageIndex': page, 'maxPerPage': 100})
+                response.raise_for_status()
+                payload = response.json()
+                if payload.get('errorMessage'):
+                    raise ShippingError('MOMO 最晚出貨日期查詢失敗。')
+                orders = source.extract_orders(payload)
+                found.update(text(o['orderNo']) for o in orders)
+                if len(orders) < 100:
+                    if int(payload.get('totalOrders') or 0) > (page-1)*100+len(orders):
+                        raise ShippingError('MOMO 最晚出貨日期查詢不完整。')
+                    return found
+            raise ShippingError('MOMO 最晚出貨日期查詢超過頁數。')
+        try:
+            matches = lookup_momo_deadlines(targets, start, start+timedelta(days=29), query, now())
+        except Exception:
+            matches = {}
+        for row in rows:
+            if row['orderNo'] in matches:
+                row.update(matches[row['orderNo']])
+            elif row['orderNo'] in targets:
+                row['shippingDeadlineNote'] = 'MOMO 尚未回傳可核對的最晚出貨日期；請核對官方後台。'
+        missing = [r for r in rows if r['orderNo'] in targets and not r.get('shippingDeadlineAt')]
+        found, error = self.delivery_bridge.read([
+            {**{k:r[k] for k in ('key','externalId','orderNo')},
+             'orderSeqs':[i['id'] for i in r['items']]} for r in missing], kind='momo')
+        verified = now()
+        for row in missing:
+            evidence = found.get(row['key'])
+            if not evidence:
+                continue
+            fields = deadline_fields(evidence.get('shippingDeadlineText'), verified, 'MOMO 官方後台最晚出貨時間')
+            if fields.get('shippingDeadlineAt'):
+                row.update(fields)
+                row.pop('shippingDeadlineNote',None)
+        return rows
 
     def read_cp(self, start, end):
         cfg = self.config["coupang"]
@@ -625,9 +686,28 @@ class Workbench:
             raise ShippingError("未取得此包裹的即時訂單資料，已停止操作。")
         return normalize_cp(raw)
 
+    def fresh_es(self, key):
+        number = key.partition(':')[2]
+        if not key.startswith('EasyStore:') or not number.isdigit():
+            raise ShippingError('EasyStore 訂單識別不正確。')
+        cfg = self.config['easystore']
+        payload = source.es_request('GET', cfg['store_url'].rstrip('/')+'/api/3.0/orders/'+number+'.json',
+                                    cfg['access_token'], timeout=30)
+        raw = payload.get('order')
+        if not isinstance(raw, dict) or text(raw.get('id')) != number:
+            raise ShippingError('未取得即時訂單資料，已停止取單。')
+        return normalize_es(raw)
+
     def preview(self, key, options=None):
         options = dict(options or {})
         with self.lock:
+            if key.startswith('EasyStore:'):
+                row = self.fresh_es(key)
+                if row.get('shippingMethod') != 'postal' or not row['canCreate']:
+                    raise ShippingError(row['blockReason'] or '此訂單需由原物流服務取得正式貨運單。')
+                row['action'] = 'postal'
+                row['fingerprint'] = self.fingerprint(row, {})
+                return row
             if key.startswith("MOMO:"):
                 row = self.fresh_momo(key)
                 if not row["canCreate"] and not row["canDownload"]:
@@ -636,9 +716,11 @@ class Workbench:
                 row["fingerprint"] = self.fingerprint(row, options)
                 return row
             row = self.fresh_cp(key)
-            carrier = row.get("carrierCode") or text(options.get("carrier"))
+            carrier = row.get("carrierCode")
             if carrier not in CARRIERS:
-                raise ShippingError("請選擇此訂單使用的物流公司。")
+                raise ShippingError("平台尚未提供可核對的配送方式，請核對原訂單；不以手動選項替代。")
+            if options.get('carrier') and options['carrier'] != carrier:
+                raise ShippingError("配送方式與原訂單不一致，未建立出貨。")
             row["carrierCode"] = carrier
             if not row["canCreate"] and not row["canDownload"]:
                 raise ShippingError(row["blockReason"])
@@ -704,9 +786,12 @@ class Workbench:
 
     @staticmethod
     def document_binding(row):
-        return hashlib.sha256(json.dumps({k: row.get(k) for k in
+        fields = {k: row.get(k) for k in
             ("key", "recipient", "phone", "address", "items", "tracking", "carrier",
-             "shippingMethod", "delyGb", "orderSeqs")},
+             "shippingMethod", "delyGb", "orderSeqs")}
+        if row.get('selectedDelivery'):
+            fields['selectedDelivery'] = row['selectedDelivery']
+        return hashlib.sha256(json.dumps(fields,
             ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
     def document_matches(self, row, job):
@@ -722,6 +807,8 @@ class Workbench:
                      "tracking", "shippingMethod", "delyGb", "orderSeqs")}
         reviewed["options"] = {k: text(options.get(k)) for k in
                                ("carrier", "returnCenterCode", "outboundShippingPlaceCode")}
+        if row.get('selectedDelivery'):
+            reviewed['selectedDelivery'] = row['selectedDelivery']
         return hashlib.sha256(json.dumps(reviewed, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
     def _cp_request(self, action, body, binary=False):
@@ -738,7 +825,10 @@ class Workbench:
 
     def process(self, key, options, fingerprint):
         result = self._process(key, options, fingerprint)
-        self.mark_handled(key, "acquired")
+        # A postal address PDF is not a carrier shipment or a print receipt.
+        # Its order remains pending until the packing PC acknowledges submission.
+        if self.rows.get(key, {}).get('documentType') != 'postal-address-v1':
+            self.mark_handled(key, "acquired")
         return result
 
     def reconcile_cp(self, reviewed, options):
@@ -791,6 +881,24 @@ class Workbench:
             if not fingerprint or row["fingerprint"] != fingerprint:
                 raise ShippingError("訂單、地址或物流選項已變更，請重新核對後再送出。")
             job = self.job(key)
+            if row.get('action') == 'postal':
+                from shipping_postal import build
+                if self.document_matches(row, job) and (self.data_dir / job['document']).is_file():
+                    self.rows[key] = row
+                    return {'ready': True, 'key': key, 'reused': True}
+                try:
+                    content = build(row)
+                except (ValueError, OSError) as exc:
+                    raise ShippingError(str(exc)) from exc
+                binding = self.document_binding(row)
+                filename = 'postal-' + hashlib.sha256((key+binding).encode()).hexdigest() + '.pdf'
+                temporary = self.data_dir / (filename+'.tmp')
+                temporary.write_bytes(content); temporary.replace(self.data_dir / filename)
+                self.save_job(key, state='ready', document=filename, mime='application/pdf',
+                              binding=binding, tracking='', carrier=row['carrier'], error='')
+                self.rows[key] = row
+                self.event(key, 'postal-address-label-created')
+                return {'ready': True, 'key': key, 'reused': False}
             if job.get("state") in ("sending", "uncertain") and not row["tracking"]:
                 if row.get("action") != "download":
                     if row["platform"] != "Coupang":

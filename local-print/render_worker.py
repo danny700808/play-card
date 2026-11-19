@@ -37,7 +37,8 @@ class Renderer:
                          print_profile=options.get('printProfile', ''),
                          shipping_method=options.get('shippingMethod', ''),
                          tracking=options.get('tracking', ''),
-                         packing_footer=options.get('packingFooter'))
+                         packing_footer=options.get('packingFooter'),
+                         order_key=options.get('orderKey',''), order_no=options.get('orderNo',''))
         # Cache only output from a fully successful barcode-checked conversion.
         # No status.json, job ID, source PDF or print permission is reused.
         pages = result.get('pages')

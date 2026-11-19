@@ -93,7 +93,7 @@ def identity(content):
     return hashlib.sha256(json.dumps(values).encode()).hexdigest()
 
 
-def prepare(job, channel, password, print_profile='', shipping_method='', tracking='', packing_footer=None):
+def prepare(job, channel, password, print_profile='', shipping_method='', tracking='', packing_footer=None, order_key='', order_no=''):
     footer = validate_footer(packing_footer) if packing_footer is not None else None
     source = job / "source.pdf"
     reader = PdfReader(source)
@@ -101,6 +101,11 @@ def prepare(job, channel, password, print_profile='', shipping_method='', tracki
         raise ValueError("PDF 密碼不正確，請確認本機 MOMO 密碼設定。")
     if not 1 <= len(reader.pages) <= 25:
         raise ValueError("每次只接受 1 至 25 頁原單。")
+    if print_profile == 'postal-address-v1':
+        from postal_label import prepare_postal
+        if shipping_method != 'postal' or not footer or footer['orderNo'] != order_no:
+            raise ValueError('郵局標籤與訂單資料不一致。')
+        return prepare_postal(job, reader, channel, tracking, order_key, order_no)
     cvs = print_profile == 'momo-cvs-v1'
     if print_profile and not cvs or cvs and (channel != 'MOMO' or shipping_method not in ('seven','family')):
         raise ValueError('列印版型與平台或物流方式不符。')
@@ -232,7 +237,8 @@ if __name__ == "__main__":
     try:
         request = json.load(sys.stdin)
         result = prepare(Path(sys.argv[1]), request["channel"], request.get("password", ""),
-                         request.get('printProfile',''),request.get('shippingMethod',''),request.get('tracking',''),request.get('packingFooter'))
+                         request.get('printProfile',''),request.get('shippingMethod',''),request.get('tracking',''),request.get('packingFooter'),
+                         request.get('orderKey',''),request.get('orderNo',''))
         print(json.dumps(result, ensure_ascii=False))
     except Exception as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False))

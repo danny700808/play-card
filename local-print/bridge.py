@@ -27,11 +27,12 @@ JOBS = ROOT / "jobs"
 JOBS.mkdir(exist_ok=True)
 ORIGINS = {"https://danny700808.github.io", f"http://127.0.0.1:{PORT}"}
 HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
-CHANNELS = {"MOMO", "蝦皮", "酷澎", "官網"}
+CHANNELS = {"MOMO", "蝦皮", "酷澎", "官網", "LINE"}
 LOCK = threading.Lock()
 MAX_BODY = 22 * 1024 * 1024
-RELEASE = '2.2.0-warm-renderer'
+RELEASE = '2.3.0-postal-label'
 PROFILE = 'momo-cvs-v1'
+POSTAL_PROFILE = 'postal-address-v1'
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 RENDERER = RenderClient(ROOT)
 atexit.register(RENDERER.close)
@@ -76,7 +77,7 @@ def public(state):
     result = {key: state[key] for key in
             ("jobId", "status", "pages", "barcodeCount", "error", "printProfile", "paperMm",
              "layoutVersion", "alreadySubmitted", "footerMm", "footer") if key in state}
-    if state.get('layoutVersion') == FOOTER_VERSION and state['status'] in ('preview','prepared','submitted'):
+    if state.get('layoutVersion') in (FOOTER_VERSION, POSTAL_PROFILE) and state['status'] in ('preview','prepared','submitted'):
         image = JOBS / state['jobId'] / 'label-1-print.png'
         if image.is_file():
             result['preview'] = 'data:image/png;base64,' + base64.b64encode(image.read_bytes()).decode('ascii')
@@ -138,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {"service": "youzi-shipping-print", "version": 1, "preview": 1, "cachedDocument": 1,
                                    "printer": CONFIG["printer"], "paper": "100x150",
                                    "channels": sorted(CHANNELS), "release": RELEASE, "pid": os.getpid(),
-                                   "printProfiles": [PROFILE], "packingLayouts": [FOOTER_VERSION]})
+                                   "printProfiles": [PROFILE, POSTAL_PROFILE], "packingLayouts": [FOOTER_VERSION, POSTAL_PROFILE]})
         match = re.fullmatch(r"/jobs/([a-f0-9]{32})", self.path)
         if match and self.headers.get("Origin") in ORIGINS:
             try:
@@ -204,16 +205,19 @@ class Handler(BaseHTTPRequestHandler):
         if channel not in CHANNELS:
             return self.reply(400, {"error": "尚未設定這個平台的列印方式。"})
         profile, method = payload.get('printProfile',''), payload.get('shippingMethod','')
-        if (profile and profile != PROFILE or profile == PROFILE and
+        if (profile and profile not in (PROFILE, POSTAL_PROFILE) or profile == PROFILE and
                 (channel != 'MOMO' or method not in ('seven','family')) or
+                profile == POSTAL_PROFILE and (channel not in ('官網','LINE') or method != 'postal' or payload.get('tracking') or 'packingFooter' not in payload) or
                 channel == 'MOMO' and method in ('seven','family') and profile != PROFILE):
             return self.reply(400, {'error':'列印版型與平台或物流方式不符。'})
         for key in ('tracking','orderNo','orderKey'):
             value = payload.get(key,'')
             if not isinstance(value,str) or len(value)>100 or any(ord(c)<32 for c in value):
                 return self.reply(400, {'error':'訂單識別格式不正確。'})
-        if profile and payload.get('orderKey') and not momo_order_key_matches(payload['orderKey'], payload.get('orderNo','')):
+        if profile == PROFILE and payload.get('orderKey') and not momo_order_key_matches(payload['orderKey'], payload.get('orderNo','')):
             return self.reply(400, {'error':'訂單識別不一致。'})
+        if profile == POSTAL_PROFILE and not re.fullmatch(r'EasyStore:\d{1,30}',payload.get('orderKey','')):
+            return self.reply(400, {'error':'郵局訂單識別不一致。'})
         raw = base64.b64decode(payload["pdfBase64"], validate=True)
         if not 20 < len(raw) <= 15 * 1024 * 1024 or not raw.startswith(b"%PDF-"):
             return self.reply(400, {"error": "只接受 15 MB 以內的 PDF。"})
@@ -321,7 +325,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             result = run([sys.executable, str(ROOT/'prepare.py'), str(folder)], json.dumps({
                 'channel':channel, 'password':PASSWORD, 'printProfile':profile, 'shippingMethod':method,
-                'tracking':payload.get('tracking',''), 'packingFooter':payload['packingFooter']}))
+                'tracking':payload.get('tracking',''), 'packingFooter':payload['packingFooter'],
+                'orderKey':payload.get('orderKey',''), 'orderNo':payload.get('orderNo','')}))
             detail = json.loads(result.stdout)
             if result.returncode:
                 state.update(status='failed', error=detail.get('error','標籤版面準備失敗，尚未送印。'))
