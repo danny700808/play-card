@@ -25,7 +25,7 @@
   const teacherLoginHeader = document.getElementById('teacherLoginHeader');
 
   let token = '';
-  let weekStart = monday();
+  let weekStart = todayKey();
   let payrollQueryVersion = 0;
   let payrollStatus = 'idle';
   let payrollMonth = monthKey() < PAYROLL_MIN_MONTH ? PAYROLL_MIN_MONTH : monthKey();
@@ -176,10 +176,10 @@
     owner: () => tokenFingerprint(token), maxEntries: 16
   });
   function clearCache() { viewCache.invalidate(); }
-  function readCache(week) { return viewCache.get('week:' + week); }
+  function readCache(week) { return viewCache.get('day:' + week); }
   function writeCache(week, month, value) {
     const snapshot = Object.assign({}, value); delete snapshot.payroll; delete snapshot.adjustments;
-    viewCache.put('week:' + week, snapshot);
+    viewCache.put('day:' + week, snapshot);
   }
   function invalidateCourseCache(dates, fromDate) {
     const changed = dates.filter(Boolean);
@@ -187,7 +187,7 @@
       if (scope.startsWith('payroll:')) return !changed.length || changed.some(day => scope.endsWith(day.slice(0, 7)));
       const start = value && value.week && value.week.start;
       if (!start) return true;
-      const end = addDays(start, 6);
+      const end = start;
       return fromDate ? end >= fromDate : changed.some(day => start <= day && day <= end);
     });
   }
@@ -199,8 +199,8 @@
   function requestTeacherWeek(week) {
     const sessionToken = token;
     const revision = viewCache.revision();
-    return viewCache.load('week:' + week, () => invoke('coursePortalTeacherData', {
-      sessionToken, weekStart: week, includePayroll: false
+    return viewCache.load('day:' + week, () => invoke('coursePortalTeacherData', {
+      sessionToken, weekStart: week, scheduleDays: 1, includePayroll: false
     })).then(result => {
       if (sessionToken === token && revision === viewCache.revision()) {
         verifiedWeeks.set(week, {account: sessionToken, revision, at: Date.now()});
@@ -569,20 +569,19 @@
       if (grid) {
         grid.style.removeProperty('--teacher-day-width');
         grid.style.removeProperty('--teacher-time-column');
-        grid.style.removeProperty('grid-template-columns');
+        grid.style.gridTemplateColumns = '58px minmax(0,1fr)';
         fitLessonNames(grid);
       }
       return;
     }
     const stickyWidth = global.matchMedia('(max-width: 520px)').matches ? 48 : 58;
-    const dayWidth = Math.max(1, scroll.clientWidth - stickyWidth) / 2;
+    const dayWidth = Math.max(1, scroll.clientWidth - stickyWidth);
     const nav = document.querySelector('.teacher-bottom-tabs');
     const navTop = nav ? nav.getBoundingClientRect().top : global.innerHeight;
     scroll.style.maxHeight = `${Math.max(160, navTop - scroll.getBoundingClientRect().top - 12)}px`;
     grid.style.setProperty('--teacher-time-column', `${stickyWidth}px`);
     grid.style.setProperty('--teacher-day-width', `${dayWidth}px`);
-    const weights = JSON.parse(grid.dataset.dayWeights || '[1,1,1,1,1,1,1]');
-    grid.style.gridTemplateColumns = `${stickyWidth}px ${balancedDayWidths(weights, dayWidth*2).map(width=>`${width}px`).join(' ')}`;
+    grid.style.gridTemplateColumns = `${stickyWidth}px ${dayWidth}px`;
     fitLessonNames(grid);
   }
 
@@ -798,8 +797,9 @@
     const scroll = grid.parentElement;
     const priorWeek = grid.dataset.week || '';
     const priorScrollLeft = scroll.scrollLeft;
-    const days = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
-    if(global.YouziClassClosureBanner)global.YouziClassClosureBanner.show(scroll.parentElement,days[0],days[6],token);
+    document.getElementById('scheduleDate').value = weekStart;
+    const days = [weekStart];
+    if(global.YouziClassClosureBanner)global.YouziClassClosureBanner.show(scroll.parentElement,days[0],days[0],token);
     const events = uniqueEvents((data.events || []).filter((event) => event.own));
     grid.dataset.dayWeights = JSON.stringify(days.map(day=>Math.max(1,...overlapGroups(events.filter(event=>event.date===day)).map(group=>group.events.length))));
     const startHour = Number(data.hours.start || 10);
@@ -1132,15 +1132,16 @@
   }
 
   async function load(force) {
-    const account = token;
+    const account = token, requestedDate = weekStart;
     try {
       await fetchData(Boolean(force));
-      if (account !== token) return false;
+      if (account !== token || requestedDate !== weekStart) return false;
       if (activeTab === 'payroll') showDataFreshness('');
+      if (activeTab === 'schedule') prepareNextDay(requestedDate);
       refreshTeacherUtilityStatus(false);
       return true;
     } catch (error) {
-      if (account !== token) return false;
+      if (account !== token || requestedDate !== weekStart) return false;
       if (PortalAuth && typeof PortalAuth.isSessionAuthError === 'function' && PortalAuth.isSessionAuthError(error)) {
         if (PortalAuth && typeof PortalAuth.invalidateSession === 'function') {
           PortalAuth.invalidateSession('teacher', error);
@@ -1156,6 +1157,18 @@
       }
       return false;
     }
+  }
+
+  let nextDayTimer;
+  function prepareNextDay(day) {
+    clearTimeout(nextDayTimer);
+    const account = token, revision = viewCache.revision();
+    nextDayTimer = setTimeout(() => {
+      const next = addDays(day, 1);
+      if (weekStart !== day || token !== account || viewCache.revision() !== revision ||
+          activeTab !== 'schedule' || document.hidden || teacherOperations.hasPending() || readCache(next)) return;
+      requestTeacherWeek(next).catch(() => {});
+    }, 500);
   }
 
   function activateTab(tab) {
@@ -1540,7 +1553,7 @@
     read:dates=>invoke('coursePortalTeacherData',{sessionToken:token,refreshDates:dates,...(refreshRosterAfterSync?{includeModes:true,modeWeekStart:weekStart}:{})}),
     apply:snapshot=>{
       const dates=new Set(snapshot.refreshDates||[]);
-      data.events=data.events.filter(row=>!dates.has(row.date)).concat((snapshot.events||[]).filter(row=>row.date>=weekStart&&row.date<=addDays(weekStart,6)));
+      data.events=data.events.filter(row=>!dates.has(row.date)).concat((snapshot.events||[]).filter(row=>row.date===weekStart));
       if(snapshot.modeState){
         for(const key of ['roster','irregularCourses','stoppedCourses'])if(Array.isArray(snapshot.modeState[key]))data[key]=snapshot.modeState[key];
         if (activeTab === 'students') { renderRoster();renderIrregularCourses(); }
@@ -1577,7 +1590,7 @@
   async function updateStudentMode(name,payload,button,onSaved){
     if(studentModePending)return;
     studentModePending=true;
-    const context=quickContext,dates=Array.from({length:7},(_,i)=>addDays(weekStart,i));
+    const context=quickContext,dates=[weekStart];
     let saved=false;
     teacherOperations.begin('student-mode');dataRequestVersion++;loading(button,true,'處理中…');
     try{
@@ -2028,7 +2041,7 @@
       toast(result.message||'課程已儲存。');if(planner===job.planner)cancelPlanner(quickContext===job.context);
       console.info('[teacher operation]',{stage:'save',action:payload.action,ms:Date.now()-job.started});
       showDataFreshness('已儲存，正在更新相關課程。');
-      const dates=payload.action==='permanent_move'?Array.from({length:7},(_,i)=>addDays(weekStart,i)):[payload.sourceDate,payload.date];
+      const dates=payload.action==='permanent_move'?[weekStart]:[payload.sourceDate,payload.date];
       if(payload.irregularId||payload.suspensionId)refreshRosterAfterSync=true;
       teacherOperations.saved(dates);
     } catch (error) {
@@ -2055,24 +2068,10 @@
   document.getElementById('prevWeek').addEventListener('click', () => navigateTeacherWeek(-1));
   document.getElementById('nextWeek').addEventListener('click', () => navigateTeacherWeek(1));
   document.getElementById('todayWeek').addEventListener('click', async () => {
-    if (changingWeek) return;
-    changingWeek = true;
-    const button = document.getElementById('todayWeek');
-    loading(button, true);
-    try {
-      const today = todayKey(), weekday = (new Date(today + 'T12:00:00').getDay() + 6) % 7;
-      weekStart = addDays(today, -weekday);
-      await load(false);
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      updateWeekViewport();
-      const width = Number.parseFloat(document.getElementById('weekGrid').style.getPropertyValue('--teacher-day-width')) || 0;
-      weekViewport.scrollLeft = Math.min(Math.floor(weekday / 2) * 2 * width, Math.max(0, weekViewport.scrollWidth - weekViewport.clientWidth));
-      const nowParts = new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date()).split(':');
-      const minute = Number(nowParts[0])*60+Number(nowParts[1]);
-      const rowHeight = parseFloat(getComputedStyle(document.getElementById('weekGrid')).gridAutoRows) || 30;
-      weekViewport.scrollTop = Math.max(0,(minute-Number(data.hours.start || 9)*60)/30*rowHeight-rowHeight);
-
-    } finally { changingWeek = false; loading(button, false); schedulePlannerViewportSearch(); }
+    await selectScheduleDay(todayKey());
+  });
+  document.getElementById('scheduleDate').addEventListener('change', event => {
+    if (event.target.value) selectScheduleDay(event.target.value);
   });
   document.getElementById('rosterSearch').addEventListener('input', (event) => {
     rosterQuery = clean(event.target.value);
@@ -2081,26 +2080,22 @@
   const weekViewport = document.querySelector('[data-two-day-viewport]');
   let changingWeek = false;
   async function navigateTeacherWeek(direction) {
-    if (changingWeek) return;
-    changingWeek = true;
-    const buttons = ['prevWeek', 'nextWeek'].map(id => document.getElementById(id));
-    buttons.forEach(button => { button.disabled = true; });
-    const indicator = buttons[direction < 0 ? 0 : 1];
-    indicator.classList.add('week-loading');
-    indicator.setAttribute('aria-busy', 'true');
+    return selectScheduleDay(addDays(weekStart, direction));
+  }
+  async function selectScheduleDay(day) {
+    if (teacherOperations.hasPending()) { toast('課程正在儲存，請稍候。'); return; }
+    weekStart = day;
+    document.getElementById('scheduleDate').value = day;
     const top = weekViewport.scrollTop;
-    try {
-      weekStart = addDays(weekStart, direction * 7);
-      await load(false);
-      weekViewport.scrollLeft = 0;
-      weekViewport.scrollTop = top;
-    } finally {
-      changingWeek = false;
-      buttons.forEach(button => { button.disabled = false; });
-      indicator.classList.remove('week-loading');
-      indicator.removeAttribute('aria-busy');
-      schedulePlannerViewportSearch();
-    }
+    data.events = [];
+    const grid = document.getElementById('weekGrid');
+    grid.textContent = dayLabel(day) + ' 讀取中…';
+    const ready = await load(false);
+    if (weekStart !== day) return;
+    if (!ready) grid.textContent = dayLabel(day) + ' 課表尚未載入';
+    weekViewport.scrollLeft = 0;
+    weekViewport.scrollTop = top;
+    schedulePlannerViewportSearch();
   }
   weekViewport.addEventListener('touchstart', event => {
     if(changingWeek || !global.matchMedia('(max-width: 760px)').matches || event.touches.length!==1) {weekGesture=null;return;}

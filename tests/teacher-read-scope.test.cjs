@@ -24,7 +24,10 @@ test('teacher homepage opts into scoped profiles and returns only own lessons',a
  vm.createContext(c);vm.runInContext(backend.slice(backend.indexOf('function teacherFollowupSnapshot('),backend.indexOf('async function teacherPortalData('))+extract(backend,'teacherPortalData'),c);
  // Plan labels have their own tests; this fixture checks authorized schedule scope.
  c.withTeacherLessonPlanLabels=async()=>{throw Error('Teacher entry must not project historical tuition periods');};
- const result=await c.teacherPortalData({weekStart:'2026-09-07'});
+ const result=await c.teacherPortalData({weekStart:'2026-09-07',scheduleDays:1});
+ assert.equal(result.week.end,'2026-09-07');
+ const legacy=await c.teacherPortalData({weekStart:'2026-09-07'});
+ assert.equal(legacy.week.end,'2026-09-13');
  assert.equal(options.teacherHome,true);assert.deepEqual(Array.from(result.events,r=>r.id),['own']);assert.deepEqual(Array.from(result.roster,r=>r.id),['s']);
 });
 test('candidate lookup uses nearby fourteen days and retains server conflict checks',()=>{

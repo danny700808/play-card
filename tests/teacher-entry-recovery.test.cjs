@@ -58,7 +58,7 @@ test('offline reads fail promptly; a changed account cancels the planned retry',
  const g=invocationFixture([failure('functions/unavailable')]);g.c.global.setTimeout=fn=>{g.c.token='new-account';queueMicrotask(fn);};await assert.rejects(g.c.invoke('coursePortalTeacherData',{}));assert.equal(g.calls.length,1);
 });
 function loadFixture(error,visible=false){
- const effects=[];const c={token:'teacher-session',fetchData:async()=>{throw error;},refreshTeacherUtilityStatus:()=>effects.push('utility'),appView:{classList:{contains:()=>!visible}},global:{YouziTeacherSession:{fail:()=>effects.push('retry-screen')}},PortalAuth:{isSessionAuthError:e=>e.code==='functions/unauthenticated',invalidateSession:()=>effects.push('invalidate')},showDataFreshness:()=>effects.push('refresh-button'),toast:()=>effects.push('toast'),startTeacherPortal(){}};
+ const effects=[];const c={weekStart:'2026-11-19',token:'teacher-session',fetchData:async()=>{throw error;},refreshTeacherUtilityStatus:()=>effects.push('utility'),appView:{classList:{contains:()=>!visible}},global:{YouziTeacherSession:{fail:()=>effects.push('retry-screen')}},PortalAuth:{isSessionAuthError:e=>e.code==='functions/unauthenticated',invalidateSession:()=>effects.push('invalidate')},showDataFreshness:()=>effects.push('refresh-button'),toast:()=>effects.push('toast'),startTeacherPortal(){}};
  vm.createContext(c);vm.runInContext(section('  async function load(','  function activateTab('),c);return {c,effects};
 }
 test('initial data failure preserves login and provides recovery; verified auth failure still redirects',async()=>{
