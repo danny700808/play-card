@@ -3,7 +3,7 @@ const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const stageNames = {pending:'待出貨',partial:'部分待出貨',label:'可印貨運單',shipped:'已出貨',cancelled:'已取消',review:'需核對'};
 const ORDER_DAYS = 3;
-let data = {orders:[],errors:{},connectors:[]}, selected = '', activeChannel = '全部', activeWork = 'pending', busy = false;
+let data = {orders:[],errors:{},connectors:[]}, selected = '', activeChannel = '全部', activeWork = 'pending', activeLogistics = 'all', busy = false;
 let documentGeneration=0,externalDocumentUrls=[];
 const sessionToken=document.querySelector('meta[name="youzi-session"]')?.content||'';
 const remote=!!window.ShippingTransport;
@@ -31,6 +31,10 @@ function paidAmountHtml(row) {
   const paid=ShippingModel.paidAmount(row);
   const deliverySource=(row.deliveryMethodSource?`${row.deliveryMethodSource} · 核對 ${row.deliveryMethodVerifiedAt}`:'平台物流資料')+(row.deliveryMethodNote?` · ${row.deliveryMethodNote}`:'');
   return `<span class="paid-amount ${paid.confirmed?'confirmed':'unconfirmed'}" title="${escapeHtml(paid.note)}">${escapeHtml(paid.text)}</span><span class="delivery-method" title="${escapeHtml(deliverySource)}">${escapeHtml(ShippingModel.deliveryMethod(row))}</span>`;
+}
+function deadlineHtml(row){
+  const deadline=ShippingModel.shippingDeadline(row);
+  return `<span class="shipping-deadline ${deadline.tone}" title="${escapeHtml(deadline.note)}">${escapeHtml(deadline.text)}</span>`;
 }
 function paymentDetailsHtml(row) {
   const paid=ShippingModel.paidAmount(row);
@@ -64,9 +68,10 @@ function filtered() {
   const term=$('search').value.toLowerCase().trim(), compact=ShippingModel.searchCode(term);
   return data.orders.filter(r => (activeChannel==='全部'||r.channel===activeChannel) &&
     (activeWork==='all'||(activeWork==='done'?r.handled:!r.handled)) &&
+    (activeWork!=='pending'||activeLogistics==='all'||ShippingModel.logisticsGroup(r)===activeLogistics) &&
     (!term||[r.orderNo,r.recipient,r.tracking,...r.items.map(i=>`${i.name} ${i.sku} ${i.variant}`)].join(' ').toLowerCase().includes(term)||
       (compact&&r.items.some(i=>ShippingModel.searchCode(i.sku).includes(compact)))))
-    .sort((a,b)=>channels.indexOf(a.channel)-channels.indexOf(b.channel)||
+    .sort((a,b)=>activeWork==='pending'?ShippingModel.compareShippingPriority(a,b):channels.indexOf(a.channel)-channels.indexOf(b.channel)||
       b.date.localeCompare(a.date)||b.orderNo.localeCompare(a.orderNo));
 }
 function render() {
@@ -74,16 +79,23 @@ function render() {
   const channelRows=data.orders.filter(r=>activeChannel==='全部'||r.channel===activeChannel);
   $('workTabs').innerHTML=[['pending','未處理',channelRows.filter(r=>!r.handled).length],['done','已處理',channelRows.filter(r=>r.handled).length],['all','全部',channelRows.length]].map(([key,label,count])=>
     `<button data-work="${key}" class="${activeWork===key?'active':''}" aria-pressed="${activeWork===key}">${label} <strong>${count}</strong></button>`).join('');
+  const pendingRows=channelRows.filter(r=>!r.handled);
+  const logistics=[['all','全部物流'],['hct','新竹物流／貨運'],['other','其他物流'],['unknown','物流待確認']];
+  $('logisticsTabs').hidden=activeWork!=='pending';
+  $('logisticsTabs').innerHTML=logistics.map(([key,label])=>`<button data-logistics="${key}" aria-pressed="${activeLogistics===key}" class="${activeLogistics===key?'active':''}">${label} <strong>${pendingRows.filter(r=>key==='all'||ShippingModel.logisticsGroup(r)===key).length}</strong></button>`).join('');
+  $('shippingReminder').hidden=activeWork!=='pending';
+  $('shippingReminder').textContent='新竹物流：店內交寄提醒 17:00 前處理。各組依平台期限由近到遠排列；期限待確認的訂單仍需核對平台。';
   const rows=filtered();
   if(!rows.some(r=>r.key===selected))selected=rows[0]?.key||'';
   $('resultCount').textContent=`${rows.length} 筆`;
   $('syncTime').textContent=data.updated?`更新 ${new Date(data.updated).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}`:'';
-  $('orders').innerHTML=rows.length?channels.slice(1).map(c=>{
-    const group=rows.filter(r=>r.channel===c);
+  const groups=activeWork==='pending'?logistics.slice(1).map(([key,label])=>({label,rows:rows.filter(r=>ShippingModel.logisticsGroup(r)===key)})):
+    channels.slice(1).map(label=>({label,rows:rows.filter(r=>r.channel===label)}));
+  $('orders').innerHTML=rows.length?groups.map(({label,rows:group})=>{
     if(!group.length)return '';
-    return `<section class="platform-group" aria-label="${escapeHtml(c)}訂單"><div class="group-heading">${badge(group[0])}<span>${group.length} 筆</span></div>${group.map(r=>{
+    return `<section class="platform-group" aria-label="${escapeHtml(label)}訂單"><div class="group-heading"><strong>${escapeHtml(label)}</strong><span>${group.length} 筆</span></div>${group.map(r=>{
       const items=packingItems(r),quantity=items.reduce((n,i)=>n+i.quantity,0);
-      return `<button class="order-card ${r.key===selected?'selected':''}" data-key="${escapeHtml(r.key)}" aria-pressed="${r.key===selected}"><div class="line"><span class="order-identity"><span class="order-no">${escapeHtml(r.orderNo)}</span>${paidAmountHtml(r)}</span><span class="status ${r.handled?'done':'pending'}">${escapeHtml(ShippingModel.status(r))}</span></div><div class="order-name">${escapeHtml(items[0]?.name || r.items[0]?.name || '未取得商品明細')}${items.length>1?` 等 ${items.length} 項`:''}</div><div class="line order-meta"><strong>${quantity} 件</strong><span>${escapeHtml(localDay(r.date))}</span></div></button>`;
+      return `<button class="order-card ${r.key===selected?'selected':''}" data-key="${escapeHtml(r.key)}" aria-pressed="${r.key===selected}"><div class="line"><span class="order-identity">${badge(r)}<span class="order-no">${escapeHtml(r.orderNo)}</span>${paidAmountHtml(r)}</span><span class="status ${r.handled?'done':'pending'}">${escapeHtml(ShippingModel.status(r))}</span></div>${deadlineHtml(r)}<div class="order-name">${escapeHtml(items[0]?.name || r.items[0]?.name || '未取得商品明細')}${items.length>1?` 等 ${items.length} 項`:''}</div><div class="line order-meta"><strong>${quantity} 件</strong><span>${escapeHtml(localDay(r.date))}</span></div></button>`;
     }).join('')}</section>`;
   }).join(''):'<div class="empty">沒有符合條件的訂單</div>';
   renderDetail();
@@ -124,7 +136,7 @@ function renderDetail() {
     ${shippingNote?`<p class="muted shipping-note">${escapeHtml(shippingNote)}</p>`:''}
     <div class="handling-actions">${row.stage!=='cancelled'&&row.handlingAction!=='printed'&&row.handlingAction!=='shipped'?'<button id="markPrinted">我已印單</button>':''}${row.stage!=='cancelled'&&row.handlingAction!=='shipped'?'<button id="markShipped">我已出貨</button>':''}${row.handled&&!['shipped','cancelled'].includes(row.stage)?'<button id="reopen" class="quiet">移回未處理</button>':''}</div>
     ${row.jobError||row.stale||row.blockReason&&row.platform!=='EasyStore'?`<div class="block-note">${escapeHtml(row.stale?'資料尚未更新，請重新讀取。':row.jobError||row.blockReason)}</div>`:''}
-    ${paymentDetailsHtml(row)}
+    ${deadlineHtml(row)}${paymentDetailsHtml(row)}
     <details class="recipient-details"><summary>收件與物流資訊</summary><div class="recipient">${escapeHtml(row.recipient||'尚無資料')}　${escapeHtml(row.phone)}</div><div class="subline">${escapeHtml(row.pickupStore||'')} ${escapeHtml(row.address||'')}</div><div class="subline">${escapeHtml(ShippingModel.deliveryMethod(row))}${row.tracking?` · ${escapeHtml(row.tracking)}`:''}</div><div class="subline">平台回傳：${escapeHtml(stageNames[row.stage]||row.status)}${row.printCount?` · 開啟列印 ${row.printCount} 次`:''}</div></details>`;
   $('prepare')?.addEventListener('click',()=>prepare(row));
   $('shopeeDirectPrint')?.addEventListener('click',()=>prepareShopee(row));
@@ -379,6 +391,7 @@ if(typeof MutationObserver!=='undefined')new MutationObserver(()=>{
 window.addEventListener('youzi-shopee-helper-ready',()=>renderDetail());
 $('documentDialog').addEventListener('close',()=>{releaseExternalDocument();window.YouziLocalPrint?.reset();});
 $('channels').addEventListener('click',e=>{const b=e.target.closest('[data-channel]');if(b){activeChannel=b.dataset.channel;render();}});
+$('logisticsTabs').addEventListener('click',e=>{const b=e.target.closest('[data-logistics]');if(b){activeLogistics=b.dataset.logistics;render();}});
 $('orders').addEventListener('click',e=>{const b=e.target.closest('[data-key]');if(b){selected=b.dataset.key;render();}});
 $('search').addEventListener('input',render);
 $('workTabs').addEventListener('click',e=>{const b=e.target.closest('[data-work]');if(b){activeWork=b.dataset.work;render();}});
@@ -399,4 +412,5 @@ if(remote)window.ShippingTransport.ready(initializeWorkbench);
 else initializeWorkbench();
 // Poll while this workbench is visible. Reading orders never creates shipments.
 setInterval(()=>{if(!document.hidden&&!busy&&!document.querySelector('dialog[open]')&&(!remote||window.ShippingTransport.loggedIn()))refresh();},300000);
+
 

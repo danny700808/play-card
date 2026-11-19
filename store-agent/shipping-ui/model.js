@@ -58,6 +58,36 @@
       if(!value||['shipping fee','shipping','運費','預設物流','預設物流 (一般包裹)'].includes(value.toLowerCase()))return row.deliveryMethodNote?'配送資料未讀取':'配送方式待平台提供';
       return value.replace(/^第三方物流-/,'')+(row.deliveryMethodNote?'（上次核對）':'');
     },
+    logisticsGroup(row){
+      const name=String(row.deliveryMethod||row.carrier||'').trim();
+      if(row.carrierCode==='TWL_HCT'||/新竹(?:物流|貨運)|\bHCT\b/i.test(name))return 'hct';
+      if(row.carrierCode||name&&!['shipping fee','shipping','運費','預設物流','預設物流 (一般包裹)','-'].includes(name.toLowerCase()))return 'other';
+      return 'unknown';
+    },
+    shippingDeadline(row,now=new Date()){
+      const raw=String(row.shippingDeadlineText||'').trim();
+      const verified=String(row.shippingDeadlineVerifiedAt||'');
+      const note=String(row.shippingDeadlineNote||'');
+      const source=String(row.shippingDeadlineSource||'');
+      const at=String(row.shippingDeadlineAt||'');
+      const precision=row.shippingDeadlinePrecision;
+      const valid=source&&verified&&['date','minute'].includes(precision)&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/.test(at)&&Number.isFinite(Date.parse(at));
+      const stale=!!(row.stale||note||!Number.isFinite(Date.parse(verified))||now-Date.parse(verified)>86400000||Date.parse(verified)>now.getTime()+60000);
+      if(!raw||!source||!verified)return {text:'最晚出貨：待確認',tone:'unknown',sort:Infinity,note:'尚未取得平台出貨期限，請核對平台。'};
+      const day=value=>new Date(value).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
+      const expired=valid&&(precision==='date'?day(at)<day(now):Date.parse(at)<now.getTime());
+      const today=valid&&day(at)===day(now);
+      const pending=!row.handled&&!['shipped','cancelled'].includes(row.stage);
+      return {text:`最晚出貨：${raw}${stale?'（待更新）':pending&&expired?'（已逾期）':pending&&today?'（今日截止）':''}`,
+        tone:stale?'unknown':pending&&expired?'overdue':pending&&today?'today':'normal',
+        sort:valid&&!stale?Date.parse(at):Infinity,
+        note:`${source} · 核對 ${verified}${note?' · '+note:''}${precision==='date'?' · 平台未提供確切時分':''}${!valid?' · 平台原文，無法確認絕對時間':''}`};
+    },
+    compareShippingPriority(a,b,now=new Date()){
+      const left=model.shippingDeadline(a,now).sort,right=model.shippingDeadline(b,now).sort;
+      if(left!==right)return left<right?-1:1;
+      return String(a.date||'').localeCompare(String(b.date||''))||String(a.orderNo||'').localeCompare(String(b.orderNo||''));
+    },
     searchCode(value){return String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');},
     shopeePrintUrl(row){
       if(row.platform!=='EasyStore'||row.channel!=='蝦皮'||!/^\d+$/.test(String(row.externalId||'')))return '';
@@ -91,3 +121,4 @@
   if(typeof module!=='undefined')module.exports=model;
   else root.ShippingModel=model;
 })(typeof window!=='undefined'?window:this);
+

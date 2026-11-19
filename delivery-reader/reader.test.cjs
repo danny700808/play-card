@@ -24,3 +24,11 @@ test('login or missing table never yields a guessed carrier',()=>{
   assert.equal(run({login:true}).error,'login');
   assert.equal(run({headers:['訂單','金額']}).results.length,0);
 });
+
+test('explicit platform shipping deadline is preserved separately from the carrier',()=>{
+ const row=run({carrier:'新竹物流\n出貨期限: 2026/11/20 16:30'}).results[0];
+ assert.equal(row.deliveryMethod,'新竹物流');assert.equal(row.shippingDeadlineText,'2026/11/20 16:30');
+ assert.equal(run({carrier:'新竹物流'}).results[0].shippingDeadlineText,undefined);
+ assert.equal(run({carrier:'新竹物流\n出貨期限: <script>'}).results[0].shippingDeadlineText,undefined);
+});
+

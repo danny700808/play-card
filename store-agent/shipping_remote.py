@@ -26,7 +26,8 @@ def packing_snapshot(workbench):
         "pickupStore note carrier carrierCode shippingMethod deliveryMethod deliveryMethodSource deliveryMethodVerifiedAt deliveryMethodNote tracking items canCreate canDownload blockReason "
         "documentReady documentKinds stale jobError handled handlingAction handlingSource "
         "handledAt printCount handlingChanged paidAmount paidCurrency paidAmountStatus paidAmountNote "
-        "payableAmount paidAmountSource paidAmountScope paidScopeKey invoiceBuyerAmount"
+        "payableAmount paidAmountSource paidAmountScope paidScopeKey invoiceBuyerAmount "
+        "shippingDeadlineText shippingDeadlineAt shippingDeadlinePrecision shippingDeadlineSource shippingDeadlineVerifiedAt shippingDeadlineNote"
     ).split()
     start = (datetime.now(TZ) - timedelta(days=2)).strftime("%Y-%m-%d")
     rows = []
@@ -180,3 +181,4 @@ class RemoteRelay:
         thread = threading.Thread(target=self.run, name="packing-relay", daemon=True)
         thread.start()
         return thread
+

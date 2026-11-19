@@ -69,6 +69,11 @@ class DeliveryBridge:
                         or row['key'] in found):
                     raise ValueError('Mismatched delivery result')
                 found[row['key']] = {'deliveryMethod': name.strip(), 'evidenceUrl': evidence}
+                deadline = row.get('shippingDeadlineText')
+                if deadline is not None:
+                    if not isinstance(deadline, str) or not 1 <= len(deadline.strip()) <= 100 or re.search(r'[\x00-\x1f<>]', deadline):
+                        raise ValueError('Invalid shipping deadline')
+                    found[row['key']]['shippingDeadlineText'] = deadline.strip()
             p['results'] = found
             p['error'] = body.get('error') if body.get('error') in ('login', 'missing', 'timeout', 'layout') else ''
             p['done'] = True
@@ -89,3 +94,4 @@ class DeliveryBridge:
                 return job.get('results', {}), job.get('error', 'timeout')
             finally:
                 self.pending = None
+

@@ -72,6 +72,30 @@ class DeliveryTests(unittest.TestCase):
         self.assertFalse(self.bridge.authorized(self.token, 'https://evil.test'))
         self.assertTrue(self.bridge.authorized(self.token, self.bridge.origin()))
 
+    def test_deadline_roundtrip_retains_verified_order_binding(self):
+        self.result['shippingDeadlineText'] = '2026/11/20 16:30'
+        with ThreadPoolExecutor() as pool:
+            task, job = self.begin(pool)
+            self.bridge.submit({'id': job['id'], 'results': [self.result]})
+            found, error = task.result()
+        (self.root/'config.json').write_text('{}')
+        work = Workbench(self.root/'config.json', self.root/'data')
+        raw = {'id':123, 'name':'SHOPEE1', 'source_name':'shopee-taiwan', 'updated_at':'version1',
+               'shipping_fees':[{'name':'蝦皮店到店'}]}
+        key = 'EasyStore:123'
+        observations = {}
+        with patch.object(work.delivery_bridge, 'read', return_value=(found, '')):
+            row = work.enrich_es_delivery([normalize_es(raw)], {key:raw}, observations)[0]
+        self.assertEqual(row['deliveryMethod'], '蝦皮店到店')  # API carrier still wins.
+        self.assertEqual(row['shippingDeadlineAt'], '2026-11-20T16:30:00+08:00')
+        with patch.object(work.delivery_bridge, 'read', return_value=({}, 'timeout')):
+            stale = work.enrich_es_delivery([normalize_es(raw)], {key:raw}, observations)[0]
+        self.assertIn('逾時', stale['shippingDeadlineNote'])
+        raw['updated_at'] = 'version2'
+        with patch.object(work.delivery_bridge, 'read', return_value=({}, 'timeout')):
+            changed = work.enrich_es_delivery([normalize_es(raw)], {key:raw}, observations)[0]
+        self.assertNotIn('shippingDeadlineAt', changed)
+
     def test_every_refresh_rereads_even_if_cached_and_api_wins(self):
         (self.root/'config.json').write_text('{}')
         work = Workbench(self.root/'config.json', self.root/'data')
@@ -90,7 +114,7 @@ class DeliveryTests(unittest.TestCase):
         with patch.object(work.delivery_bridge,'read',return_value=({},'')) as read:
             rows = work.enrich_es_delivery([normalize_es(formal)],{key:formal},observations)
             self.assertEqual(rows[0]['deliveryMethod'],'蝦皮店到店')
-            self.assertEqual(read.call_args.args[0],[])
+            self.assertEqual(read.call_args.args[0],[self.order])
         with patch.object(work.delivery_bridge,'read',return_value=({},'login')):
             rows=work.enrich_es_delivery([normalize_es(raw)],{key:raw},observations)
             self.assertEqual(rows[0]['deliveryMethod'],'新竹物流')
@@ -102,3 +126,4 @@ class DeliveryTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

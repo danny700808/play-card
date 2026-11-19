@@ -8,6 +8,7 @@ function readDeliveryPage(orders) {
   if(!table)return {error:document.querySelector('input[type=password]')?'login':'loading',results:[]};
   const headers=[...table.querySelectorAll('thead th')].map(c=>c.innerText.trim());
   const carrier=headers.indexOf('物流商');
+  const deadlineColumn=headers.findIndex(h=>/^(?:出貨期限|最晚出貨(?:時間|日期)?|出貨截止(?:時間|日期)?)$/.test(h));
   if(carrier<0)return {error:'layout',results:[]};
   const wanted=new Map(orders.map(o=>[o.externalId,o])),results=[];
   for(const tr of table.querySelectorAll('tbody tr')){
@@ -19,8 +20,11 @@ function readDeliveryPage(orders) {
     const externalId=new URL(store.href).pathname.split('/').pop(),expected=wanted.get(externalId);
     if(!expected||channel.innerText.trim()!==expected.orderNo)continue;
     const name=cells[carrier].innerText.trim().split(/\r?\n|出貨期限\s*[:：]/)[0].trim();
+    const labelled=cells[carrier].innerText.match(/(?:出貨期限|最晚出貨(?:時間|日期)?|出貨截止(?:時間|日期)?)\s*[:：]\s*([^\r\n]+)/);
+    const deadlineText=(deadlineColumn>=0?cells[deadlineColumn]?.innerText:labelled?.[1])?.trim()||'';
     if(name&&name.length<=100&& !['-','Shipping Fee','運費'].includes(name))
-      results.push({...expected,deliveryMethod:name,evidenceUrl:channel.href});
+      results.push({...expected,deliveryMethod:name,evidenceUrl:channel.href,
+        ...(deadlineText&&deadlineText.length<=100&&!/[\x00-\x1f<>]/.test(deadlineText)?{shippingDeadlineText:deadlineText}:{})});
   }
   const next=document.querySelector('button[aria-label="Go to next page"]');
   return {results,next:!!next&&!next.disabled,
@@ -33,3 +37,4 @@ function nextDeliveryPage(){
   b.click();return true;
 }
 if(typeof module!=='undefined')module.exports={readDeliveryPage,nextDeliveryPage};
+

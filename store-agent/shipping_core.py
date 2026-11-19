@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 import requests
 from shipping_images import match_product_image
 from shipping_delivery import DeliveryBridge
+from shipping_deadlines import deadline_fields
 from shipping_payments import easystore_payment, coupang_payment, momo_payment
 
 TZ = timezone(timedelta(hours=8))
@@ -405,7 +406,7 @@ class Workbench:
         raise ShippingError("EasyStore 超過 50 頁，未完整讀取。")
 
     def enrich_es_delivery(self, rows, raw_orders, observations):
-        missing = [r for r in rows if r["channel"] == "蝦皮" and not r.get("deliveryMethod")
+        missing = [r for r in rows if r["channel"] == "蝦皮"
                    and r["stage"] not in ("cancelled", "shipped")]
         # Every refresh requests live screen evidence, even if an older
         # observation exists. Identifiers only cross the loopback bridge.
@@ -419,11 +420,14 @@ class Workbench:
                     "binding": self.handling_binding(row), "source": "EasyStore 蝦皮通路後台",
                     "verifiedAt": now()}
             elif error != 'not-configured':
-                row["deliveryMethodNote"] = {
+                read_note = {
                     'offline': '主機配送讀取助手未連線，請開啟主機 Chrome。',
                     'login': '請在主機 Chrome 重新登入 EasyStore。',
                     'timeout': '配送資料讀取逾時，請再按讀取最新訂單。',
                 }.get(error, 'EasyStore 蝦皮通路尚未讀到此單物流，請核對後台。')
+                if not row.get('deliveryMethod'):
+                    row['deliveryMethodNote'] = read_note
+                row['shippingDeadlineNote'] = read_note
         if results:
             path = self.data_dir / 'delivery-observations.json'
             temp = path.with_suffix('.tmp')
@@ -434,7 +438,7 @@ class Workbench:
         return rows
 
     def apply_delivery_observation(self, row, raw, observation):
-        if row.get("deliveryMethod") or row.get("channel") != "蝦皮" or not isinstance(observation, dict):
+        if row.get("channel") != "蝦皮" or not isinstance(observation, dict):
             return
         try:
             verified = datetime.fromisoformat(observation["verifiedAt"])
@@ -447,9 +451,12 @@ class Workbench:
                     or observation.get("source") != "EasyStore 蝦皮通路後台"
                     or not isinstance(name, str) or not 1 <= len(name.strip()) <= 100):
                 return
-            row["deliveryMethod"] = name.strip()
-            row["deliveryMethodSource"] = observation["source"]
-            row["deliveryMethodVerifiedAt"] = observation["verifiedAt"]
+            if not row.get('deliveryMethod'):
+                row["deliveryMethod"] = name.strip()
+                row["deliveryMethodSource"] = observation["source"]
+                row["deliveryMethodVerifiedAt"] = observation["verifiedAt"]
+            row.update(deadline_fields(observation.get('shippingDeadlineText'),
+                                       observation['verifiedAt'], observation['source']))
         except (KeyError, TypeError, ValueError):
             return
 
@@ -1015,4 +1022,5 @@ class Workbench:
         except Exception:
             self.save_job(key, state="download-failed", error="單據尚未保存；請重新核對後取回原貨運單。")
             raise ShippingError("MOMO 文件未能保存；下次會先確認平台狀態，再取回原貨運單。")
+
 

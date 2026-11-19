@@ -16,19 +16,23 @@
     document.querySelectorAll('dialog[open]').forEach(d=>d.close());
     if($('documentFrame'))$('documentFrame').src='about:blank';
   }
-  async function request(action,body={},auth=token){
+  async function request(action,body={},auth=token,timeout=120000){
     if(embedded){
       const user=systemAuth&&systemAuth.currentUser;
       if(!user||user!==systemUser)throw Error('系統登入已失效，請重新登入系統。');
       auth=await user.getIdToken();
       if(systemAuth.currentUser!==user||systemUser!==user)throw Error('系統登入已變更，請重新開啟出貨工作台。');
     }
-    const response=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json',...(auth?{Authorization:'Bearer '+auth}:{})},
-      body:JSON.stringify({action,...body}),signal:AbortSignal.timeout(120000),cache:'no-store'});
-    const payload=await response.json();
+    let response;
+    try{response=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json',...(auth?{Authorization:'Bearer '+auth}:{})},
+      body:JSON.stringify({action,...body}),signal:AbortSignal.timeout(timeout),cache:'no-store'});}
+    catch(cause){const error=Error('連線暫時中斷，尚未確認主機結果。');error.retryable=true;throw error;}
+    let payload;
+    try{payload=await response.json();}catch(cause){const error=Error('未收到完整的主機回應。');error.retryable=response.ok||[408,429,500,502,503,504].includes(response.status);throw error;}
     if(!response.ok){
       if(response.status===401&&action!=='login')locked(embedded?'系統登入已失效，請重新登入系統。':'登入已失效，請重新輸入密碼。');
-      throw Error(payload.error||'連線失敗，請稍後再試。');
+      const error=Error(payload.error||'連線失敗，請稍後再試。');
+      error.retryable=[408,429,500,502,503,504].includes(response.status);throw error;
     }
     return payload;
   }
@@ -45,12 +49,21 @@
       const command=path.replace('/api/','');
       const {jobId}=await request('enqueue',{command,body,requestId:crypto.randomUUID()});
       const until=Date.now()+180000;
-      let polls=0;
+      let polls=0,connectionFailures=0;
       while(Date.now()<until){
         // Detect short jobs promptly; back off for longer platform operations.
         await new Promise(r=>setTimeout(r,polls++===0?300:polls<=8?600:1200));
         if(generation!==ownGeneration)throw Error('已登出。');
-        const r=await request('result',{jobId});
+        let r;
+        try{r=await request('result',{jobId},token,Math.max(1,Math.min(15000,until-Date.now())));connectionFailures=0;}
+        catch(error){
+          if(generation!==ownGeneration)throw Error('已登出。');
+          // Retry only the read of this job. Never enqueue or execute shipping again.
+          if(!error.retryable)throw error;
+          if(++connectionFailures>=5)throw Error('主機結果查詢連續中斷；工作可能仍在處理，請讀取最新訂單確認，勿重複申請出貨。');
+          await new Promise(resolve=>setTimeout(resolve,Math.min(connectionFailures*1000,4000)));
+          continue;
+        }
         if(generation!==ownGeneration)throw Error('已登出。');
         if(r.status==='error')throw Error(r.error||'操作未完成。');
         if(r.status==='done')return r.result;
@@ -96,3 +109,4 @@
     }
   };
 })();
+

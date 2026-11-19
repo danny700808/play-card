@@ -34,6 +34,14 @@ class RemoteBoundaryTests(unittest.TestCase):
         row = packing_snapshot(self.w)["orders"][0]
         self.assertEqual(row["shippingMethod"], "family")
 
+    def test_snapshot_carries_only_explicit_normalized_deadline_fields(self):
+        self.row.update(shippingDeadlineText='2026/11/20', shippingDeadlineAt='2026-11-20T00:00:00+08:00',
+                        shippingDeadlinePrecision='date', shippingDeadlineSource='EasyStore 蝦皮通路後台',
+                        shippingDeadlineVerifiedAt=now(), shippingDeadlineNote='', rawDeadline={'private':'hidden'})
+        row = packing_snapshot(self.w)['orders'][0]
+        self.assertEqual(row['shippingDeadlinePrecision'], 'date')
+        self.assertNotIn('rawDeadline', row)
+
     def test_snapshot_carries_only_normalized_payment_fields(self):
         self.row.update(paidAmount="1234.50", paidCurrency="TWD",
                         paidAmountStatus="confirmed", paidAmountNote="付款明細",
@@ -102,4 +110,5 @@ class ProvidedPdfTests(unittest.TestCase):
 
 if __name__=="__main__":
     unittest.main()
+
 
