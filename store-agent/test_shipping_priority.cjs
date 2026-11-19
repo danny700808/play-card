@@ -2,6 +2,24 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const model=require('./shipping-ui/model.js');
 const now=new Date('2026-11-19T12:00:00+08:00');
 const deadline=(at,precision='minute')=>({shippingDeadlineText:at,shippingDeadlineAt:at,shippingDeadlinePrecision:precision,shippingDeadlineSource:'EasyStore 蝦皮通路後台',shippingDeadlineVerifiedAt:'2026-11-19T11:00:00+08:00'});
+test('missing MOMO deadlines preserve the host diagnosis and visibly escape it',()=>{
+ const source=fs.readFileSync(__dirname+'/shipping-ui/app.js','utf8').split("$('refresh').addEventListener")[0];
+ const window={};window.self=window;window.top=window;
+ const ctx=vm.createContext({window,ShippingModel:model,document:{querySelector:()=>null,documentElement:{classList:{toggle(){}}}}});
+ vm.runInContext(source,ctx);
+ for(const note of ['主機配送讀取助手仍在執行舊版，請重新載入 1.1.0。','請在主機 Chrome 重新登入 MOMO 後台。','MOMO 後台期限讀取逾時。']){
+  ctx.row={channel:'MOMO',shippingDeadlineNote:note};
+  assert.equal(model.shippingDeadline(ctx.row,now).note,note);
+  assert.equal(model.shippingDeadline(ctx.row,now).sort,Infinity);
+  const html=vm.runInContext('deadlineHtml(row)',ctx);
+  assert.ok(html.includes(`<span class="shipping-deadline-reason">${note}</span>`));
+ }
+ ctx.row={channel:'MOMO',shippingDeadlineNote:'<img src=x onerror=alert(1)>'};
+ const html=vm.runInContext('deadlineHtml(row)',ctx);
+ assert.ok(!html.includes('<img'));assert.ok(html.includes('&lt;img'));
+ ctx.row={channel:'MOMO'};
+ assert.ok(!vm.runInContext('deadlineHtml(row)',ctx).includes('shipping-deadline-reason'));
+});
 test('HCT aliases across platforms group together while missing logistics remain visible',()=>{
  for(const carrier of ['新竹貨運','新竹物流','HCT','第三方物流-新竹貨運'])assert.equal(model.logisticsGroup({carrier}),'hct');
  assert.equal(model.logisticsGroup({carrierCode:'TWL_HCT'}),'hct');

@@ -123,7 +123,7 @@
       const precision=row.shippingDeadlinePrecision||parsed?.precision;
       const valid=source&&verified&&['date','minute'].includes(precision)&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/.test(at)&&Number.isFinite(Date.parse(at));
       const stale=!!(row.stale||note||!Number.isFinite(Date.parse(verified))||now-Date.parse(verified)>86400000||Date.parse(verified)>now.getTime()+60000);
-      if(!raw||!source||!verified)return {text:'最晚出貨：待確認',tone:'unknown',sort:Infinity,note:'尚未取得平台出貨期限，請核對平台。'};
+      if(!raw||!source||!verified)return {text:'最晚出貨：待確認',tone:'unknown',sort:Infinity,note:note||'尚未取得平台出貨期限，請核對平台。'};
       const day=value=>new Date(value).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
       const expired=valid&&(precision==='date'?day(at)<day(now):Date.parse(at)<now.getTime());
       const today=valid&&day(at)===day(now);

@@ -36,7 +36,9 @@ function paidAmountHtml(row) {
 }
 function deadlineHtml(row){
   const deadline=ShippingModel.shippingDeadline(row);
-  return `<span class="shipping-deadline ${deadline.tone}" title="${escapeHtml(deadline.note)}">${escapeHtml(deadline.text)}</span>`;
+  const reason=deadline.tone==='unknown'&&row.shippingDeadlineNote
+    ? `<span class="shipping-deadline-reason">${escapeHtml(row.shippingDeadlineNote)}</span>`:'';
+  return `<span class="shipping-deadline ${deadline.tone}" title="${escapeHtml(deadline.note)}">${escapeHtml(deadline.text)}</span>${reason}`;
 }
 function applyLocalMetadata(){
   for(const row of data.orders){const saved=localMetadataCache.get(row.key);
