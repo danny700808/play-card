@@ -59,6 +59,32 @@
       return value.replace(/^第三方物流-/,'')+(row.deliveryMethodNote?'（上次核對）':'');
     },
     metadataBinding(row){return JSON.stringify([row.key,row.externalId,row.orderNo,row.stage,row.tracking,row.recipient,row.address,row.items]);},
+    parseShippingDeadline(raw,verifiedAt,dayFirst=false){
+      if(typeof raw!=='string'||raw.length>100||/[\x00-\x1f<>]/.test(raw))return null;
+      let value=raw.normalize('NFKC').trim();
+      const relative=value.match(/^(今天|今日|明天|明日)(.*)$/);
+      if(relative){
+        if(!Number.isFinite(Date.parse(verifiedAt)))return null;
+        const local=new Date(Date.parse(verifiedAt)+8*3600000+(/明/.test(relative[1])?86400000:0));
+        value=local.toISOString().slice(0,10)+relative[2];
+      }
+      let m=value.match(/^(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})日?(.*)$/);
+      if(!m&&dayFirst){const d=value.match(/^(\d{1,2})-(\d{1,2})-(\d{4})(.*)$/);if(d)m=[d[0],d[3],d[2],d[1],d[4]];}
+      if(!m)return null;
+      const [year,month,day]=m.slice(1,4).map(Number);
+      const rest=m[4].trim().replace(/^[,T]\s*/,'').replace(/\s*前$/,'').trim();
+      let hour=0,minute=0,second=0;
+      if(rest){
+        const t=rest.match(/^(上午|早上|凌晨|下午|晚上|AM|PM)?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(上午|早上|凌晨|下午|晚上|AM|PM)?$/i);
+        if(!t||t[1]&&t[5])return null;
+        hour=Number(t[2]);minute=Number(t[3]);second=Number(t[4]||0);
+        const period=t[1]||t[5];
+        if(period){if(hour<1||hour>12)return null;hour=hour%12+(/下午|晚上|PM/i.test(period)?12:0);}
+      }
+      const date=new Date(Date.UTC(year,month-1,day,hour,minute,second));
+      if(year<1000||date.getUTCFullYear()!==year||date.getUTCMonth()!==month-1||date.getUTCDate()!==day||date.getUTCHours()!==hour||date.getUTCMinutes()!==minute||date.getUTCSeconds()!==second)return null;
+      return {at:date.toISOString().slice(0,19)+'+08:00',precision:rest?'minute':'date'};
+    },
     localLogistics(row,observation,verifiedAt){
       if(!row||row.platform!=='EasyStore'||row.channel!=='蝦皮'||row.stale||row.key!==observation?.key||String(row.externalId)!==String(observation.externalId)||row.orderNo!==observation.orderNo||
         !/^https:\/\/admin\.easystore\.co\/channels\/shopee\/taiwan\/orders\/\d+$/.test(observation.evidenceUrl||'')||
@@ -75,13 +101,10 @@
         value=local.toISOString().slice(0,10)+(relative[2]?' '+relative[2]:'');
         patch.shippingDeadlineText=value+'（平台原文：'+patch.shippingDeadlineText+'）';
       }
-      const m=value.match(/^(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})日?(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?(?:\s*前)?$/);
-      if(!m)return patch;
-      const [year,month,day,hour,minute,second]=m.slice(1).map(v=>Number(v||0));
-      const date=new Date(Date.UTC(year,month-1,day,hour,minute,second));
-      if(year<1000||date.getUTCFullYear()!==year||date.getUTCMonth()!==month-1||date.getUTCDate()!==day||date.getUTCHours()!==hour||date.getUTCMinutes()!==minute||date.getUTCSeconds()!==second)return patch;
-      patch.shippingDeadlineAt=date.toISOString().slice(0,19)+'+08:00';
-      patch.shippingDeadlinePrecision=m[4]===undefined?'date':'minute';
+      const parsed=model.parseShippingDeadline(value,verifiedAt,true);
+      if(!parsed)return patch;
+      patch.shippingDeadlineAt=parsed.at;
+      patch.shippingDeadlinePrecision=parsed.precision;
       return patch;
     },
     logisticsGroup(row){
@@ -95,8 +118,9 @@
       const verified=String(row.shippingDeadlineVerifiedAt||'');
       const note=String(row.shippingDeadlineNote||'');
       const source=String(row.shippingDeadlineSource||'');
-      const at=String(row.shippingDeadlineAt||'');
-      const precision=row.shippingDeadlinePrecision;
+      const parsed=model.parseShippingDeadline(raw,verified,/EasyStore.*蝦皮/.test(source));
+      const at=String(row.shippingDeadlineAt||parsed?.at||'');
+      const precision=row.shippingDeadlinePrecision||parsed?.precision;
       const valid=source&&verified&&['date','minute'].includes(precision)&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/.test(at)&&Number.isFinite(Date.parse(at));
       const stale=!!(row.stale||note||!Number.isFinite(Date.parse(verified))||now-Date.parse(verified)>86400000||Date.parse(verified)>now.getTime()+60000);
       if(!raw||!source||!verified)return {text:'最晚出貨：待確認',tone:'unknown',sort:Infinity,note:'尚未取得平台出貨期限，請核對平台。'};
@@ -104,10 +128,15 @@
       const expired=valid&&(precision==='date'?day(at)<day(now):Date.parse(at)<now.getTime());
       const today=valid&&day(at)===day(now);
       const pending=!row.handled&&!['shipped','cancelled'].includes(row.stage);
-      return {text:`最晚出貨：${raw}${stale?'（待更新）':pending&&expired?'（已逾期）':pending&&today?'（今日截止）':''}`,
+      let display=raw;
+      if(valid){
+        const local=new Date(Date.parse(at)+8*3600000).toISOString();
+        display=`${local.slice(0,4)}年${local.slice(5,7)}月${local.slice(8,10)}日${precision==='minute'?' '+local.slice(11,16):''}`;
+      }
+      return {text:`最晚出貨：${display}${stale?'（待更新）':pending&&expired?'（已逾期）':pending&&today?'（今日截止）':''}`,
         tone:stale?'unknown':pending&&expired?'overdue':pending&&today?'today':'normal',
         sort:valid&&!stale?Date.parse(at):Infinity,
-        note:`${source} · 核對 ${verified}${note?' · '+note:''}${precision==='date'?' · 平台未提供確切時分':''}${!valid?' · 平台原文，無法確認絕對時間':''}`};
+        note:`${source} · 核對 ${verified} · 平台原文：${raw}${note?' · '+note:''}${precision==='date'?' · 平台未提供確切時分':''}${!valid?' · 平台原文，無法確認絕對時間':''}`};
     },
     compareShippingPriority(a,b,now=new Date()){
       const left=model.shippingDeadline(a,now).sort,right=model.shippingDeadline(b,now).sort;

@@ -21,6 +21,35 @@ test('earliest verified platform deadline sorts first, never the 17:00 shop remi
  rows.sort((a,b)=>model.compareShippingPriority(a,b,now));assert.deepEqual(rows.map(r=>r.orderNo),['earlier','later','unknown']);
 });
 
+test('photographed EasyStore day-first deadlines render year-month-day in 24-hour time',()=>{
+ const source={shippingDeadlineSource:'本機 EasyStore 蝦皮通路後台',shippingDeadlineVerifiedAt:now.toISOString()};
+ const evening={...source,shippingDeadlineText:'19-11-2026, 7:00 晚上'};
+ const midnight={...source,shippingDeadlineText:'20-11-2026, 11:59 晚上'};
+ assert.equal(model.shippingDeadline(evening,now).text,'最晚出貨：2026年11月19日 19:00（今日截止）');
+ assert.equal(model.shippingDeadline(midnight,now).text,'最晚出貨：2026年11月20日 23:59');
+ assert.equal(model.shippingDeadline(evening,now).sort,Date.parse('2026-11-19T19:00:00+08:00'));
+ assert.match(model.shippingDeadline(evening,now).note,/19-11-2026, 7:00 晚上/);
+ const row={key:'EasyStore:123',externalId:'123',orderNo:'TEST1234567890',platform:'EasyStore',channel:'蝦皮'};
+ const patch=model.localLogistics(row,{...row,deliveryMethod:'蝦皮店到店',shippingDeadlineText:midnight.shippingDeadlineText,evidenceUrl:'https://admin.easystore.co/channels/shopee/taiwan/orders/456'},now.toISOString());
+ assert.equal(patch.shippingDeadlineAt,'2026-11-20T23:59:00+08:00');
+});
+
+test('deadline formatting keeps date-only precision and uses Taiwan calendar for explicit instants',()=>{
+ assert.equal(model.shippingDeadline({...deadline('2026-11-19T00:00:00+08:00','date'),handled:true},now).text,'最晚出貨：2026年11月19日');
+ assert.equal(model.shippingDeadline({...deadline('2026-11-19T16:30:00Z'),handled:true},now).text,'最晚出貨：2026年11月20日 00:30');
+ for(const [value,expected] of [['12:00 上午','00:00'],['12:00 下午','12:00'],['7:00 晚上','19:00']]){
+  assert.equal(model.parseShippingDeadline('19-11-2026, '+value,now.toISOString(),true).at,'2026-11-19T'+expected+':00+08:00');
+ }
+ assert.equal(model.parseShippingDeadline('明天 下午 7:00','2026-12-31T23:30:00+08:00').at,'2027-01-01T19:00:00+08:00');
+});
+
+test('invalid calendars and ambiguous unsupported sources never gain a guessed sortable deadline',()=>{
+ for(const value of ['30-02-2026, 7:00 晚上','19-11-2026, 13:00 晚上','2026-11-19 24:00','2026-11-19 12:60','2026-11-19 00:00 晚上'])assert.equal(model.parseShippingDeadline(value,now.toISOString(),true),null);
+ const row={shippingDeadlineText:'05-06-2026, 7:00 晚上',shippingDeadlineSource:'MOMO',shippingDeadlineVerifiedAt:now.toISOString()};
+ assert.equal(model.shippingDeadline(row,now).sort,Infinity);
+ assert.equal(model.shippingDeadline({channel:'MOMO'},now).text,'最晚出貨：待確認');
+});
+
 test('local metadata preserves exact identities, calendar precision and API carrier priority',()=>{
  const row={key:'EasyStore:123',externalId:'123',orderNo:'TEST1234567890',platform:'EasyStore',channel:'蝦皮',deliveryMethod:'蝦皮店到店'};
  const observation={key:row.key,externalId:row.externalId,orderNo:row.orderNo,deliveryMethod:'新竹物流',shippingDeadlineText:'明天',evidenceUrl:'https://admin.easystore.co/channels/shopee/taiwan/orders/456'};
