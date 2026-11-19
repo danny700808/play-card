@@ -827,9 +827,10 @@
         const rows = uniqueEvents(events.filter((event) => event.date === day && event.startTime < slotEnd && slotStart < event.endTime));
         const blockingRows = rows.filter(eventBlocksPlannerGap);
         const released = rows.length > 0 && blockingRows.length === 0;
+        const fullWidthLeave = released && !planner && rows.every(event => clean(event.status).toLowerCase() === 'leave');
         const available = plannerSlots.get(`${day}|${slotStart}`);
         const past = courseSlotIsPast(day, slotStart);
-        html += `<div class="week-cell${released ? ' released-slot-cell' : ''}" style="grid-column:${dayIndex + 2};grid-row:${gridRow}">`;
+        html += `<div class="week-cell${released ? ' released-slot-cell' : ''}${fullWidthLeave ? ' leave-card-cell' : ''}" style="grid-column:${dayIndex + 2};grid-row:${gridRow}">`;
         const closure=global.YouziClassClosureBanner?.get?.(day,token);
         if(closure){
           html += `<span class="closed-slot" title="${escapeHtml(closure.reason)}">停課</span>`;
@@ -863,7 +864,7 @@
         const endMinute = timeMinutes(group.endTime);
         const rowStart = 2 + Math.max(0, Math.floor((startMinute - scheduleStart) / 30));
         const rowSpan = Math.max(1, Math.ceil((endMinute - Math.max(startMinute, scheduleStart)) / 30));
-        const placement = `grid-column:${dayIndex + 2};grid-row:${rowStart}/span ${rowSpan}${group.events.every(event => !eventBlocksPlannerGap(event)) ? ';margin-right:46%' : ''}`;
+        const placement = `grid-column:${dayIndex + 2};grid-row:${rowStart}/span ${rowSpan}${group.events.every(event => !eventBlocksPlannerGap(event)) && (planner || group.events.some(event => clean(event.status).toLowerCase() !== 'leave')) ? ';margin-right:46%' : ''}`;
         if (group.events.length === 1) html += `<div class="lesson-placement" style="${placement}">${lessonCard(group.events[0], false)}</div>`;
         else {
           const count = futureOverlapCount(group.events, Date.now());
