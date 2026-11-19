@@ -20,12 +20,14 @@ test('teacher homepage opts into scoped profiles and returns only own lessons',a
  let options;
  const chain={where(){return this},get:async()=>({docs:[]})};
  const bundle={maps:{teachers:{t:{name:'Teacher'}},students:{s:{name:'Student'}}},events:[{id:'own',teacherId:'t',studentIds:['s']},{id:'other',teacherId:'other',studentIds:['private']}],fixedCourses:[],temporaryCourses:[],suspensions:[],rooms:[],subjects:[],irregularModes:[]};
- const c={...helpers,requireSession:async()=>({teacherId:'t'}),dateKey:v=>v,addDays:()=> '2026-09-13',currentTaipeiDay:()=> '2026-09-10',db:{collection:()=>chain},ATTENDANCE_CANCELLATIONS:'cancel',TEACHER_PAYROLL_MIN_MONTH:'2026-07',scheduleBundle:async(a,b,id,opt)=>{options=opt;return bundle},eventTeacherId:r=>r.teacherId,eventStudentIds:r=>r.studentIds||[],eventSubjectId:r=>r.subjectId,sourcePhone:r=>r.phone,normalizePhone:v=>v||'',sourceActive:()=>true,firstArray:(r,keys)=>r[keys[0]]||[]};
+ const c={...helpers,requireSession:async()=>({teacherId:'t'}),dateKey:v=>v,addDays:(day,n)=>new Date(Date.parse(day)+n*86400000).toISOString().slice(0,10),currentTaipeiDay:()=> '2026-09-10',db:{collection:()=>chain},ATTENDANCE_CANCELLATIONS:'cancel',TEACHER_PAYROLL_MIN_MONTH:'2026-07',scheduleBundle:async(a,b,id,opt)=>{options=opt;return bundle},eventTeacherId:r=>r.teacherId,eventStudentIds:r=>r.studentIds||[],eventSubjectId:r=>r.subjectId,sourcePhone:r=>r.phone,normalizePhone:v=>v||'',sourceActive:()=>true,firstArray:(r,keys)=>r[keys[0]]||[]};
  vm.createContext(c);vm.runInContext(backend.slice(backend.indexOf('function teacherFollowupSnapshot('),backend.indexOf('async function teacherPortalData('))+extract(backend,'teacherPortalData'),c);
  // Plan labels have their own tests; this fixture checks authorized schedule scope.
  c.withTeacherLessonPlanLabels=async()=>{throw Error('Teacher entry must not project historical tuition periods');};
  const result=await c.teacherPortalData({weekStart:'2026-09-07',scheduleDays:1});
  assert.equal(result.week.end,'2026-09-07');
+ const five=await c.teacherPortalData({weekStart:"2026-09-07",scheduleDays:5});
+ assert.equal(five.week.end,"2026-09-11");
  const legacy=await c.teacherPortalData({weekStart:'2026-09-07'});
  assert.equal(legacy.week.end,'2026-09-13');
  assert.equal(options.teacherHome,true);assert.deepEqual(Array.from(result.events,r=>r.id),['own']);assert.deepEqual(Array.from(result.roster,r=>r.id),['s']);

@@ -5447,7 +5447,7 @@ async function teacherPortalData(data) {
   }
   const start = dateKey(data.weekStart);
   if (!start) throw new HttpsError('invalid-argument', '週起始日期格式錯誤。');
-  const end = data.scheduleDays === 1 ? start : addDays(start, 6);
+  const end = data.scheduleDays === 1 ? start : addDays(start, data.scheduleDays === 5 ? 4 : 6);
   const month = clean(data.month).match(/^\d{4}-\d{2}$/) ? clean(data.month) : start.slice(0, 7);
   if ((data.includePayroll === true || data.payrollOnly === true) && month < TEACHER_PAYROLL_MIN_MONTH) {
     throw new HttpsError('failed-precondition', '老師薪資查詢僅開放民國 115 年 7 月起的資料。');

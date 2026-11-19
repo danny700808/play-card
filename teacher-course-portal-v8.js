@@ -176,10 +176,10 @@
     owner: () => tokenFingerprint(token), maxEntries: 16
   });
   function clearCache() { viewCache.invalidate(); }
-  function readCache(week) { return viewCache.get('day:' + week); }
+  function readCache(week) { return viewCache.get('fiveDays:' + week); }
   function writeCache(week, month, value) {
     const snapshot = Object.assign({}, value); delete snapshot.payroll; delete snapshot.adjustments;
-    viewCache.put('day:' + week, snapshot);
+    viewCache.put('fiveDays:' + week, snapshot);
   }
   function invalidateCourseCache(dates, fromDate) {
     const changed = dates.filter(Boolean);
@@ -187,7 +187,7 @@
       if (scope.startsWith('payroll:')) return !changed.length || changed.some(day => scope.endsWith(day.slice(0, 7)));
       const start = value && value.week && value.week.start;
       if (!start) return true;
-      const end = start;
+      const end = addDays(start, 4);
       return fromDate ? end >= fromDate : changed.some(day => start <= day && day <= end);
     });
   }
@@ -199,8 +199,8 @@
   function requestTeacherWeek(week) {
     const sessionToken = token;
     const revision = viewCache.revision();
-    return viewCache.load('day:' + week, () => invoke('coursePortalTeacherData', {
-      sessionToken, weekStart: week, scheduleDays: 1, includePayroll: false
+    return viewCache.load('fiveDays:' + week, () => invoke('coursePortalTeacherData', {
+      sessionToken, weekStart: week, scheduleDays: 5, includePayroll: false
     })).then(result => {
       if (sessionToken === token && revision === viewCache.revision()) {
         verifiedWeeks.set(week, {account: sessionToken, revision, at: Date.now()});
@@ -569,19 +569,19 @@
       if (grid) {
         grid.style.removeProperty('--teacher-day-width');
         grid.style.removeProperty('--teacher-time-column');
-        grid.style.gridTemplateColumns = '58px minmax(0,1fr)';
+        grid.style.gridTemplateColumns = '58px repeat(5,minmax(0,1fr))';
         fitLessonNames(grid);
       }
       return;
     }
     const stickyWidth = global.matchMedia('(max-width: 520px)').matches ? 48 : 58;
-    const dayWidth = Math.max(1, scroll.clientWidth - stickyWidth);
+    const dayWidth = Math.max(1, scroll.clientWidth - stickyWidth) / 2;
     const nav = document.querySelector('.teacher-bottom-tabs');
     const navTop = nav ? nav.getBoundingClientRect().top : global.innerHeight;
     scroll.style.maxHeight = `${Math.max(160, navTop - scroll.getBoundingClientRect().top - 12)}px`;
     grid.style.setProperty('--teacher-time-column', `${stickyWidth}px`);
     grid.style.setProperty('--teacher-day-width', `${dayWidth}px`);
-    grid.style.gridTemplateColumns = `${stickyWidth}px ${dayWidth}px`;
+    grid.style.gridTemplateColumns = `${stickyWidth}px repeat(5, ${dayWidth}px)`;
     fitLessonNames(grid);
   }
 
@@ -611,7 +611,7 @@
     return 0;
   }
   async function continueWeekSwipe(direction) {
-    await navigateTeacherWeek(direction);
+    await selectScheduleDay(addDays(weekStart, direction * 5));
     await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
     const scroll=document.getElementById('weekGrid').parentElement;
     const target=direction>0?0:Math.max(0,scroll.scrollWidth-scroll.clientWidth);
@@ -798,8 +798,8 @@
     const priorWeek = grid.dataset.week || '';
     const priorScrollLeft = scroll.scrollLeft;
     document.getElementById('scheduleDate').value = weekStart;
-    const days = [weekStart];
-    if(global.YouziClassClosureBanner)global.YouziClassClosureBanner.show(scroll.parentElement,days[0],days[0],token);
+    const days = Array.from({length:5}, (_, i) => addDays(weekStart, i));
+    if(global.YouziClassClosureBanner)global.YouziClassClosureBanner.show(scroll.parentElement,days[0],days[4],token);
     const events = uniqueEvents((data.events || []).filter((event) => event.own));
     grid.dataset.dayWeights = JSON.stringify(days.map(day=>Math.max(1,...overlapGroups(events.filter(event=>event.date===day)).map(group=>group.events.length))));
     const startHour = Number(data.hours.start || 10);
@@ -1137,7 +1137,6 @@
       await fetchData(Boolean(force));
       if (account !== token || requestedDate !== weekStart) return false;
       if (activeTab === 'payroll') showDataFreshness('');
-      if (activeTab === 'schedule') prepareNextDay(requestedDate);
       refreshTeacherUtilityStatus(false);
       return true;
     } catch (error) {
@@ -1157,18 +1156,6 @@
       }
       return false;
     }
-  }
-
-  let nextDayTimer;
-  function prepareNextDay(day) {
-    clearTimeout(nextDayTimer);
-    const account = token, revision = viewCache.revision();
-    nextDayTimer = setTimeout(() => {
-      const next = addDays(day, 1);
-      if (weekStart !== day || token !== account || viewCache.revision() !== revision ||
-          activeTab !== 'schedule' || document.hidden || teacherOperations.hasPending() || readCache(next)) return;
-      requestTeacherWeek(next).catch(() => {});
-    }, 500);
   }
 
   function activateTab(tab) {
@@ -1553,7 +1540,7 @@
     read:dates=>invoke('coursePortalTeacherData',{sessionToken:token,refreshDates:dates,...(refreshRosterAfterSync?{includeModes:true,modeWeekStart:weekStart}:{})}),
     apply:snapshot=>{
       const dates=new Set(snapshot.refreshDates||[]);
-      data.events=data.events.filter(row=>!dates.has(row.date)).concat((snapshot.events||[]).filter(row=>row.date===weekStart));
+      data.events=data.events.filter(row=>!dates.has(row.date)).concat((snapshot.events||[]).filter(row=>row.date>=weekStart && row.date<=addDays(weekStart,4)));
       if(snapshot.modeState){
         for(const key of ['roster','irregularCourses','stoppedCourses'])if(Array.isArray(snapshot.modeState[key]))data[key]=snapshot.modeState[key];
         if (activeTab === 'students') { renderRoster();renderIrregularCourses(); }
@@ -1590,7 +1577,7 @@
   async function updateStudentMode(name,payload,button,onSaved){
     if(studentModePending)return;
     studentModePending=true;
-    const context=quickContext,dates=[weekStart];
+    const context=quickContext,dates=Array.from({length:5},(_,i)=>addDays(weekStart,i));
     let saved=false;
     teacherOperations.begin('student-mode');dataRequestVersion++;loading(button,true,'處理中…');
     try{
@@ -2041,7 +2028,7 @@
       toast(result.message||'課程已儲存。');if(planner===job.planner)cancelPlanner(quickContext===job.context);
       console.info('[teacher operation]',{stage:'save',action:payload.action,ms:Date.now()-job.started});
       showDataFreshness('已儲存，正在更新相關課程。');
-      const dates=payload.action==='permanent_move'?[weekStart]:[payload.sourceDate,payload.date];
+      const dates=payload.action==='permanent_move'?Array.from({length:5},(_,i)=>addDays(weekStart,i)):[payload.sourceDate,payload.date];
       if(payload.irregularId||payload.suspensionId)refreshRosterAfterSync=true;
       teacherOperations.saved(dates);
     } catch (error) {
