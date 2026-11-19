@@ -201,11 +201,12 @@
   function requestTeacherWeek(week) {
     const sessionToken = token;
     const revision = viewCache.revision();
+    const startedAt = Date.now();
     return viewCache.load('week:' + week, () => invoke('coursePortalTeacherData', {
       sessionToken, weekStart: week, includePayroll: false
     })).then(result => {
       if (sessionToken === token && revision === viewCache.revision()) {
-        verifiedWeeks.set(week, {account: sessionToken, revision, at: Date.now()});
+        verifiedWeeks.set(week, {account: sessionToken, revision, at: Date.now(), elapsed: Date.now() - startedAt});
         if (verifiedWeeks.size > 16) verifiedWeeks.delete(verifiedWeeks.keys().next().value);
       }
       return result;
@@ -213,6 +214,8 @@
   }
   function prefetchNeighborWeeks(week) {
     clearTimeout(weekPrefetchTimer);
+    const verified = verifiedWeeks.get(week);
+    if (!verified || verified.elapsed > 3000) return;
     const connection = global.navigator && global.navigator.connection;
     if (connection && (connection.saveData || /(^|-)2g$/.test(connection.effectiveType || ''))) return;
     const account = token, revision = viewCache.revision();
