@@ -258,16 +258,18 @@
   async function invoke(name, payload) {
     const safeRead = ['coursePortalTeacherData', 'coursePortalTeacherAvailability', 'coursePortalTeacherSlotOptions', 'coursePortalTeacherAttendanceCorrectionOptions'].includes(name)
       && !(payload && (payload.save === true || payload.action));
+    const weeklyRead = safeRead && name === 'coursePortalTeacherData' && payload.weekStart && payload.includePayroll === false;
+    const deadline = weeklyRead ? Date.now() + 30000 : 0;
     const account = token;
     for (let attempt = 0; ; attempt++) {
       try {
-        const callable = PortalAuth.callableFor(name, { timeout: safeRead ? 20000 : 180000 });
+        const callable = PortalAuth.callableFor(name, { timeout: weeklyRead ? Math.max(1, deadline - Date.now()) : safeRead ? 20000 : 180000 });
         const result = await callable(payload || {});
         return result && result.data || {};
       } catch (error) {
         const code = clean(error && error.code).toLowerCase();
         const temporary = /(?:^|\/)(internal|unavailable|deadline-exceeded|network-request-failed)$/.test(code);
-        if (safeRead && temporary && attempt < 2 && account === token && !(global.navigator && global.navigator.onLine === false)) {
+        if ((!weeklyRead || (!code.endsWith('deadline-exceeded') && deadline - Date.now() > 5000)) && safeRead && temporary && attempt < 2 && account === token && !(global.navigator && global.navigator.onLine === false)) {
           await new Promise(resolve => global.setTimeout(resolve, [700, 1500][attempt] + Math.floor(Math.random() * 250)));
           if (account === token) continue;
         }

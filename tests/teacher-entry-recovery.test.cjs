@@ -84,3 +84,9 @@ test('a recently prefetched week renders without a redundant network request',as
  let requests=0,renders=0;const c={viewCache:{revision:()=>0},teacherOperations:{version:()=>0},dataRequestVersion:0,token:'a',activeTab:'schedule',weekStart:'2026-10-19',payrollMonth:'2026-10',readCache:()=>({events:[]}),mergeData(){},renderAll:()=>renders++,isRecentlyVerifiedWeek:()=>true,showDataFreshness(){},prefetchNeighborWeeks(){},requestTeacherWeek:async()=>{requests++;}};
  vm.createContext(c);vm.runInContext(section('  async function fetchData(','  async function load('),c);await c.fetchData(false);assert.equal(renders,1);assert.equal(requests,0);
 });
+
+test('a weekly schedule timeout returns to recovery without another full wait',async()=>{
+ const f=invocationFixture([failure('functions/deadline-exceeded')]);
+ await assert.rejects(f.c.invoke('coursePortalTeacherData',{weekStart:'2026-11-16',includePayroll:false}),{code:'functions/deadline-exceeded'});
+ assert.equal(f.calls.length,1);assert(f.calls[0].options.timeout<=30000);
+});
