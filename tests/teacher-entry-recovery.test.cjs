@@ -75,7 +75,7 @@ test('successful payroll recovery clears the failed-read notice and retry button
 });
 test('recent successful week reads are reusable only for the same account and unchanged schedule',async()=>{
  let revision=0,now=1000;const c={token:'a',Date:{now:()=>now},Map,viewCache:{revision:()=>revision,load:(_,fn)=>fn()},invoke:async()=>({events:[]})};
- vm.createContext(c);vm.runInContext(section('  const verifiedWeeks =','  function prefetchNeighborWeeks('),c);
+ vm.createContext(c);vm.runInContext(section('  const verifiedWeeks =','  function setSession('),c);
  assert(!c.isRecentlyVerifiedWeek('week'));await c.requestTeacherWeek('week');assert(c.isRecentlyVerifiedWeek('week'));
  revision++;assert(!c.isRecentlyVerifiedWeek('week'));await c.requestTeacherWeek('week');c.token='b';assert(!c.isRecentlyVerifiedWeek('week'));
  await c.requestTeacherWeek('week');now+=30000;assert(!c.isRecentlyVerifiedWeek('week'));

@@ -175,8 +175,7 @@
     storage: () => global.localStorage, prefix: CACHE_PREFIX, ttl: CACHE_TTL,
     owner: () => tokenFingerprint(token), maxEntries: 16
   });
-  let weekPrefetchTimer = 0;
-  function clearCache() { viewCache.invalidate(); clearTimeout(weekPrefetchTimer); }
+  function clearCache() { viewCache.invalidate(); }
   function readCache(week) { return viewCache.get('week:' + week); }
   function writeCache(week, month, value) {
     const snapshot = Object.assign({}, value); delete snapshot.payroll; delete snapshot.adjustments;
@@ -191,7 +190,6 @@
       const end = addDays(start, 6);
       return fromDate ? end >= fromDate : changed.some(day => start <= day && day <= end);
     });
-    clearTimeout(weekPrefetchTimer);
   }
   const verifiedWeeks = new Map();
   function isRecentlyVerifiedWeek(week) {
@@ -201,35 +199,16 @@
   function requestTeacherWeek(week) {
     const sessionToken = token;
     const revision = viewCache.revision();
-    const startedAt = Date.now();
     return viewCache.load('week:' + week, () => invoke('coursePortalTeacherData', {
       sessionToken, weekStart: week, includePayroll: false
     })).then(result => {
       if (sessionToken === token && revision === viewCache.revision()) {
-        verifiedWeeks.set(week, {account: sessionToken, revision, at: Date.now(), elapsed: Date.now() - startedAt});
+        verifiedWeeks.set(week, {account: sessionToken, revision, at: Date.now()});
         if (verifiedWeeks.size > 16) verifiedWeeks.delete(verifiedWeeks.keys().next().value);
       }
       return result;
     });
   }
-  function prefetchNeighborWeeks(week) {
-    clearTimeout(weekPrefetchTimer);
-    const verified = verifiedWeeks.get(week);
-    if (!verified || verified.elapsed > 3000) return;
-    const connection = global.navigator && global.navigator.connection;
-    if (connection && (connection.saveData || /(^|-)2g$/.test(connection.effectiveType || ''))) return;
-    const account = token, revision = viewCache.revision();
-    weekPrefetchTimer = setTimeout(async () => {
-      for (const offset of [7, -7]) {
-        if (token !== account || weekStart !== week || activeTab !== 'schedule' ||
-            viewCache.revision() !== revision || teacherOperations.hasPending() || document.visibilityState === 'hidden') return;
-        const next = addDays(week, offset);
-        if (readCache(next)) continue;
-        try { await requestTeacherWeek(next); } catch (_) { return; }
-      }
-    }, 600);
-  }
-
   function setSession(value) {
     const prior = clean(localStorage.getItem(SESSION_KEY));
     const next = clean(value);
@@ -1125,7 +1104,6 @@
       renderAll();
       if (isRecentlyVerifiedWeek(requestedWeek)) {
         showDataFreshness('');
-        prefetchNeighborWeeks(requestedWeek);
         return;
       }
       showDataFreshness('正在更新課表，目前顯示上次讀取的資料。');
@@ -1135,7 +1113,6 @@
         writeCache(weekStart, payrollMonth, data);
         renderAll();
         showDataFreshness('');
-        prefetchNeighborWeeks(requestedWeek);
       }).catch((error) => {
         if (requestVersion !== dataRequestVersion || operationVersion !== teacherOperations.version() || teacherOperations.hasPending() || cacheRevision !== viewCache.revision() || account !== token) return;
         showDataFreshness('課表更新未完成，目前顯示上次資料。', true);
@@ -1152,7 +1129,6 @@
     writeCache(weekStart, payrollMonth, data);
     renderAll();
     showDataFreshness('');
-    prefetchNeighborWeeks(requestedWeek);
   }
 
   async function load(force) {

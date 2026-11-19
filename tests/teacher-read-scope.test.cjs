@@ -23,7 +23,7 @@ test('teacher homepage opts into scoped profiles and returns only own lessons',a
  const c={...helpers,requireSession:async()=>({teacherId:'t'}),dateKey:v=>v,addDays:()=> '2026-09-13',currentTaipeiDay:()=> '2026-09-10',db:{collection:()=>chain},ATTENDANCE_CANCELLATIONS:'cancel',TEACHER_PAYROLL_MIN_MONTH:'2026-07',scheduleBundle:async(a,b,id,opt)=>{options=opt;return bundle},eventTeacherId:r=>r.teacherId,eventStudentIds:r=>r.studentIds||[],eventSubjectId:r=>r.subjectId,sourcePhone:r=>r.phone,normalizePhone:v=>v||'',sourceActive:()=>true,firstArray:(r,keys)=>r[keys[0]]||[]};
  vm.createContext(c);vm.runInContext(backend.slice(backend.indexOf('function teacherFollowupSnapshot('),backend.indexOf('async function teacherPortalData('))+extract(backend,'teacherPortalData'),c);
  // Plan labels have their own tests; this fixture checks authorized schedule scope.
- c.withTeacherLessonPlanLabels=async rows=>rows;
+ c.withTeacherLessonPlanLabels=async()=>{throw Error('Teacher entry must not project historical tuition periods');};
  const result=await c.teacherPortalData({weekStart:'2026-09-07'});
  assert.equal(options.teacherHome,true);assert.deepEqual(Array.from(result.events,r=>r.id),['own']);assert.deepEqual(Array.from(result.roster,r=>r.id),['s']);
 });

@@ -5443,7 +5443,7 @@ async function teacherPortalData(data) {
       const request=requests.find(row=>dateKey(row.date)===event.date && (clean(row.eventId)===clean(event.sourceId||event.id)||clean(row.courseId)===clean(event.fixedCourseId||event.sourceId||event.id)));
       return {...event,attendanceCancellationStatus:clean(request&&request.status),attendanceCancellationId:clean(request&&request.id)};
     });
-    return {ok:true,refreshDates:dates,events:await withTeacherLessonPlanLabels(events,session.teacherId),...(modeBundle?{modeState:teacherFollowupSnapshot(modeBundle,session.teacherId)}:{})};
+    return {ok:true,refreshDates:dates,events:data.includeProjectedPlanLabels === true ? await withTeacherLessonPlanLabels(events,session.teacherId) : events,...(modeBundle?{modeState:teacherFollowupSnapshot(modeBundle,session.teacherId)}:{})};
   }
   const start = dateKey(data.weekStart);
   if (!start) throw new HttpsError('invalid-argument', '週起始日期格式錯誤。');
@@ -5517,7 +5517,7 @@ async function teacherPortalData(data) {
         .concat(firstArray(room, ['allowedSubjectIds', 'subjectIds']))
     })),
     subjects: bundle.subjects.map((subject) => ({ id: sourceId(subject), name: clean(subject.name) })),
-    events: await withTeacherLessonPlanLabels(ownEvents,session.teacherId),
+    events: data.includeProjectedPlanLabels === true ? await withTeacherLessonPlanLabels(ownEvents,session.teacherId) : ownEvents,
     ...followupState
   };
   if (includePayroll) {
