@@ -535,6 +535,14 @@ class Workbench:
         for row in missing:
             evidence = found.get(row['key'])
             if not evidence:
+                if error in ('offline','not-configured'):
+                    row['shippingDeadlineNote'] = '主機配送讀取助手未連線，請啟用 Chrome 的配送讀取助手並保持 MOMO 登入。'
+                elif error == 'login':
+                    row['shippingDeadlineNote'] = '請在主機 Chrome 重新登入 MOMO 後台。'
+                elif error == 'timeout':
+                    row['shippingDeadlineNote'] = 'MOMO 後台期限讀取逾時，尚未確認期限。'
+                elif error == 'upgrade-required':
+                    row['shippingDeadlineNote'] = '主機配送讀取助手仍在執行舊版，請在 Chrome 擴充功能重新載入 1.1.0 版後更新訂單。'
                 continue
             fields = deadline_fields(evidence.get('shippingDeadlineText'), verified, 'MOMO 官方後台最晚出貨時間')
             if fields.get('shippingDeadlineAt'):

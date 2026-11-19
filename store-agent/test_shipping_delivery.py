@@ -75,11 +75,11 @@ class DeliveryTests(unittest.TestCase):
     def test_momo_deadline_requires_exact_order_and_official_page(self):
         order={'key':'MOMO:66111900000001:001','orderNo':'66111900000001','externalId':'66111900000001'}
         with ThreadPoolExecutor() as pool:
-            self.bridge.poll()
+            self.bridge.poll('1.1.0')
             task=pool.submit(self.bridge.read,[order],2,'momo')
             deadline=time.monotonic()+1;job=None
             while not job and time.monotonic()<deadline:
-                job=self.bridge.poll()['job'];time.sleep(.001)
+                job=self.bridge.poll('1.1.0')['job'];time.sleep(.001)
             self.assertEqual(job['kind'],'momo')
             result={**order,'shippingDeadlineText':'2026/11/20','evidenceUrl':'https://3p.momo.com.tw/order/all'}
             for changes in ({'key':'MOMO:66111900000001:002'},{'orderNo':'66111900000002'},
@@ -90,6 +90,23 @@ class DeliveryTests(unittest.TestCase):
             found,error=task.result()
             self.assertEqual(found[order['key']]['shippingDeadlineText'],'2026/11/20')
             self.assertFalse(error)
+            self.assertEqual(self.bridge.status()['lastResult'],
+                             {'kind':'momo','matched':1,'requested':1,'error':''})
+            self.assertNotIn(order['orderNo'], json.dumps(self.bridge.status()))
+
+    def test_old_reader_cannot_claim_momo_and_status_has_no_order_data(self):
+        self.bridge.poll('', 'Mozilla Chrome/142.0.0.0')
+        self.assertEqual(self.bridge.read([self.order], kind='momo'), ({}, 'upgrade-required'))
+        status = self.bridge.status()
+        self.assertTrue(status['online'])
+        self.assertFalse(status['momoSupported'])
+        self.assertEqual(status['readerBrowser'], 'Chrome')
+        self.bridge.poll('1.1.0', 'Mozilla Chrome/142.0.0.0 Edg/142.0.0.0')
+        self.assertTrue(self.bridge.status()['momoSupported'])
+        self.assertEqual(self.bridge.status()['readerBrowser'], 'Edge')
+        self.bridge.poll('invalid-secret')
+        self.assertIsNone(self.bridge.status()['readerVersion'])
+        self.assertNotIn(self.token, json.dumps(self.bridge.status()))
 
     def test_deadline_roundtrip_retains_verified_order_binding(self):
         self.result['shippingDeadlineText'] = '2026/11/20 16:30'

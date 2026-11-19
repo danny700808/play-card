@@ -18,6 +18,12 @@ class DeliveryBridge:
         self.read_lock = threading.Lock()
         self.last_seen = 0
         self.pending = None
+        self.reader_version = ''
+        self.reader_browser = ''
+        self.last_result = None
+
+    def supports_momo(self):
+        return bool(self.reader_version and tuple(map(int, self.reader_version.split('.'))) >= (1, 1, 0))
 
     def config(self):
         try:
@@ -33,16 +39,34 @@ class DeliveryBridge:
         cfg = self.config()
         return 'chrome-extension://' + cfg['extensionId'] if cfg else ''
 
+    def status(self):
+        with self.condition:
+            age = time.monotonic() - self.last_seen if self.last_seen else None
+            pending = self.pending
+            return {'configured': bool(self.config()),
+                    'online': age is not None and age <= 75,
+                    'lastSeenSeconds': round(age, 1) if age is not None else None,
+                    'pendingKind': pending.get('kind','shopee') if pending else None,
+                    'claimed': bool(pending and pending['claimed']),
+                    'readerVersion': self.reader_version or None,
+                    'readerBrowser': self.reader_browser or None,
+                    'momoSupported': self.supports_momo(),
+                    'lastResult': self.last_result}
+
     def authorized(self, token, origin):
         cfg = self.config()
         return bool(cfg and origin in (None, self.origin()) and
                     secrets.compare_digest(str(token or ''), cfg['token']))
 
-    def poll(self):
+    def poll(self, version='', user_agent=''):
         with self.condition:
             self.last_seen = time.monotonic()
+            self.reader_version = version if re.fullmatch(r'\d{1,3}\.\d{1,3}\.\d{1,3}', version or '') else ''
+            self.reader_browser = 'Edge' if 'Edg/' in user_agent else 'Chrome' if 'Chrome/' in user_agent else ''
             p = self.pending
             if not p or p['expires'] <= self.last_seen or p['claimed']:
+                return {'job': None}
+            if p.get('kind') == 'momo' and not self.supports_momo():
                 return {'job': None}
             p['claimed'] = True
             return {'job': {'id': p['id'], 'orders': list(p['orders'].values()), 'kind': p.get('kind','shopee')}}
@@ -88,6 +112,8 @@ class DeliveryBridge:
             p['results'] = found
             p['error'] = body.get('error') if body.get('error') in ('login', 'missing', 'timeout', 'layout') else ''
             p['done'] = True
+            self.last_result = {'kind': p.get('kind', 'shopee'), 'matched': len(found),
+                                'requested': len(p['orders']), 'error': p['error']}
             self.condition.notify_all()
             return {'ok': True}
 
@@ -110,6 +136,8 @@ class DeliveryBridge:
         with self.condition:
             if time.monotonic() - self.last_seen > 75:
                 return {}, 'offline'
+            if kind == 'momo' and not self.supports_momo():
+                return {}, 'upgrade-required'
             job = {'id': secrets.token_urlsafe(24), 'orders': {r['key']: r for r in orders},
                    'expires': time.monotonic() + timeout, 'claimed': False, 'done': False, 'kind':kind}
             self.pending = job

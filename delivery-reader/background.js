@@ -3,7 +3,7 @@ const endpoint='http://127.0.0.1:18765/api/delivery-bridge/';
 let busy=false;
 async function call(action,body){
   const r=await fetch(endpoint+action,{method:body?'POST':'GET',cache:'no-store',
-    headers:{'X-Youzi-Delivery':YOUZI_DELIVERY_TOKEN,...(body?{'Content-Type':'application/json'}:{})},
+    headers:{'X-Youzi-Delivery':YOUZI_DELIVERY_TOKEN,'X-Youzi-Reader-Version':chrome.runtime.getManifest().version,...(body?{'Content-Type':'application/json'}:{})},
     body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(5000)});
   if(!r.ok)throw Error('Host unavailable');return r.json();
 }

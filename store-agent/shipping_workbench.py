@@ -94,6 +94,8 @@ def make_handler(workbench, port):
                 return self.send({"error": "請從店內出貨工作台首頁開啟。"}, status=401)
             if parsed.path == "/api/orders":
                 return self.send(workbench.snapshot())
+            if parsed.path == '/api/delivery-bridge/status':
+                return self.send(workbench.delivery_bridge.status())
             if parsed.path == "/api/document":
                 key = parse_qs(parsed.query).get("key", [""])[0]
                 try:
@@ -168,7 +170,7 @@ def make_handler(workbench, port):
                     and bridge.origin() and self.headers.get("Origin") == bridge.origin()):
                 return self.send({}, extra={"Access-Control-Allow-Origin": bridge.origin(),
                     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type, X-Youzi-Delivery",
+                    "Access-Control-Allow-Headers": "Content-Type, X-Youzi-Delivery, X-Youzi-Reader-Version",
                     "Access-Control-Allow-Private-Network": "true"})
             return self.send({"error": "Forbidden"}, status=403)
 
@@ -179,7 +181,8 @@ def make_handler(workbench, port):
                 return self.send({"error": "Forbidden"}, status=403)
             headers = {"Access-Control-Allow-Origin": bridge.origin()}
             if not post:
-                return self.send(bridge.poll(), extra=headers)
+                return self.send(bridge.poll(self.headers.get('X-Youzi-Reader-Version', ''),
+                                             self.headers.get('User-Agent', '')), extra=headers)
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 if not 0 < length <= 100000 or self.headers.get("Content-Type", "").split(';')[0] != 'application/json':
