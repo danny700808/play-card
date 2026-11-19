@@ -20,6 +20,17 @@ test('earliest verified platform deadline sorts first, never the 17:00 shop remi
  const rows=[{orderNo:'unknown'}, {orderNo:'later',...deadline('2026-11-20T12:00:00+08:00')},{orderNo:'earlier',...deadline('2026-11-19T14:00:00+08:00')}];
  rows.sort((a,b)=>model.compareShippingPriority(a,b,now));assert.deepEqual(rows.map(r=>r.orderNo),['earlier','later','unknown']);
 });
+
+test('local metadata preserves exact identities, calendar precision and API carrier priority',()=>{
+ const row={key:'EasyStore:123',externalId:'123',orderNo:'TEST1234567890',platform:'EasyStore',channel:'蝦皮',deliveryMethod:'蝦皮店到店'};
+ const observation={key:row.key,externalId:row.externalId,orderNo:row.orderNo,deliveryMethod:'新竹物流',shippingDeadlineText:'明天',evidenceUrl:'https://admin.easystore.co/channels/shopee/taiwan/orders/456'};
+ const patch=model.localLogistics(row,observation,'2026-12-31T23:30:00+08:00');
+ assert.equal(patch.shippingDeadlineAt,'2027-01-01T00:00:00+08:00');assert.equal(patch.shippingDeadlinePrecision,'date');assert.equal(patch.deliveryMethod,undefined);
+ assert.equal(model.localLogistics(row,{...observation,orderNo:'OTHER'},now.toISOString()),null);
+ assert.equal(model.localLogistics({...row,stale:true},observation,now.toISOString()),null);
+ assert.equal(model.localLogistics(row,{...observation,shippingDeadlineText:'2026/02/30'},now.toISOString()).shippingDeadlineAt,'');
+ assert.equal(model.localLogistics(row,{...observation,shippingDeadlineText:'2026/11/20 16:30'},now.toISOString()).shippingDeadlineAt,'2026-11-20T16:30:00+08:00');
+});
 test('logistics filters intersect platform and pending status, and preserve unknown orders',()=>{
  const source=fs.readFileSync(__dirname+'/shipping-ui/app.js','utf8').split("$('refresh').addEventListener")[0];
  const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{value:'',innerHTML:'',textContent:'',hidden:false});return elements.get(id);};

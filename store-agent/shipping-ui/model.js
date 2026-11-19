@@ -58,6 +58,32 @@
       if(!value||['shipping fee','shipping','運費','預設物流','預設物流 (一般包裹)'].includes(value.toLowerCase()))return row.deliveryMethodNote?'配送資料未讀取':'配送方式待平台提供';
       return value.replace(/^第三方物流-/,'')+(row.deliveryMethodNote?'（上次核對）':'');
     },
+    metadataBinding(row){return JSON.stringify([row.key,row.externalId,row.orderNo,row.stage,row.tracking,row.recipient,row.address,row.items]);},
+    localLogistics(row,observation,verifiedAt){
+      if(!row||row.platform!=='EasyStore'||row.channel!=='蝦皮'||row.stale||row.key!==observation?.key||String(row.externalId)!==String(observation.externalId)||row.orderNo!==observation.orderNo||
+        !/^https:\/\/admin\.easystore\.co\/channels\/shopee\/taiwan\/orders\/\d+$/.test(observation.evidenceUrl||'')||
+        typeof observation.deliveryMethod!=='string'||!observation.deliveryMethod.trim()||observation.deliveryMethod.length>100||/[\x00-\x1f<>]/.test(observation.deliveryMethod)||!Number.isFinite(Date.parse(verifiedAt)))return null;
+      const source='本機 EasyStore 蝦皮通路後台';
+      const patch={shippingDeadlineText:'',shippingDeadlineAt:'',shippingDeadlinePrecision:'',shippingDeadlineSource:source,shippingDeadlineVerifiedAt:verifiedAt,shippingDeadlineNote:''};
+      if(!row.deliveryMethod||row.deliveryMethodSource)Object.assign(patch,{deliveryMethod:observation.deliveryMethod,deliveryMethodSource:source,deliveryMethodVerifiedAt:verifiedAt,deliveryMethodNote:''});
+      let value=observation.shippingDeadlineText;
+      if(typeof value!=='string'||!value.trim()||value.length>100||/[\x00-\x1f<>]/.test(value))return patch;
+      value=value.trim();patch.shippingDeadlineText=value;
+      const relative=value.match(/^(今天|今日|明天|明日)(?:\s+(\d{1,2}:\d{2}(?::\d{2})?))?(?:\s*前)?$/);
+      if(relative){
+        const local=new Date(Date.parse(verifiedAt)+8*3600000+(relative[1]==='明天'||relative[1]==='明日'?86400000:0));
+        value=local.toISOString().slice(0,10)+(relative[2]?' '+relative[2]:'');
+        patch.shippingDeadlineText=value+'（平台原文：'+patch.shippingDeadlineText+'）';
+      }
+      const m=value.match(/^(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})日?(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?(?:\s*前)?$/);
+      if(!m)return patch;
+      const [year,month,day,hour,minute,second]=m.slice(1).map(v=>Number(v||0));
+      const date=new Date(Date.UTC(year,month-1,day,hour,minute,second));
+      if(year<1000||date.getUTCFullYear()!==year||date.getUTCMonth()!==month-1||date.getUTCDate()!==day||date.getUTCHours()!==hour||date.getUTCMinutes()!==minute||date.getUTCSeconds()!==second)return patch;
+      patch.shippingDeadlineAt=date.toISOString().slice(0,19)+'+08:00';
+      patch.shippingDeadlinePrecision=m[4]===undefined?'date':'minute';
+      return patch;
+    },
     logisticsGroup(row){
       const name=String(row.deliveryMethod||row.carrier||'').trim();
       if(row.carrierCode==='TWL_HCT'||/新竹(?:物流|貨運)|\bHCT\b/i.test(name))return 'hct';

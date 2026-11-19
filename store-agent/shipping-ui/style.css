@@ -57,3 +57,5 @@ main{margin:0;max-width:none}.embedded main{padding:0 2px 16px}.embedded header 
 
 
 .logistics-tabs{display:flex;flex-wrap:wrap;gap:8px;padding:12px 16px 0}.logistics-tabs button{font-size:15px;padding:9px 12px}.logistics-tabs button.active{background:#e8f5ef;border-color:#16845f;color:#0f6b4d}.shipping-reminder{margin:10px 16px 0;padding:10px 12px;border-radius:8px;background:#fff6dc;color:#765518;font-size:14px;line-height:1.6}.shipping-deadline{display:block;width:fit-content;margin:8px 0;padding:5px 9px;border-radius:6px;font-size:15px;font-weight:700;background:#edf4f8;color:#234b66;overflow-wrap:anywhere}.shipping-deadline.today{background:#fff0ce;color:#825300}.shipping-deadline.overdue{background:#fde6e3;color:#aa3029}.shipping-deadline.unknown{background:#f1f3f5;color:#616d77}
+
+.metadata-controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px 0}.metadata-controls button{font-size:14px;padding:9px 12px}.metadata-controls span{font-size:13px;line-height:1.5;color:#697a85;flex:1;min-width:150px}

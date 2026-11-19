@@ -5,6 +5,8 @@ const stageNames = {pending:'待出貨',partial:'部分待出貨',label:'可印�
 const ORDER_DAYS = 3;
 let data = {orders:[],errors:{},connectors:[]}, selected = '', activeChannel = '全部', activeWork = 'pending', activeLogistics = 'all', busy = false;
 let documentGeneration=0,externalDocumentUrls=[];
+let localMetadataBusy=false;
+const localMetadataCache=new Map();
 const sessionToken=document.querySelector('meta[name="youzi-session"]')?.content||'';
 const remote=!!window.ShippingTransport;
 const embedded=window.self!==window.top;
@@ -35,6 +37,41 @@ function paidAmountHtml(row) {
 function deadlineHtml(row){
   const deadline=ShippingModel.shippingDeadline(row);
   return `<span class="shipping-deadline ${deadline.tone}" title="${escapeHtml(deadline.note)}">${escapeHtml(deadline.text)}</span>`;
+}
+function applyLocalMetadata(){
+  for(const row of data.orders){const saved=localMetadataCache.get(row.key);
+    if(saved&&saved.binding===ShippingModel.metadataBinding(row)&&Date.now()-Date.parse(saved.verifiedAt)<300000&&!row.stale){
+      const patch={...saved.patch};
+      if(row.deliveryMethod&&!row.deliveryMethodSource)for(const key of ['deliveryMethod','deliveryMethodSource','deliveryMethodVerifiedAt','deliveryMethodNote'])delete patch[key];
+      Object.assign(row,patch);
+    }
+  }
+}
+async function refreshLocalMetadata(){
+  if(localMetadataBusy||!window.YouziLocalMetadata)return;
+  const rows=data.orders.filter(r=>r.platform==='EasyStore'&&r.channel==='蝦皮'&&!r.handled&&!r.stale&&!['shipped','cancelled'].includes(r.stage)&&/^\d{1,20}$/.test(String(r.externalId))&&/^[A-Z0-9]{12,24}$/.test(r.orderNo)).slice(0,200);
+  if(!rows.length)return;
+  const bindings=new Map(rows.map(r=>[r.key,ShippingModel.metadataBinding(r)]));
+  const unconfirmed=(seen=new Set())=>{for(const row of data.orders){
+    if(seen.has(row.key)||bindings.get(row.key)!==ShippingModel.metadataBinding(row)||row.shippingDeadlineSource!=='本機 EasyStore 蝦皮通路後台')continue;
+    localMetadataCache.delete(row.key);row.shippingDeadlineNote='本次未能重新核對，請再次讀取本機 EasyStore。';
+  }};
+  localMetadataBusy=true;$('refreshLocalMetadata').disabled=true;$('localMetadataStatus').textContent='正在從本機 EasyStore 讀取…';
+  try{
+    const response=await window.YouziLocalMetadata.read(rows.map(r=>({key:r.key,externalId:String(r.externalId),orderNo:r.orderNo})));
+    let count=0;const seen=new Set();
+    for(const observation of response.results){
+      const row=data.orders.find(r=>r.key===observation.key);
+      if(!row||row.handled||!bindings.has(row.key)||bindings.get(row.key)!==ShippingModel.metadataBinding(row))continue;
+      const patch=ShippingModel.localLogistics(row,observation,response.verifiedAt);if(!patch)continue;
+      localMetadataCache.set(row.key,{binding:bindings.get(row.key),patch,verifiedAt:response.verifiedAt});Object.assign(row,patch);count++;
+      seen.add(row.key);
+    }
+    unconfirmed(seen);
+    $('localMetadataStatus').textContent=response.error==='busy'?'正在取貨運單，完成後可再更新物流與期限。':count?`已從本機核對 ${count} 筆；未提供期限者仍顯示待確認。`:response.error==='login'?'請先在本機 Chrome 登入 EasyStore。':'本次尚未讀到資料，請確認本機 EasyStore 已登入後重試。';
+    render();
+  }catch(error){unconfirmed();$('localMetadataStatus').textContent=error.message;render();}
+  finally{localMetadataBusy=false;$('refreshLocalMetadata').disabled=false;}
 }
 function paymentDetailsHtml(row) {
   const paid=ShippingModel.paidAmount(row);
@@ -75,6 +112,8 @@ function filtered() {
       b.date.localeCompare(a.date)||b.orderNo.localeCompare(a.orderNo));
 }
 function render() {
+  applyLocalMetadata();
+  $('localMetadataControls').hidden=!window.YouziLocalMetadata;
   $('channels').innerHTML=channels.map(c=>`<button data-channel="${escapeHtml(c)}" aria-pressed="${c===activeChannel}" class="${c===activeChannel?'active':''}">${escapeHtml(c)}</button>`).join('');
   const channelRows=data.orders.filter(r=>activeChannel==='全部'||r.channel===activeChannel);
   $('workTabs').innerHTML=[['pending','未處理',channelRows.filter(r=>!r.handled).length],['done','已處理',channelRows.filter(r=>r.handled).length],['all','全部',channelRows.length]].map(([key,label,count])=>
@@ -217,7 +256,7 @@ async function refresh() {
     const errors=Object.values(data.errors);
     notice(errors.length?errors.join(' '):'',!!errors.length);
   }catch(e){notice(e.message,true);}
-  finally{busy=false;$('refresh').disabled=false;render();}
+  finally{busy=false;$('refresh').disabled=false;render();refreshLocalMetadata();}
 }
 async function prepare(row) {
   if(busy)return;
@@ -370,6 +409,7 @@ async function printPacking(row) {
   window.print();
 }
 $('refresh').addEventListener('click',refresh);
+$('refreshLocalMetadata').addEventListener('click',refreshLocalMetadata);
 // Keep the older installed helper usable until the packing PC is updated.
 // Normalize its label, but never invoke its click handler automatically.
 if(typeof MutationObserver!=='undefined')new MutationObserver(()=>{
@@ -406,7 +446,7 @@ $('detail').addEventListener('click',e=>{
 async function initializeWorkbench(){return api('/api/orders').then(payload=>{
   data=payload;
   if(!data.updated||data.days!==ORDER_DAYS){data.orders=[];render();refresh();}
-  else{render();notice(Object.values(data.errors).join(' '),!!Object.keys(data.errors).length);}
+  else{render();notice(Object.values(data.errors).join(' '),!!Object.keys(data.errors).length);refreshLocalMetadata();}
 }).catch(e=>notice(e.message,true));}
 if(remote)window.ShippingTransport.ready(initializeWorkbench);
 else initializeWorkbench();
