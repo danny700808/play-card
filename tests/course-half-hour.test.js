@@ -112,3 +112,19 @@ test('legacy half-hour plan names work without changing ordinary one-hour plans;
  await assert.rejects(f.c.attendancePeriodsForEvent(f.event,event.date,{attendanceDurationMinutes:60}),/只有每格30分鐘/);
  const {c,event:e}=halfHourFixture();assert.equal((await c.attendancePeriodsForEvent(e,e.date,{})).rows[0].lessonUnits,2);
 });
+
+test('intro sequence uses three prepared periods and renews at the final teacher share',()=>{
+ const lesson={...event,endTime:'16:00'},periods=[0,.7,.6].map((ratio,index)=>({
+  ...period('intro-'+index),periodNo:index+1,lessonCount:index?4:1,expectedAmount:index?2800:0,
+  planSnapshot:{id:'offer-'+index,amount:index?2800:0,splitType:index?'ratio':'none',splitValue:ratio}
+ }));
+ const wages=[];
+ for(let lessonNo=1;lessonNo<=9;lessonNo++){
+  const chosen=api.attendancePeriodCandidate(periods,lesson,'s',lesson.date);
+  wages.push(api.attendancePayrollCalculation(lesson,[{studentId:'s',period:chosen}],lesson.date).teacherAmount);
+  chosen.usedCount++;
+ }
+ assert.deepEqual(wages,[0,490,490,490,490,420,420,420,420]);
+ const next=api.buildAttendanceTuitionRollover({periods,event:lesson,studentId:'s',sourceDate:lesson.date}).period;
+ assert.equal(next.planSnapshot.splitValue,.6);assert.equal(next.expectedAmount,2800);
+});

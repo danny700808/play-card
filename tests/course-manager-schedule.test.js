@@ -142,3 +142,44 @@ test('invalid second name and duplicate names leave no partial pair or ledger',a
 test('a paired class conflict does not create either student, group or tuition',async()=>{
  const f=fixture([{id:'busy',date:'2026-09-14',startTime:'18:00',endTime:'19:00',roomId:'room',studentIds:[]}]),data=enroll();delete data.enrollment.newStudent;data.enrollment.newStudents=[{name:'第一位'},{name:'第二位'}];await assert.rejects(f.c.adminSaveSchedule(data),/已被占用/);assert.equal(f.docs.size,1);
 });
+
+test('intro offer atomically adds one unpaid gift and two four-lesson periods in order for any subject',async()=>{
+ const f=fixture(),data=enroll();data.enrollment.planId='intro-gift-guitar';
+ const saved=await f.c.adminSaveSchedule(data), periods=saved.tuitionPeriods;
+ assert.deepEqual(Array.from(periods,p=>[p.periodNo,p.lessonCount,p.expectedAmount,p.planSnapshot.splitType,p.planSnapshot.splitValue]),[
+  [1,1,0,'none',0],[2,4,2800,'ratio',0.7],[3,4,2800,'ratio',0.6]
+ ]);
+ assert.equal(periods[2].planId,'plan');
+ assert.equal(saved.event.tuitionPeriodId,periods[0].id);
+ for(const p of periods){
+  const stored=f.docs.get('coursePortalTuitionPeriods/'+p.id);
+  assert.equal(stored.studentId,saved.student.id);assert.equal(stored.subjectId,'guitar');assert.equal(stored.teacherId,'teacher');
+  assert.equal(stored.paidAmount,0);assert.equal(stored.usedCount,0);assert.equal(stored.transactions.length,0);
+ }
+ const before=f.docs.size;assert.equal((await f.c.adminSaveSchedule(data)).duplicate,true);assert.equal(f.docs.size,before);
+ const other=fixture();other.c.mirrorRows=async()=>[];
+ assert.equal((await other.c.adminSaveSchedule(data)).tuitionPeriods.length,3);
+});
+test('intro offer preserves existing periods, continues numbering, and conflicts leave no partial package',async()=>{
+ const f=fixture(),data=request();data.enrollment={planId:'intro-gift-guitar'};
+ const old={id:'old',studentId:'student',periodNo:5,lessonCount:2};
+ f.docs.set('coursePortalTuitionPeriods/old',old);
+ assert.deepEqual(Array.from((await f.c.adminSaveSchedule(data)).tuitionPeriods,p=>p.periodNo),[6,7,8]);
+ assert.deepEqual(f.docs.get('coursePortalTuitionPeriods/old'),old);
+ const conflict=fixture([{id:'other',date:data.event.date,startTime:'18:00',endTime:'19:00',roomId:'room',studentIds:[]}]);
+ await assert.rejects(conflict.c.adminSaveSchedule(data),/占用/);assert.equal(conflict.docs.size,1);
+});
+
+test('manager fixed-course selector puts the gift first, then 60% and 70% by descending price',()=>{
+ const ui=fs.readFileSync(require('path').join(__dirname,'../operations-course-inline-runtime.js'),'utf8');
+ const start=ui.indexOf('  function schedulePlans('),end=ui.indexOf('  function updateScheduleEnrollment(',start);
+ const fee=(name,amount,splitValue)=>({id:name,subjectId:'s',name,amount,splitType:'ratio',splitValue});
+ const rows=[fee('專職',4000,.6),fee('免費課程',0,0),fee('七三 A',2800,70),fee('六四 A',2800,.6),fee('七三 B',3600,.7),fee('六四 B',3000,60)];
+ const ctx={state:{feePlans:rows},teacherShareRatio:v=>v>1?v/100:v,bySort:()=>0};
+ vm.createContext(ctx);vm.runInContext(ui.slice(start,end),ctx);
+ assert.deepEqual(Array.from(ctx.schedulePlans('s','fixed'),p=>p.id),['intro-gift-s','六四 B','六四 A','七三 B','七三 A','專職']);
+ assert.equal(ctx.schedulePlans('another','fixed')[0].lessonCount,1);
+ const details=ui.slice(ui.indexOf('  function eventDetails('),ui.indexOf('  function detailLine('));
+ assert.match(details,/event-command-row">.\+newPeriodButton\+.<button data-attendance="attended"/);
+ assert.match(details,/tuitionTableHtml\(student.id,[^\n]+\+newPeriodButton\+.<\/section>/);
+});

@@ -10613,14 +10613,35 @@ async function adminSaveSchedule(data, integration = {}) {
     return { ok: true, duplicate: true, id, event: previous.data().event || previous.data() };
   }
   let enrollmentPeriod = null;
+  let enrollmentPeriods = [];
   if (enrollment) {
     if (studentIds.length !== 1) throw new HttpsError('invalid-argument', '請選擇一位學生的課程方案。');
-    const plans = await mirrorRows('feePlans');
-    const plan = plans.find(p => sourceId(p) === clean(enrollment.planId) && clean(p.subjectId) === subjectId && sourceActive(p) && p.listed !== false);
-    if (!plan || !Number.isInteger(Number(plan.lessonCount)) || Number(plan.lessonCount)<1 || Number(plan.lessonCount)>1000 || !['ratio','fixed','none'].includes(clean(plan.splitType)) || !Number.isFinite(Number(plan.splitValue || 0)) || Number(plan.splitValue || 0)<0) throw new HttpsError('failed-precondition', '收費方案已變更或尚未設定完整，請重新選擇。');
-    try { cents(Number(plan.amount)); } catch(error) { throw new HttpsError('invalid-argument', '收費方案金額無效。'); }
-    const snapshot = {id:sourceId(plan),name:clean(plan.name),amount:Number(plan.amount),lessonCount:Number(plan.lessonCount),splitType:clean(plan.splitType),splitValue:Number(plan.splitValue||0),leaveNoDeduct:plan.leaveNoDeduct!==false,expiryDays:Number(plan.expiryDays||0),discountType:clean(plan.discountType),payByDiscount:typeof plan.payByDiscount==='boolean'?plan.payByDiscount:null,teacherPayBasis:clean(plan.teacherPayBasis),splitSource:clean(plan.splitSource)||'manager'};
-    enrollmentPeriod = {id:'enroll-'+hash(operationId).slice(0,32),studentId:studentIds[0],teacherId,subjectId,planId:sourceId(plan),startDate:date,expiryDate:snapshot.expiryDays>0?addDays(date,snapshot.expiryDays):'',lessonCount:snapshot.lessonCount,expectedAmount:snapshot.amount,discount:0,usedCount:0,status:'active',transactions:[],paidAmount:0,active:true,planSnapshot:snapshot,creationOperationId:operationId,note:'排課時建立課程方案'};
+    const plans = (await mirrorRows('feePlans')).filter(p => clean(p.subjectId) === subjectId && sourceActive(p) && p.listed !== false);
+    const giftId = 'intro-gift-' + subjectId;
+    let selectedPlans;
+    if (enrollment.planId === giftId && type === 'fixed') {
+      // Generate the same three terms even for subjects without a matching legacy price.
+      const paidPlan = ratio => {
+        const match = plans.find(p => Number(p.amount) === 2800 && Number(p.lessonCount) === 4 &&
+          p.splitType === 'ratio' && [ratio, Math.round(ratio * 100)].includes(Number(p.splitValue)) &&
+          !/專職|正職/.test(clean(p.name)) && !Number(p.expiryDays) && p.leaveNoDeduct !== false);
+        return match || {id:'intro-paid-' + Math.round(ratio*100) + '-' + subjectId,
+          name:ratio === 0.7 ? '外聘七三' : '外聘六四',amount:2800,lessonCount:4,splitType:'ratio',splitValue:ratio};
+      };
+      selectedPlans = [{id:giftId,name:'免費課程（首堂贈課）',amount:0,lessonCount:1,splitType:'none',splitValue:0},paidPlan(0.7),paidPlan(0.6)];
+    } else {
+      selectedPlans = [plans.find(p => sourceId(p) === clean(enrollment.planId))];
+    }
+    const firstId = 'enroll-' + hash(operationId).slice(0,32);
+    enrollmentPeriods = selectedPlans.map((plan,index) => {
+      if (!plan || !Number.isInteger(Number(plan.lessonCount)) || Number(plan.lessonCount)<1 || Number(plan.lessonCount)>1000 || !['ratio','fixed','none'].includes(clean(plan.splitType)) || !Number.isFinite(Number(plan.splitValue || 0)) || Number(plan.splitValue || 0)<0) throw new HttpsError('failed-precondition', '收費方案已變更或尚未設定完整，請重新選擇。');
+      try { cents(Number(plan.amount)); } catch(error) { throw new HttpsError('invalid-argument', '收費方案金額無效。'); }
+      const snapshot = {id:sourceId(plan),name:clean(plan.name),amount:Number(plan.amount),lessonCount:Number(plan.lessonCount),splitType:clean(plan.splitType),splitValue:Number(plan.splitValue||0),leaveNoDeduct:plan.leaveNoDeduct!==false,expiryDays:Number(plan.expiryDays||0),discountType:clean(plan.discountType),payByDiscount:typeof plan.payByDiscount==='boolean'?plan.payByDiscount:null,teacherPayBasis:clean(plan.teacherPayBasis),splitSource:clean(plan.splitSource)||'manager'};
+      // All three are eligible from the first date. Attendance consumes the earliest unfinished period, including after leave or a move.
+      return {id:index ? firstId+'-'+(index+1) : firstId,studentId:studentIds[0],teacherId,subjectId,planId:sourceId(plan),startDate:date,expiryDate:snapshot.expiryDays>0?addDays(date,snapshot.expiryDays):'',lessonCount:snapshot.lessonCount,expectedAmount:snapshot.amount,discount:0,usedCount:0,status:'active',transactions:[],paidAmount:0,active:true,planSnapshot:snapshot,creationOperationId:operationId,note:'排課時建立課程方案',
+        ...(plan.id===giftId&&duration===30 ? {lessonUnitMinutes:30} : {})};
+    });
+    enrollmentPeriod = enrollmentPeriods[0];
   }
   const recurrenceEndDate = dateKey(data.repeatUntil);
   if (recurrenceEndDate && recurrenceEndDate < date) throw new HttpsError('invalid-argument', '結束日期不可早於開始日期。');
@@ -10690,40 +10711,42 @@ async function adminSaveSchedule(data, integration = {}) {
       sourceEventId: original ? clean(original.sourceId || original.id) : '', sourceCourseId: lineage, sourceDate: original?.date || '',
       event: { ...event, fixedCourseId: lineage }, createdByTeacherId: teacherId, approvedByManager: true, createdAtText: nowText() };
   await require('./classDateAccess').assertOpen(db,closureCheckDates);
-  await db.runTransaction(async tx => {
+  const duplicate = await db.runTransaction(async tx => {
     await require('./classDateAccess').assertOpen(db,closureCheckDates,tx);
     const version = await tx.get(scheduleVersionRef()), existing = await tx.get(target);
     assertScheduleWritable(version);
     if (existing.exists) {
       if (existing.data().requestHash !== requestHash) throw new HttpsError('already-exists', '操作編號已使用。');
-      return;
+      return existing.data().event || existing.data();
     }
     if (Number(version.data()?.version || 0) !== expectedVersion) throw new HttpsError('aborted', '課表剛剛已更新，請重新載入後再確認空位。');
     // Internal hooks are supplied by the verified enrollment service, never by callable JSON.
     // Complete every integration read before the scheduler starts any writes.
     const applyIntegration = integration.prepare ? await integration.prepare(tx,{id,event,course:payload,tuitionPeriod:enrollmentPeriod}) : null;
     if (enrollmentPeriod) {
-      const periodRef = db.collection(TUITION_PERIODS).doc(enrollmentPeriod.id);
-      const existingPeriod = await tx.get(periodRef);
+      const periodRefs = enrollmentPeriods.map(p => db.collection(TUITION_PERIODS).doc(p.id));
+      const existingPeriods = await Promise.all(periodRefs.map(ref => tx.get(ref)));
       const mirrorPeers = await tx.get(db.collection(MIRROR.tuitionPeriods).where('source.studentId','==',studentIds[0]));
       const portalPeers = await tx.get(db.collection(TUITION_PERIODS).where('studentId','==',studentIds[0]));
       const studentRefs=newStudentMembers.map(row=>db.collection('coursePortalStudentProfiles').doc(row.id));
       for(const ref of studentRefs){if((await tx.get(ref)).exists)throw new HttpsError('already-exists','學生建立識別碼已使用，請重新開啟排課。');}
       const groupRef=newStudentGroup?db.collection('coursePortalStudentGroups').doc(newStudentGroup.id):null;
       if(groupRef&&(await tx.get(groupRef)).exists)throw new HttpsError('already-exists','兩人班已建立，請重新載入。');
-      if (existingPeriod.exists) throw new HttpsError('already-exists', '課程方案已建立，請重新載入。');
+      if (existingPeriods.some(doc => doc.exists)) throw new HttpsError('already-exists', '課程方案已建立，請重新載入。');
       const peers = mergePortalTuitionRows(mirrorPeers.docs.filter(doc => doc.data().sourceActive !== false).map(doc => doc.data().source || {}), portalPeers.docs, []);
-      enrollmentPeriod.periodNo = peers.reduce((max,p)=>Math.max(max,Number(p.periodNo)||0),0)+1;
+      const firstNo = peers.reduce((max,p)=>Math.max(max,Number(p.periodNo)||0),0)+1;
+      enrollmentPeriods.forEach((period,index) => { period.periodNo = firstNo + index; });
       studentRefs.forEach((ref,index)=>tx.create(ref,{...newStudentMembers[index],updatedAt:FieldValue.serverTimestamp(),updatedBy:'manager-enrollment'}));
       if(groupRef)tx.create(groupRef,{...newStudentGroup,updatedAt:FieldValue.serverTimestamp(),createdBy:'manager-enrollment'});
-      tx.create(periodRef,{...enrollmentPeriod,updatedAt:FieldValue.serverTimestamp()});
+      enrollmentPeriods.forEach((period,index) => tx.create(periodRefs[index],{...period,updatedAt:FieldValue.serverTimestamp()}));
     }
     for (const doc of superseded) tx.set(doc.ref,{active:false,supersededBy:id,updatedAt:FieldValue.serverTimestamp()},{merge:true});
     if(applyIntegration)applyIntegration(tx);
     tx.create(target,{...payload,requestHash,createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
     tx.set(scheduleVersionRef(),{version:expectedVersion+1,updatedAt:FieldValue.serverTimestamp(),updatedBy:'manager-schedule'},{merge:true});
   });
-  return { ok:true,id,event,course:recurring?payload:event,recurring,student:newStudent,tuitionPeriod:enrollmentPeriod };
+  if(duplicate)return {ok:true,duplicate:true,id,event:duplicate};
+  return { ok:true,id,event,course:recurring?payload:event,recurring,student:newStudent,tuitionPeriod:enrollmentPeriod,tuitionPeriods:enrollmentPeriods };
 }
 
 async function adminAttendanceDetail(data) {
