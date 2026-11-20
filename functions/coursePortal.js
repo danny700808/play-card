@@ -13312,7 +13312,8 @@ async function dailyTeacherCourseReminders(pushLineMessage, teacherWorkPendingCo
     if (evening && preference.eveningAttendance === false) continue;
     const rows = bundle.resourceEvents.filter(row=>eventTeacherId(row) === teacherId && !closureDates.has(eventDate(row)) && !['cancelled','pending_conflict'].includes(normalizeScheduleStatus(row.status)))
       .sort((a,b)=>eventStart(a).localeCompare(eventStart(b)));
-    const todayRows = rows.filter(row=>eventDate(row) === today);
+    const todayRows = rows.filter(row => eventDate(row) === today &&
+      !['leave', 'absent'].includes(normalizeScheduleStatus(row.status)));
     const unfinished = rows.filter(row=>eventDate(row) === (evening ? today : previous) && normalizeScheduleStatus(row.status) === 'scheduled');
     const parts = [];
     const reminderSections = [];
