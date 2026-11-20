@@ -72,3 +72,12 @@ test('all platforms use identical action names for the same handling state',()=>
     }
   }
 });
+
+test('packing detail removes manual handling and nonessential information sections',()=>{
+  for(const platform of ['EasyStore','MOMO','Coupang']){
+    const html=render({platform,canCreate:true});
+    assert.doesNotMatch(html,/我已印單|我已出貨|付款與發票核對|收件與物流資訊|id="markPrinted"|id="markShipped"/);
+    assert.match(html,/detail-deadline/);
+  }
+});
+

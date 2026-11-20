@@ -39,12 +39,42 @@ test('earliest verified platform deadline sorts first, never the 17:00 shop remi
  rows.sort((a,b)=>model.compareShippingPriority(a,b,now));assert.deepEqual(rows.map(r=>r.orderNo),['earlier','later','unknown']);
 });
 
+test('today shows a short deadline, keeps real early cutoffs, and changes at Taiwan midnight',()=>{
+ const midnight=deadline('2026-11-19T23:59:00+08:00');
+ assert.equal(model.shippingDeadline(midnight,now).text,'最晚出貨：今日截止');
+ assert.equal(model.shippingDeadline(deadline('2026-11-19T00:00:00+08:00','date'),now).text,'最晚出貨：今日截止');
+ const early=deadline('2026-11-19T19:00:00+08:00');
+ assert.equal(model.shippingDeadline(early,now).text,'最晚出貨：今日截止 19:00');
+ assert.equal(model.shippingDeadline(early,new Date('2026-11-19T20:00:00+08:00')).tone,'today');
+ assert.equal(model.shippingDeadline(midnight,new Date('2026-11-19T16:00:00Z')).tone,'overdue');
+ assert.equal(model.shippingDeadline({...early,handled:true,handlingAction:'acquired'},now).tone,'today');
+ assert.equal(model.shippingDeadline({...early,handled:true,handlingAction:'printed'},now).tone,'normal');
+});
+
+test('all-logistics DOM puts today ahead of other logistics and unknown deadlines',()=>{
+ const source=fs.readFileSync(__dirname+'/shipping-ui/app.js','utf8').split("$('refresh').addEventListener")[0];
+ const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{value:'',innerHTML:'',textContent:'',hidden:false});return elements.get(id);};
+ const window={};window.self=window;window.top=window;
+ const current=new Date(),day=current.toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
+ const tomorrow=new Date(current.getTime()+86400000).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
+ const rows=[{key:'later-hct',carrier:'新竹物流',at:tomorrow+'T19:00:00+08:00'},
+  {key:'today-store',carrier:'蝦皮店到店',at:day+'T19:00:00+08:00'},
+  {key:'unknown',carrier:'新竹物流'}].map(r=>({...r,channel:'蝦皮',orderNo:r.key,date:day,items:[],handled:false,
+  ...(r.at?{...deadline(r.at),shippingDeadlineVerifiedAt:current.toISOString()}:{} )}));
+ const ctx=vm.createContext({window,ShippingModel:model,rows,document:{getElementById:element,querySelector:()=>null,documentElement:{classList:{toggle(){}}}}});
+ vm.runInContext(source+'\ndata.orders=rows;renderDetail=()=>{};render();',ctx);
+ const html=element('orders').innerHTML;
+ assert.ok(html.indexOf('data-key="today-store"')<html.indexOf('data-key="later-hct"'));
+ assert.match(html,/依出貨期限排序/);assert.match(html,/shipping-deadline today/);
+ assert.ok(html.indexOf('data-key="later-hct"')<html.indexOf('data-key="unknown"'));
+});
+
 test('photographed EasyStore day-first deadlines render year-month-day in 24-hour time',()=>{
  const source={shippingDeadlineSource:'本機 EasyStore 蝦皮通路後台',shippingDeadlineVerifiedAt:now.toISOString()};
  const evening={...source,shippingDeadlineText:'19-11-2026, 7:00 晚上'};
  const midnight={...source,shippingDeadlineText:'20-11-2026, 11:59 晚上'};
- assert.equal(model.shippingDeadline(evening,now).text,'最晚出貨：2026年11月19日 19:00（今日截止）');
- assert.equal(model.shippingDeadline(midnight,now).text,'最晚出貨：2026年11月20日 23:59');
+ assert.equal(model.shippingDeadline(evening,now).text,'最晚出貨：今日截止 19:00');
+ assert.equal(model.shippingDeadline(midnight,now).text,'最晚出貨：2026年11月20日');
  assert.equal(model.shippingDeadline(evening,now).sort,Date.parse('2026-11-19T19:00:00+08:00'));
  assert.match(model.shippingDeadline(evening,now).note,/19-11-2026, 7:00 晚上/);
  const row={key:'EasyStore:123',externalId:'123',orderNo:'TEST1234567890',platform:'EasyStore',channel:'蝦皮'};
@@ -91,3 +121,4 @@ test('logistics filters intersect platform and pending status, and preserve unkn
  vm.runInContext("activeLogistics='unknown';render();",ctx);assert.equal(vm.runInContext('filtered()[0].key',ctx),'3');
  vm.runInContext("activeWork='done';activeChannel='全部';render();",ctx);assert.equal(vm.runInContext('filtered()[0].key',ctx),'4');assert.equal(element('logisticsTabs').hidden,true);
 });
+

@@ -127,19 +127,24 @@
       const day=value=>new Date(value).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
       const expired=valid&&(precision==='date'?day(at)<day(now):Date.parse(at)<now.getTime());
       const today=valid&&day(at)===day(now);
-      const pending=!row.handled&&!['shipped','cancelled'].includes(row.stage);
+      const pending=!model.isHandled(row)&&!['shipped','cancelled'].includes(row.stage);
       let display=raw;
       if(valid){
         const local=new Date(Date.parse(at)+8*3600000).toISOString();
-        display=`${local.slice(0,4)}年${local.slice(5,7)}月${local.slice(8,10)}日${precision==='minute'?' '+local.slice(11,16):''}`;
+        const clock=precision==='minute'&&local.slice(11,16)!=='23:59'?' '+local.slice(11,16):'';
+        display=pending&&today&&!stale?`今日截止${clock}`:
+          `${local.slice(0,4)}年${local.slice(5,7)}月${local.slice(8,10)}日${clock}`;
       }
-      return {text:`最晚出貨：${display}${stale?'（待更新）':pending&&expired?'（已逾期）':pending&&today?'（今日截止）':''}`,
-        tone:stale?'unknown':pending&&expired?'overdue':pending&&today?'today':'normal',
+      return {text:`最晚出貨：${display}${stale?'（待更新）':pending&&expired&&!today?'（已逾期）':''}`,
+        tone:stale?'unknown':pending&&today?'today':pending&&expired?'overdue':'normal',
         sort:valid&&!stale?Date.parse(at):Infinity,
         note:`${source} · 核對 ${verified} · 平台原文：${raw}${note?' · '+note:''}${precision==='date'?' · 平台未提供確切時分':''}${!valid?' · 平台原文，無法確認絕對時間':''}`};
     },
     compareShippingPriority(a,b,now=new Date()){
-      const left=model.shippingDeadline(a,now).sort,right=model.shippingDeadline(b,now).sort;
+      const aDeadline=model.shippingDeadline(a,now),bDeadline=model.shippingDeadline(b,now);
+      const urgency=Number(bDeadline.tone==='today')-Number(aDeadline.tone==='today');
+      if(urgency)return urgency;
+      const left=aDeadline.sort,right=bDeadline.sort;
       if(left!==right)return left<right?-1:1;
       return String(a.date||'').localeCompare(String(b.date||''))||String(a.orderNo||'').localeCompare(String(b.orderNo||''));
     },
@@ -166,6 +171,9 @@
       if(row.handlingAction==='arranged')return '取回原貨運單';
       return '取得貨運單';
     },
+    isHandled(row){
+      return !!row.handled&&!['acquired','arranged'].includes(row.handlingAction);
+    },
     status(row){
       if(row.handlingChanged)return '資料有變，需核對';
       if(row.handled)return labels[row.handlingAction]||'已處理';
@@ -176,4 +184,5 @@
   if(typeof module!=='undefined')module.exports=model;
   else root.ShippingModel=model;
 })(typeof window!=='undefined'?window:this);
+
 

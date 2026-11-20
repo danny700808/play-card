@@ -11,14 +11,14 @@ function harness({channel='蝦皮',action='',fail=false}={}){
   const window={ShippingTransport:{async api(path,body){calls.push({path,body});await waiting;if(fail)throw Error('offline');return {ok:true};}}};
   window.self=window;window.top=window;
   const context=vm.createContext({window,ShippingModel:require('./shipping-ui/model.js'),document:{getElementById:element,querySelector:()=>null,documentElement:{classList:{toggle(){}}}},row,renders});
-  vm.runInContext(source+'\ndata.orders=[row];selected=row.key;render=()=>renders.push({work:activeWork,keys:filtered().map(r=>r.key)});',context);
+  vm.runInContext(source+'\ndata.orders=[row];selected=row.key;renderDetail=()=>{};const realRender=render;render=()=>{realRender();renders.push({work:activeWork,keys:filtered().map(r=>r.key)});};',context);
   return {row,calls,renders,element,release,run:()=>vm.runInContext('recordLocalSubmission({...row})',context),
     evaluate:code=>vm.runInContext(code,context)};
 }
 test('successful local Shopee submission moves immediately, saves without refreshing all orders',async()=>{
   const h=harness();const work=h.run();
   assert.equal(h.row.handled,true);assert.equal(h.row.handlingAction,'processed');
-  assert.equal(h.renders.at(-1).work,'done');assert.equal(h.renders.at(-1).keys[0],h.row.key);
+  assert.equal(h.renders.at(-1).work,'pending');assert.equal(h.renders.at(-1).keys.length,0);
   assert.equal(h.element('documentDialog').open,false);
   assert.deepEqual(h.calls.map(x=>x.path),['/api/handling']);assert.equal(h.calls[0].body.action,'processed');
   h.release();await work;assert.match(h.element('notice').textContent,/已保存/);
@@ -39,7 +39,7 @@ test('reprinting cannot downgrade printed or shipped handling',async()=>{
     assert.equal(h.row.handlingAction,action);assert.equal(h.calls.length,0);}
 });
 test('late save failure does not navigate away from another selected order',async()=>{
-  const h=harness({fail:true});const work=h.run();h.evaluate("selected='OTHER';activeWork='all'");
+  const h=harness({fail:true});const work=h.run();h.evaluate("data.orders.push({...row,key:'OTHER',orderNo:'OTHER'});selected='OTHER';activeWork='all'");
   h.release();await work;assert.equal(h.evaluate('selected'),'OTHER');assert.equal(h.evaluate('activeWork'),'all');
 });
 test('newer handling confirmation is not overwritten by a late save failure',async()=>{
@@ -50,3 +50,25 @@ test('changed tracking does not mark the replacement shipment processed',async()
   const h=harness();h.evaluate("var printed={...row};row.tracking='OTHER'");
   await h.evaluate('recordLocalSubmission(printed)');assert.equal(h.row.handled,false);assert.equal(h.calls.length,0);
 });
+
+test('printing returns from all/done to pending and selects the next unprinted order',async()=>{
+  for(const channel of ['蝦皮','MOMO','酷澎','官網']){
+    const h=harness({channel});
+    h.evaluate("data.orders.push({...row,key:'NEXT',orderNo:'NEXT',handled:false,handlingAction:''});activeWork='all';activeLogistics='hct';$('search').value=row.orderNo");
+    const work=h.run();
+    assert.equal(h.evaluate('activeWork'),'pending');assert.equal(h.evaluate('activeLogistics'),'all');
+    assert.equal(h.evaluate('selected'),'NEXT');assert.equal(h.element('search').value,'');
+    assert.equal(h.renders.at(-1).keys.join(','),'NEXT');
+    h.release();await work;
+    h.evaluate("activeWork='done';render()");assert.equal(h.renders.at(-1).keys.join(','),h.row.key);
+  }
+});
+
+test('acquired and arranged documents remain pending until printing is confirmed',()=>{
+  for(const action of ['acquired','arranged']){
+    const h=harness({action});h.evaluate('render()');
+    assert.equal(h.renders.at(-1).keys.join(','),h.row.key);
+    h.evaluate("activeWork='done';render()");assert.equal(h.renders.at(-1).keys.length,0);
+  }
+});
+
