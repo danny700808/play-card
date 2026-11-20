@@ -7,7 +7,7 @@ function readMomoPage(orders) {
   const observed=new Map();
   for(const product of products){
     const text=product.innerText;
-    const seq=text.match(/子訂單編號\s*[:：]\s*(\d{1,6})\b/);
+    const seq=text.match(/子訂單編號\s*[:：]\s*(\d{1,6}(?:[ \t]*[、,，][ \t]*\d{1,6})*)[ \t]*(?:\n|$)/);
     const deadlines=[...text.matchAll(/最晚出貨(?:時間|日期|日)\s*[:：]\s*(\d{4}[/-]\d{1,2}[/-]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)/g)];
     if(!seq||deadlines.length!==1)continue;
     let parent=product.parentElement,number='';
@@ -17,9 +17,12 @@ function readMomoPage(orders) {
       if(ids.length===1){number=ids[0][1];break;}
     }
     if(!number)continue;
-    const key=number+':'+seq[1],date=deadlines[0][1].trim();
-    if(observed.has(key)&&observed.get(key)!==date)observed.set(key,null);
-    else if(!observed.has(key))observed.set(key,date);
+    const date=deadlines[0][1].trim();
+    for(const seqNo of seq[1].split(/[、,，]/).map(value=>value.trim())){
+      const key=number+':'+seqNo;
+      if(observed.has(key)&&observed.get(key)!==date)observed.set(key,null);
+      else if(!observed.has(key))observed.set(key,date);
+    }
   }
   const results=[];
   for(const order of orders){
@@ -44,7 +47,13 @@ function selectMomoAll(){
   // visible menus to reach E001; never invoke internal application handlers.
   const controls=[...document.querySelectorAll('button,[role=button],a')].filter(e=>e.getClientRects().length);
   const entry=controls.find(e=>e.innerText.trim()==='E001訂單管理');
-  if(entry){entry.click();return false;}
+  if(entry){
+    if(!document.title.includes('E001訂單管理') && entry.dataset.youziOpened!=='1'){
+      entry.dataset.youziOpened='1';
+      entry.click();
+    }
+    return false;
+  }
   for(const label of ['訂單管理','訂單']){
     const menu=controls.find(e=>e.innerText.trim()===label&&e.getAttribute('aria-expanded')!=='true');
     if(menu){menu.click();break;}

@@ -23,3 +23,9 @@ test('freight can be excluded only by the requested physical suborder identifier
  const combined={...order,key:order.key+',002',orderSeqs:['001']};
  assert.equal(read([base],[combined]).results.length,1);
 });
+
+test('one product card can explicitly list both physical suborders',()=>{
+ const combined={...order,key:order.key+',002'};
+ assert.equal(read([{...base,seq:'001、002'}],[combined]).results.length,1);
+ assert.equal(read([{...base,seq:'001、003'}],[combined]).results.length,0);
+});
