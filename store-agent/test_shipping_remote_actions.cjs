@@ -33,7 +33,7 @@ test('new Shopee order keeps only a hidden helper locator and never redirects th
   const html=render();
   assert.match(html,/href="https:\/\/admin.easystore.co\/orders\/123"/);
   assert.match(html,/<a hidden aria-hidden="true" tabindex="-1" data-shopee-helper-target/);
-  assert.match(html,/取得貨運單/);
+  assert.match(html,/列印貨運單/);
   assert.doesNotMatch(html,/到 EasyStore 出貨|class="action-link primary"/);
   assert.doesNotMatch(html,/id="prepare"|id="showProvidedDocument"/);
 });
@@ -64,7 +64,7 @@ test('a cancelled MOMO order cannot be manually marked printed or shipped',()=>{
 });
 
 test('all platforms use identical action names for the same handling state',()=>{
-  for(const [state,label] of [[{},'取得貨運單'],[{documentReady:true,handlingAction:'acquired'},'列印貨運單'],[{handlingAction:'printed'},'重印貨運單'],[{stage:'shipped'},'重印貨運單']]){
+  for(const [state,label] of [[{},'列印貨運單'],[{documentReady:true,handlingAction:'acquired'},'列印貨運單'],[{handlingAction:'printed'},'重印貨運單'],[{stage:'shipped'},'重印貨運單']]){
     for(const platform of ['EasyStore','MOMO','Coupang']){
       const html=render({platform,canCreate:true,...state});
       assert.match(html,new RegExp('class="primary"[^>]*>'+label+'<'));
@@ -77,7 +77,13 @@ test('packing detail removes manual handling and nonessential information sectio
   for(const platform of ['EasyStore','MOMO','Coupang']){
     const html=render({platform,canCreate:true});
     assert.doesNotMatch(html,/我已印單|我已出貨|付款與發票核對|收件與物流資訊|id="markPrinted"|id="markShipped"/);
-    assert.match(html,/detail-deadline/);
+    assert.match(html,/detail-order-summary/);
   }
+});
+
+test('detail order is platform, product, order and payment, deadline, then print action',()=>{
+  const html=render({orderNo:'ORDER-PLACEMENT',items:[{name:'ITEM-PLACEMENT',quantity:1,sku:'123',image:'https://example.test/item.png'}]});
+  const positions=['badge shopee','item-photo','ORDER-PLACEMENT','paid-amount','shipping-deadline','id="shopeeDirectPrint"'].map(value=>html.indexOf(value));
+  assert.ok(positions.every((position,index)=>position>=0&&(index===0||position>positions[index-1])));
 });
 

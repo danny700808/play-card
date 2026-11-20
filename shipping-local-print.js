@@ -42,9 +42,12 @@
     $('localPrintControls')?.remove();
     currentButton = null;
   }
-  function attach(row, links, recordPrint, recordSubmitted) {
+  function attach(row, links, recordPrint, recordSubmitted, options = {}) {
     reset();
-    if (!row || !links || !['MOMO', '蝦皮', '酷澎', '官網', 'LINE'].includes(row.channel)) return;
+    if (!row || !links || !['MOMO', '蝦皮', '酷澎', '官網', 'LINE'].includes(row.channel)) {
+      if(options.silent)throw Error('此訂單尚未提供可列印的貨運單。');
+      return;
+    }
     const own = generation;
     const box = document.createElement('div');
     box.id = 'localPrintControls';
@@ -73,6 +76,7 @@
       return job;
     }
     function showPrepared(job) {
+      if(options.silent)return;
       const image = $('documentPreviewImage'), zoom = $('zoomDocumentPreview');
       if (!image || !zoom) return;
       image.src = job.preview; image.hidden = false; zoom.hidden = false;
@@ -89,7 +93,7 @@
     let reprint = window.ShippingModel?.documentActionLabel(row) === '重印貨運單';
     let pdfBase64, preparedJob, ready = false;
     const label = () => reprint ? '重印貨運單' : '列印貨運單';
-    const active = () => generation === own && $('documentDialog').open;
+    const active = () => generation === own && (options.silent ? options.isActive?.() !== false : $('documentDialog').open);
     button.textContent = label();
     button.disabled = true;
     currentButton = button;
@@ -98,7 +102,8 @@
     status.setAttribute('role', 'status');
     status.textContent = '檢查本機列印服務…';
     box.append(button, status);
-    ($('localPrintSlot') || $('documentControls')).prepend(box);
+    if(!options.silent)($('localPrintSlot') || $('documentControls')).prepend(box);
+    function report(message){status.textContent=message;if(active())options.onStatus?.(message);}
     // Prepare without submitting paper. Resolve the persisted local print state
     // before enabling the action, so a reprint never needs a discovery click.
     async function preparePreview() {
@@ -119,7 +124,7 @@
         throw Error('副機列印助手需要更新 MOMO 超商單版型，尚未送印。');
       if (momoStore && !links.print)
         throw Error('主機尚未完成這張超商原單的版型與條碼核對，尚未送印。請重新讀取訂單。');
-      status.textContent = '正在準備標籤與確認列印紀錄…';
+      report('正在準備貨運單，請等待…');
       pdfBase64 = await documentBase64(links.print || links.label);
       if (!active()) return;
       preparedJob = checkPrepared(await local('/prepare', prepareBody()));
@@ -130,9 +135,11 @@
       showPrepared(preparedJob);
       ready = true;
       button.textContent = label();
-      status.textContent = `新版標籤已備妥，共 ${preparedJob.pages} 張。`;
+      report(`貨運單已備妥，共 ${preparedJob.pages} 張。`);
     }
+    let preparationError;
     const preparation = preparePreview().catch(error => {
+      preparationError=error;
       if (active()) status.textContent = error.message;
     }).finally(() => {
       if (active()) button.disabled = inFlight;
@@ -145,11 +152,14 @@
       try {
         await preparation;
         if (!active()) return;
-        if (!ready) await preparePreview();
+        if (!ready) {
+          if(options.silent)throw preparationError||Error('貨運單尚未備妥，未送印。');
+          await preparePreview();
+        }
         if (!active() || !ready) return;
         // This explicit button click authorizes one copy, including a reprint.
         // Preparation and network retries never call /print automatically.
-        status.textContent = reprint ? '正在準備重印…' : '正在準備列印…';
+        report(reprint ? '正在準備重印，請等待…' : '正在準備列印，請等待…');
         let job = checkPrepared(await local('/prepare', {...prepareBody(), reprint}));
         if (!active()) return;
         if (job.status === 'submitted' && !reprint) {
@@ -158,7 +168,7 @@
         }
         if (job.status !== 'prepared') throw Error('這份單據正在處理或送印結果不明，請先查看印表機。');
         showPrepared(job);
-        status.textContent = `${postal?'寄件資料核對完成':'條碼檢查通過'}，正在送印 ${job.pages} 張…`;
+        report(`${postal?'寄件資料核對完成':'條碼檢查通過'}，正在送印 ${job.pages} 張…`);
         phase = '副機送交印表機';
         const result = await local('/print', {jobId: job.jobId});
         if (result.status !== 'submitted') throw Error('送印結果不明，請先查看印表機。');
@@ -172,14 +182,21 @@
         await (recordSubmitted || recordPrint)();
       } catch (error) {
         if (generation === own) status.textContent = `訂單 ${row.orderNo} · ${phase}：${error.message}`;
+        if(options.silent)throw Error(`訂單 ${row.orderNo} · ${phase}：${error.message}`);
       } finally {
         inFlight = false;
         if (currentButton) currentButton.disabled = false;
       }
     };
+    return {print:button.onclick};
   }
-  window.YouziLocalPrint = {attach, reset};
+  async function printDocument(row,links,recordSubmitted,options={}){
+    if(inFlight)throw Error('另一張貨運單正在送印，請等待。');
+    return attach(row,links,async()=>{},recordSubmitted,{...options,silent:true}).print();
+  }
+  window.YouziLocalPrint = {attach, reset, printDocument};
 })();
+
 
 
 

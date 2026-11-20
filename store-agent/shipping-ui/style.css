@@ -63,3 +63,5 @@ main{margin:0;max-width:none}.embedded main{padding:0 2px 16px}.embedded header 
 
 
 .detail-deadline{padding:0 24px 18px}.detail-deadline .shipping-deadline{font-size:18px}
+
+.compact-refresh{font-size:20px;padding:12px 20px;min-height:50px}.compact-refresh:disabled{opacity:.8}.detail-order-summary{padding:12px 24px 8px;border-top:1px solid var(--line)}.detail-order-summary h2{font-size:21px;margin:0}.detail-order-summary .paid-amount,.detail-order-summary .delivery-method,.detail-order-summary .shipping-deadline{font-size:18px}.detail-order-summary .detail-identity{margin:0 0 12px}.shipping-note{margin:0;padding:8px 24px}#directShipmentOptions:not(:empty){padding:16px 24px;border-top:1px solid var(--line)}

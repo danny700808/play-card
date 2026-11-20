@@ -19,12 +19,29 @@
   }
   function showShipmentForm(item,m){
     const dialog=document.getElementById('documentDialog');
-    if(!dialog?.open||!['options','confirm'].includes(m.phase)||!Array.isArray(m.fields)||m.fields.length>10)return;
+    if((!item.direct&&!dialog?.open)||!['options','confirm'].includes(m.phase)||!Array.isArray(m.fields)||m.fields.length>10)return;
     const valid=m.fields.every(f=>f&&/^[a-z_0-9]{1,50}$/.test(f.id)&&typeof f.label==='string'&&f.label.length<=100&&
       (f.type==='text'&&typeof f.value==='string'&&f.value.length<=100||f.type==='select'&&Array.isArray(f.options)&&f.options.length>0&&f.options.length<=20&&f.options.every(o=>/^\d{1,3}$/.test(o.id)&&typeof o.label==='string'&&o.label.length<=180)));
     if(!valid)return;
     const renew=()=>{clearTimeout(item.timer);item.timer=setTimeout(()=>{send({type:'cancel',requestId:m.requestId});finish(m.requestId,Error('出貨結果尚未確認，請核對平台狀態；不會自動重送。'));},180000);};
     renew();
+    if(item.direct){
+      const values={};let complete=true;
+      for(const field of m.fields){
+        const value=field.type==='select'
+          ?field.options.some(option=>option.id===field.value)?field.value:field.options.length===1?field.options[0].id:''
+          :field.value.trim();
+        if(!value)complete=false;
+        values[field.id]=value;
+      }
+      const signature=JSON.stringify([m.phase,values]);
+      if(complete&&!item.choices.has(signature)){
+        item.choices.add(signature);
+        send({type:'shipment-choice',requestId:m.requestId,phase:m.phase,values});
+        item.onProgress?.('正在取得貨運單，請等待…');
+        return;
+      }
+    }
     item.formElement?.remove();
     const form=document.createElement('form');form.dataset.shipmentRequest=m.requestId;
     const title=document.createElement('p');title.textContent=m.phase==='confirm'?'確認這筆新訂單的出貨資料；確認後會向蝦皮申請出貨並取回貨運單。':'選擇這筆新訂單的出貨方式。';form.append(title);
@@ -40,7 +57,7 @@
     }
     const button=document.createElement('button');button.type='submit';button.className='primary';button.textContent=m.phase==='confirm'?'確認出貨並取得貨運單':'繼續';form.append(button);
     form.addEventListener('submit',e=>{
-      e.preventDefault();if(!pending.has(m.requestId)||!dialog.open||button.disabled)return;
+      e.preventDefault();if(!pending.has(m.requestId)||(!item.direct&&!dialog.open)||button.disabled)return;
       const values={};for(const field of m.fields)values[field.id]=form.elements.namedItem(field.id).value;
       button.disabled=true;send({type:'shipment-choice',requestId:m.requestId,phase:m.phase,values});
       renew();
@@ -50,7 +67,10 @@
       const placeholder=document.getElementById('documentPlaceholder');
       if(placeholder)placeholder.textContent=status;
     });
-    item.formElement=form;(document.getElementById('documentSummary')||dialog).append(form);
+    item.formElement=form;
+    const target=item.direct?document.getElementById('directShipmentOptions'):(document.getElementById('documentSummary')||dialog);
+    if(!target){send({type:'cancel',requestId:m.requestId});finish(m.requestId,Error('缺少出貨方式，請重新選取訂單後核對。'));return;}
+    target.append(form);
     item.onProgress?.(m.phase==='confirm'?'等待你確認出貨；目前尚未送出。':'等待你選擇出貨方式；目前尚未送出。');
     const placeholder=document.getElementById('documentPlaceholder');
     if(placeholder){
@@ -58,14 +78,14 @@
       placeholder.textContent=m.phase==='confirm'?'確認左側出貨資料後，才會申請出貨並顯示正式貨運單。':'請先在左側選擇出貨方式，尚未取得貨運單。';
     }
   }
-  function request(type,row,onProgress){
+  function request(type,row,onProgress,options={}){
     return new Promise((resolve,reject)=>{
       const requestId=crypto.randomUUID();
       const timer=setTimeout(()=>{
         send({type:'cancel',requestId});
         finish(requestId,Error(type==='probe'?'副機取單助手尚未支援統一視窗，請先更新助手。':'取單結果尚未確認，請讀取最新訂單核對；不會自動重送出貨。'));
       },type==='probe'?2000:180000);
-      pending.set(requestId,{resolve,reject,timer,row,onProgress,type});
+      pending.set(requestId,{resolve,reject,timer,row,onProgress,type,direct:options.direct===true,choices:new Set()});
       send({type,requestId,...(row?{order:{key:row.key,orderNo:row.orderNo,externalId:row.externalId,
         tracking:row.tracking||'',mode:row.tracking||row.stage==='shipped'||row.canDownload?'reprint':'create'}}:{})});
     });
@@ -120,13 +140,14 @@
     for(const [id,item] of pending){if(item.type==='probe')continue;send({type:'cancel',requestId:id});finish(id,Error('已關閉貨運單。'));}
   }
   window.YouziShopeeBridge={version,available:()=>connected,connect,cancel,
-    async getDocument(row,onProgress){
+    async getDocument(row,onProgress,options={}){
       if(row.platform!=='EasyStore'||row.channel!=='蝦皮'||row.stale||['cancelled','review','partial'].includes(row.stage)||
         !/^\d+$/.test(String(row.externalId))||row.key!=='EasyStore:'+row.externalId)throw Error('此訂單需先更新並核對。');
       const own=cancelEpoch;
       await connect();if(own!==cancelEpoch)throw Error('已關閉貨運單。');
-      return request('get-document',row,onProgress);
+      return request('get-document',row,onProgress,options);
     }};
   // Discovery only. Loading the page can never acquire a label or create a shipment.
   connect().catch(()=>{});
 })();
+

@@ -2,16 +2,19 @@ const test=require('node:test'),assert=require('node:assert/strict'),vm=require(
 const row={key:'EasyStore:123',platform:'EasyStore',channel:'蝦皮',externalId:'123',orderNo:'ORDER-123',stage:'shipped',tracking:'TRACK-1'};
 function harness(){
   const sent=[],timers=new Map();let listener,n=0;
+  const elements=new Map();
+  const element=()=>({children:[],open:false,dataset:{},style:{},append(...items){this.children.push(...items);},remove(){},addEventListener(){}});
+  elements.set('documentDialog',element());elements.set('directShipmentOptions',element());
   const origin='https://danny700808.github.io';
   const window={postMessage:m=>sent.push(m),addEventListener:(name,fn)=>{if(name==='message')listener=fn;},dispatchEvent(){}};
   vm.runInNewContext(fs.readFileSync(__dirname+'/../shipping-shopee-bridge.js','utf8'),{
-    window,location:{origin},crypto:{randomUUID:()=>String(++n)},Event:class{},atob,Uint8Array,
+    window,document:{getElementById:id=>elements.get(id),createElement:element,createTextNode:text=>text},location:{origin},crypto:{randomUUID:()=>String(++n)},Event:class{},atob,Uint8Array,
     setTimeout:(fn)=>{timers.set(n,fn);return n;},clearTimeout:id=>timers.delete(id)});
   function reply(message,overrides={}){listener({source:window,origin,...overrides,data:{namespace:'youzi-shipping-helper',version:1,direction:'helper',...message}});}
   const ready=()=>reply({requestId:sent.find(m=>m.type==='probe').requestId,type:'ready',capabilities:{unifiedDocument:true}});
   const document=()=>({type:'document',key:row.key,orderNo:row.orderNo,tracking:row.tracking,
     pdfBase64:Buffer.from('%PDF-1.7\noriginal').toString('base64'),previewDataUrl:'data:image/png;base64,iVBORw0KGgo='});
-  return {bridge:window.YouziShopeeBridge,sent,reply,ready,document,timers};
+  return {bridge:window.YouziShopeeBridge,sent,reply,ready,document,timers,elements};
 }
 const flush=()=>new Promise(setImmediate);
 test('loading only probes; getting an existing label requests reprint and returns bytes, never print',async()=>{
@@ -21,6 +24,22 @@ test('loading only probes; getting an existing label requests reprint and return
   h.reply({...h.document(),requestId:req.requestId});
   const result=await promise;assert.equal(Buffer.from(result.pdf).toString(),'%PDF-1.7\noriginal');
   assert.equal(h.sent.some(m=>m.type==='print'),false);
+});
+
+test('direct mode accepts complete platform defaults without opening a dialog and does not repeat a confirmation',async()=>{
+ const h=harness();h.ready();const p=h.bridge.getDocument(row,()=>{},{direct:true});await flush();
+ const id=h.sent.at(-1).requestId;
+ const form={requestId:id,type:'shipment-form',key:row.key,orderNo:row.orderNo,phase:'confirm',fields:[{id:'location',label:'寄件地點',type:'select',value:'1',options:[{id:'1',label:'既有寄件地點'}]}]};
+ h.reply(form);assert.equal(h.sent.at(-1).type,'shipment-choice');assert.equal(h.sent.at(-1).values.location,'1');
+ assert.equal(h.elements.get('documentDialog').open,false);assert.equal(h.elements.get('directShipmentOptions').children.length,0);
+ h.reply(form);assert.equal(h.sent.filter(m=>m.type==='shipment-choice').length,1);
+ h.reply({...h.document(),requestId:id});await p;
+});
+test('ambiguous shipping choices stay inline and are never guessed',async()=>{
+ const h=harness();h.ready();const p=h.bridge.getDocument(row,()=>{},{direct:true});await flush();const id=h.sent.at(-1).requestId;
+ h.reply({requestId:id,type:'shipment-form',key:row.key,orderNo:row.orderNo,phase:'options',fields:[{id:'location',label:'寄件地點',type:'select',value:'',options:[{id:'1',label:'地點一'},{id:'2',label:'地點二'}]}]});
+ assert.equal(h.sent.some(m=>m.type==='shipment-choice'),false);assert.equal(h.elements.get('directShipmentOptions').children.length,1);
+ assert.equal(h.elements.get('documentDialog').open,false);h.reply({...h.document(),requestId:id});await p;
 });
 test('other windows, origins, request IDs and orders cannot complete a pending request',async()=>{
   const h=harness();h.ready();let done=false;
@@ -73,3 +92,4 @@ test('missing historical original is distinct from a new label still being prepa
  await assert.rejects(pending,/目前未能取得這筆貨運單/);
  assert.equal(fresh.sent.filter(m=>m.type==='get-document').length,1);
 });
+

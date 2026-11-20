@@ -5,7 +5,8 @@ const stageNames = {pending:'待出貨',partial:'部分待出貨',label:'可印�
 const ORDER_DAYS = 3;
 let data = {orders:[],errors:{},connectors:[]}, selected = '', activeChannel = '全部', activeWork = 'pending', activeLogistics = 'all', busy = false;
 let documentGeneration=0,externalDocumentUrls=[];
-let localMetadataBusy=false;
+let localMetadataBusy=false,localMetadataTask=null;
+let directPrintKey='',directPrintStatus='';
 const localMetadataCache=new Map();
 const sessionToken=document.querySelector('meta[name="youzi-session"]')?.content||'';
 const remote=!!window.ShippingTransport;
@@ -49,7 +50,12 @@ function applyLocalMetadata(){
     }
   }
 }
-async function refreshLocalMetadata(){
+function refreshLocalMetadata(){
+  if(localMetadataTask)return localMetadataTask;
+  localMetadataTask=readLocalMetadata().finally(()=>{localMetadataTask=null;});
+  return localMetadataTask;
+}
+async function readLocalMetadata(){
   if(localMetadataBusy||!window.YouziLocalMetadata)return;
   const rows=data.orders.filter(r=>r.platform==='EasyStore'&&r.channel==='蝦皮'&&!ShippingModel.isHandled(r)&&!r.stale&&!['shipped','cancelled'].includes(r.stage)&&/^\d{1,20}$/.test(String(r.externalId))&&/^[A-Z0-9]{12,24}$/.test(r.orderNo)).slice(0,200);
   if(!rows.length)return;
@@ -58,22 +64,21 @@ async function refreshLocalMetadata(){
     if(seen.has(row.key)||bindings.get(row.key)!==ShippingModel.metadataBinding(row)||row.shippingDeadlineSource!=='本機 EasyStore 蝦皮通路後台')continue;
     localMetadataCache.delete(row.key);row.shippingDeadlineNote='本次未能重新核對，請再次讀取本機 EasyStore。';
   }};
-  localMetadataBusy=true;$('refreshLocalMetadata').disabled=true;$('localMetadataStatus').textContent='正在從本機 EasyStore 讀取…';
+  localMetadataBusy=true;
   try{
     const response=await window.YouziLocalMetadata.read(rows.map(r=>({key:r.key,externalId:String(r.externalId),orderNo:r.orderNo})));
-    let count=0;const seen=new Set();
+    const seen=new Set();
     for(const observation of response.results){
       const row=data.orders.find(r=>r.key===observation.key);
       if(!row||ShippingModel.isHandled(row)||!bindings.has(row.key)||bindings.get(row.key)!==ShippingModel.metadataBinding(row))continue;
       const patch=ShippingModel.localLogistics(row,observation,response.verifiedAt);if(!patch)continue;
-      localMetadataCache.set(row.key,{binding:bindings.get(row.key),patch,verifiedAt:response.verifiedAt});Object.assign(row,patch);count++;
+      localMetadataCache.set(row.key,{binding:bindings.get(row.key),patch,verifiedAt:response.verifiedAt});Object.assign(row,patch);
       seen.add(row.key);
     }
     unconfirmed(seen);
-    $('localMetadataStatus').textContent=response.error==='busy'?'正在取貨運單，完成後可再更新物流與期限。':count?`已從本機核對 ${count} 筆；未提供期限者仍顯示待確認。`:response.error==='login'?'請先在本機 Chrome 登入 EasyStore。':'本次尚未讀到資料，請確認本機 EasyStore 已登入後重試。';
     render();
-  }catch(error){unconfirmed();$('localMetadataStatus').textContent=error.message;render();}
-  finally{localMetadataBusy=false;$('refreshLocalMetadata').disabled=false;}
+  }catch(error){unconfirmed();render();}
+  finally{localMetadataBusy=false;}
 }
 function packingItems(row) {
   const grouped=new Map();
@@ -108,7 +113,6 @@ function filtered() {
 }
 function render() {
   applyLocalMetadata();
-  $('localMetadataControls').hidden=!window.YouziLocalMetadata;
   $('channels').innerHTML=channels.map(c=>`<button data-channel="${escapeHtml(c)}" aria-pressed="${c===activeChannel}" class="${c===activeChannel?'active':''}">${escapeHtml(c)}</button>`).join('');
   const channelRows=data.orders.filter(r=>activeChannel==='全部'||r.channel===activeChannel);
   $('workTabs').innerHTML=[['pending','未處理',channelRows.filter(r=>!ShippingModel.isHandled(r)).length],['done','已處理',channelRows.filter(r=>ShippingModel.isHandled(r)).length],['all','全部',channelRows.length]].map(([key,label,count])=>
@@ -145,13 +149,14 @@ function renderDetail() {
   // send the user back to the store order page as a visible fallback.
   const shopeeHelperTarget = externalAllowed && shopeeViaEasyStore
     ? `<a hidden aria-hidden="true" tabindex="-1" data-shopee-helper-target href="${shopeePrintUrl||easyStoreOrder}"></a>` : '';
+  const printLabel=directPrintKey===row.key?directPrintStatus:ShippingModel.documentActionLabel(row)==='重印貨運單'?'重印貨運單':'列印貨運單';
   const externalAction = externalAllowed
-    ? shopeeViaEasyStore ? shopeeHelperTarget + `<button id="shopeeDirectPrint" class="primary" ${busy?'disabled':''}>${ShippingModel.documentActionLabel(row)}</button>`
+    ? shopeeViaEasyStore ? shopeeHelperTarget + `<button id="shopeeDirectPrint" class="primary" ${busy?'disabled':''}>${escapeHtml(printLabel)}</button>`
     : `<a class="action-link primary" href="${easyStoreOrder}" target="_blank" rel="noopener noreferrer">開啟 EasyStore 對應訂單 ↗</a>` : '';
   const savedDocument=ShippingModel.savedDocumentAvailable(row);
   const postal = row.documentType === 'postal-address-v1';
-  const shippingAction = row.platform==='EasyStore' ? (savedDocument?`<button id="showProvidedDocument" class="primary">${postal?'重印郵局標籤':ShippingModel.documentActionLabel(row)}</button>`:postal?`<button id="prepare" class="primary" ${!enabled||busy?'disabled':''}>產生郵局寄件標籤</button>`:externalAction)
-    : `<button id="prepare" class="primary" ${(!enabled&&!savedDocument)||busy?'disabled':''}>${ShippingModel.documentActionLabel(row)}</button>`;
+  const shippingAction = row.platform==='EasyStore' ? (savedDocument?`<button id="showProvidedDocument" class="primary" ${busy?'disabled':''}>${escapeHtml(printLabel)}</button>`:postal?`<button id="prepare" class="primary" ${!enabled||busy?'disabled':''}>${escapeHtml(printLabel)}</button>`:externalAction)
+    : `<button id="prepare" class="primary" ${(!enabled&&!savedDocument)||busy?'disabled':''}>${escapeHtml(printLabel)}</button>`;
   const shippingNote = postal ? row.blockReason || '依原訂單產生郵局寄件標籤，郵件條碼由郵局交寄時提供。' : row.platform==='EasyStore' && !row.documentReady
     ? row.stale?'訂單資料尚未更新，請先讀取最新訂單。'
       : ['cancelled','review'].includes(row.stage)?'此訂單已取消或需要核對，暫不開啟出貨。'
@@ -161,18 +166,18 @@ function renderDetail() {
     : '';
   const items=packingItems(row),quantity=items.reduce((n,i)=>n+i.quantity,0);
   const packingNote=(row.note||'').split('\n').filter(line=>!/^買家帳號[：:]/.test(line.trim())).join('\n').trim();
-  $('detail').innerHTML=`<div class="detail-header"><div>${badge(row)}<span class="status ${ShippingModel.isHandled(row)?'done':'pending'}">${escapeHtml(ShippingModel.status(row))}</span><div class="order-identity detail-identity"><h2>${escapeHtml(row.orderNo)}</h2>${paidAmountHtml(row)}</div></div><div class="packing-total">共 <strong>${quantity}</strong> 件</div></div>
+  $('detail').innerHTML=`<div class="detail-header"><div>${badge(row)}<span class="status ${ShippingModel.isHandled(row)?'done':'pending'}">${escapeHtml(ShippingModel.status(row))}</span></div><div class="packing-total">共 <strong>${quantity}</strong> 件</div></div>
     ${ShippingModel.isHandled(row)?`<div class="handling-summary">✓ 已處理 · ${escapeHtml(ShippingModel.status(row))}${row.handledAt?' · '+escapeHtml(new Date(row.handledAt).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})):''}<span>${escapeHtml(row.handlingSource)}</span></div>`:''}
     <div class="detail-section packing-section">${items.map(itemHtml).join('')||'<div class="empty">沒有可包貨的商品</div>'}</div>
     ${packingNote?`<div class="note order-note">${escapeHtml(packingNote)}</div>`:''}
-    <div class="actions">${shippingAction}<button id="packing" ${['cancelled','review'].includes(row.stage)?'disabled':''}>列印包貨明細</button>${row.documentReady?'<button id="showDocument">預覽正式貨運單</button>':''}${!remote&&row.platform==='EasyStore'?'<button id="provideDocument">提供貨運單給副機</button>':''}</div>
+    <div class="detail-order-summary"><div class="order-identity detail-identity"><h2>${escapeHtml(row.orderNo)}</h2>${paidAmountHtml(row)}</div>${deadlineHtml(row)}</div>
     ${shippingNote?`<p class="muted shipping-note">${escapeHtml(shippingNote)}</p>`:''}
     ${ShippingModel.isHandled(row)&&!['shipped','cancelled'].includes(row.stage)?'<div class="handling-actions"><button id="reopen" class="quiet">移回未處理</button></div>':''}
     ${row.jobError||row.stale||row.blockReason&&row.platform!=='EasyStore'?`<div class="block-note">${escapeHtml(row.stale?'資料尚未更新，請重新讀取。':row.jobError||row.blockReason)}</div>`:''}
-    <div class="detail-deadline">${deadlineHtml(row)}</div>`;
-  $('prepare')?.addEventListener('click',()=>prepare(row));
-  $('shopeeDirectPrint')?.addEventListener('click',()=>prepareShopee(row));
-  $('showProvidedDocument')?.addEventListener('click',()=>showDocument(row.key).catch(e=>notice(e.message,true)));
+    <div class="actions">${shippingAction}<button id="packing" ${busy||['cancelled','review'].includes(row.stage)?'disabled':''}>列印包貨明細</button>${row.documentReady?'<button id="showDocument" '+(busy?'disabled':'')+'>預覽正式貨運單</button>':''}${!remote&&row.platform==='EasyStore'?'<button id="provideDocument">提供貨運單給副機</button>':''}</div><div id="directShipmentOptions"></div>`;
+  $('prepare')?.addEventListener('click',()=>printOrder(row));
+  $('shopeeDirectPrint')?.addEventListener('click',()=>printOrder(row));
+  $('showProvidedDocument')?.addEventListener('click',()=>printOrder(row));
   $('provideDocument')?.addEventListener('click',()=>provideDocument(row));
   $('packing').addEventListener('click',()=>printPacking(row));
   $('showDocument')?.addEventListener('click',()=>showDocument(row.key).catch(e=>notice(e.message,true)));
@@ -242,14 +247,82 @@ function provideDocument(row){
 }
 async function refresh() {
   if(busy)return;
-  busy=true;$('refresh').disabled=true;renderDetail();notice('正在更新訂單…');
+  busy=true;$('refresh').disabled=true;$('refresh').textContent='更新中，請等待…';renderDetail();notice('');
   try {
+    await localMetadataTask;
     data=await api('/api/refresh',{days:ORDER_DAYS});
+    await refreshLocalMetadata();
     const errors=Object.values(data.errors);
     notice(errors.length?errors.join(' '):'',!!errors.length);
   }catch(e){notice(e.message,true);}
-  finally{busy=false;$('refresh').disabled=false;render();refreshLocalMetadata();}
+  finally{busy=false;$('refresh').disabled=false;$('refresh').textContent='更新讀取最新訂單';render();}
 }
+function directProgress(message){
+  directPrintStatus=/等待你/.test(message)?'請在下方確認出貨資料':'列印中，請等待…';
+  const buttons=$('detail').querySelectorAll('#prepare,#shopeeDirectPrint,#showProvidedDocument');
+  if(selected===directPrintKey)for(const button of buttons){button.textContent=directPrintStatus;button.disabled=true;}
+}
+async function printOrder(original,shipmentOptions={}){
+  if(busy)return;
+  if(original.stale||original.handlingChanged||['cancelled','review'].includes(original.stage)){
+    notice('這筆訂單需要先更新並核對，尚未送印。',true);return;
+  }
+  if(!window.YouziLocalPrint?.printDocument){notice('列印程式尚未載入，請重新整理頁面後再試。',true);return;}
+  busy=true;directPrintKey=original.key;directPrintStatus='正在取得貨運單，請等待…';
+  $('refresh').disabled=true;notice('');releaseExternalDocument();window.YouziLocalPrint.reset();renderDetail();
+  const own=documentGeneration;
+  const active=()=>own===documentGeneration&&(!remote||window.ShippingTransport.loggedIn());
+  let row=original,links,needsOptions=false;
+  try{
+    await localMetadataTask;
+    if(!active())return;
+    // Validate items before creating or retrieving a shipment.
+    ShippingModel.packingLabel(row);
+    if(ShippingModel.savedDocumentAvailable(row)){
+      links=await api('/api/document-link',{key:row.key});
+    }else if(row.platform==='EasyStore'&&row.channel==='蝦皮'){
+      if(!window.YouziShopeeBridge)throw Error('請在副機更新蝦皮取單助手。');
+      const result=await window.YouziShopeeBridge.getDocument(row,directProgress,{direct:true});
+      if(!active())return;
+      const current=data.orders.find(r=>r.key===row.key);
+      if(current===row)Object.assign(row,{tracking:result.tracking,canDownload:true,canCreate:false});
+      row={...row,tracking:result.tracking};
+      const url=URL.createObjectURL(new Blob([result.pdf],{type:'application/pdf'}));
+      externalDocumentUrls.push(url);links={label:url,print:url};
+    }else{
+      if(row.platform==='EasyStore'&&row.documentType!=='postal-address-v1')throw Error('這筆訂單尚未提供正式貨運單，請先在對應平台完成物流資料。');
+      if(!row.canCreate&&!row.canDownload)throw Error('這筆訂單尚未提供可列印的貨運單。');
+      await ShippingModel.obtainDocument(api,row,{...shipmentOptions,carrier:row.carrierCode||''},()=>directProgress('正在取得貨運單，請等待…'));
+      if(!active())return;
+      data=await api('/api/orders');
+      row=data.orders.find(r=>r.key===original.key);
+      if(!row)throw Error('訂單已更新，請重新選取後核對。');
+      links=await api('/api/document-link',{key:row.key});
+    }
+    if(!active())return;
+    directProgress('正在準備列印，請等待…');
+    await window.YouziLocalPrint.printDocument(row,links,()=>recordLocalSubmission(row),{isActive:active,onStatus:directProgress});
+  }catch(error){
+    needsOptions=row.platform==='Coupang'&&/出貨地址代碼|退貨地址代碼/.test(error.message);
+    notice(error.message,true);
+  }
+  finally{
+    if(own===documentGeneration)releaseExternalDocument();
+    busy=false;directPrintKey='';directPrintStatus='';$('refresh').disabled=false;render();
+    if(needsOptions&&selected===original.key)showDirectShippingOptions(original);
+  }
+}
+function showDirectShippingOptions(row){
+  const home=['TWL_HCT','TWL_KERRY'].includes(row.carrierCode);
+  const field=home?'outboundShippingPlaceCode':'returnCenterCode';
+  const label=home?'酷澎出貨地址代碼':'酷澎退貨地址代碼';
+  $('directShipmentOptions').innerHTML=`<form id="directShippingForm"><label class="option-row">${label}<input name="${field}" required ${home?'inputmode="numeric" pattern="[0-9]+"':''}></label><button class="primary" type="submit">確認資料並列印貨運單</button></form>`;
+  $('directShippingForm').addEventListener('submit',event=>{
+    event.preventDefault();if(busy)return;
+    printOrder(data.orders.find(r=>r.key===row.key)||row,{[field]:event.currentTarget.elements.namedItem(field).value});
+  });
+}
+
 async function prepare(row) {
   if(busy)return;
   // Reuse the same saved-document route as "預覽正式貨運單". The host still
@@ -408,7 +481,6 @@ async function printPacking(row) {
   window.print();
 }
 $('refresh').addEventListener('click',refresh);
-$('refreshLocalMetadata').addEventListener('click',refreshLocalMetadata);
 // Keep the older installed helper usable until the packing PC is updated.
 // Normalize its label, but never invoke its click handler automatically.
 if(typeof MutationObserver!=='undefined')new MutationObserver(()=>{
@@ -422,18 +494,18 @@ if(typeof MutationObserver!=='undefined')new MutationObserver(()=>{
     el.dataset.youziLegacyShopee='1';
     const label=ShippingModel.documentActionLabel(row||{});
     if(el.textContent!==label)el.textContent=label;
-    if(el.hidden!==!!modern)el.hidden=!!modern;
+    if(!el.hidden)el.hidden=true;
   }
-  const hide=helpers.length>0&&!modern;
+  const hide=false;
   if(fallback.hidden!==hide)fallback.hidden=hide;
 }).observe($('detail'),{childList:true,subtree:true,characterData:true});
 window.addEventListener('youzi-shopee-helper-ready',()=>renderDetail());
 $('documentDialog').addEventListener('close',()=>{releaseExternalDocument();window.YouziLocalPrint?.reset();});
-$('channels').addEventListener('click',e=>{const b=e.target.closest('[data-channel]');if(b){activeChannel=b.dataset.channel;render();}});
-$('logisticsTabs').addEventListener('click',e=>{const b=e.target.closest('[data-logistics]');if(b){activeLogistics=b.dataset.logistics;render();}});
-$('orders').addEventListener('click',e=>{const b=e.target.closest('[data-key]');if(b){selected=b.dataset.key;render();}});
-$('search').addEventListener('input',render);
-$('workTabs').addEventListener('click',e=>{const b=e.target.closest('[data-work]');if(b){activeWork=b.dataset.work;render();}});
+$('channels').addEventListener('click',e=>{if(directPrintKey)return;const b=e.target.closest('[data-channel]');if(b){activeChannel=b.dataset.channel;render();}});
+$('logisticsTabs').addEventListener('click',e=>{if(directPrintKey)return;const b=e.target.closest('[data-logistics]');if(b){activeLogistics=b.dataset.logistics;render();}});
+$('orders').addEventListener('click',e=>{if(directPrintKey)return;const b=e.target.closest('[data-key]');if(b){selected=b.dataset.key;render();}});
+$('search').addEventListener('input',()=>{if(!directPrintKey)render();});
+$('workTabs').addEventListener('click',e=>{if(directPrintKey)return;const b=e.target.closest('[data-work]');if(b){activeWork=b.dataset.work;render();}});
 $('detail').addEventListener('click',e=>{
   const button=e.target.closest('[data-image]');
   if(!button)return;
