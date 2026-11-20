@@ -54,13 +54,16 @@ def validate(data, footer):
                 tracking=clean(data.get('tracking', ''), 100))
 
 
-def build_pdf(data):
+def build_pdf(data, photo_regions=None):
     font()
     out = io.BytesIO()
     c = canvas.Canvas(out, pagesize=(100 * MM, 150 * MM))
     c.setTitle('柚子樂器包貨明細')
     count = (len(data['items']) + 2) // 3
     for page_index in range(count):
+        regions = []
+        if photo_regions is not None:
+            photo_regions.append(regions)
         # Landscape content on the printer's existing 100 x 150 mm stock.
         c.saveState()
         c.translate(100 * MM, 0)
@@ -108,6 +111,7 @@ def build_pdf(data):
                 scale = min(width / iw, photo_h / ih)
                 c.drawImage(image, x + (width-iw*scale)/2, top - photo_h + (photo_h-ih*scale)/2,
                             width=iw*scale, height=ih*scale, mask='auto')
+                regions.append((x, 100*MM-top, x+width, 100*MM-top+photo_h))
             else:
                 line('尚無商品圖片', x, top-photo_h/2, 8, width)
             text_y = top-photo_h-4*MM
@@ -122,7 +126,8 @@ def build_pdf(data):
 
 
 def prepend(job, result, data):
-    content, count = build_pdf(data)
+    photo_regions = []
+    content, count = build_pdf(data, photo_regions)
     shipping = result['pages']
     if shipping + count > 50:
         raise ValueError('整組單據超過 50 張，尚未送印。')
@@ -138,7 +143,14 @@ def prepend(job, result, data):
         for i, page in enumerate(pdf):
             bitmap = page.render(scale=203/72)
             try:
-                bitmap.to_pil().convert('L').convert('1').convert('RGB').save(
+                grey = bitmap.to_pil().rotate(-90, expand=True).convert('L')
+                # Solid text strokes for thermal printing; preserve photo shades
+                # with dithering only inside the image areas.
+                printed = grey.point(lambda p: 0 if p < 160 else 255).convert('RGB')
+                for rect in photo_regions[i]:
+                    box = tuple(round(p*203/72) for p in rect)
+                    printed.paste(grey.crop(box).convert('1').convert('RGB'), box)
+                printed.rotate(90, expand=True).save(
                     job/f'label-{i+1}-print.png', dpi=(203, 203))
             finally:
                 bitmap.close()
