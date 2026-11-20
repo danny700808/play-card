@@ -40,7 +40,7 @@ test('old private notes cannot override Google rescheduling in reminder checks',
 test('asset identifiers cannot escape owner storage namespace',()=>{
  for(const id of ['../other','x/y','','a'.repeat(129)])assert.equal(p.validId(id),false);assert.equal(p.validId('a-123'),true);
 });
-function fixture(){
+function fixture(googleItems=[]){
  const fs=require('node:fs'),vm=require('node:vm'),crypto=require('node:crypto'),rows=new Map();let serial=Promise.resolve();
  const snapshot=path=>({exists:rows.has(path),id:path.split('/').at(-1),ref:reference(path),data:()=>structuredClone(rows.get(path))});
  function reference(path){return {path,get:async()=>snapshot(path),set:async(data,opt)=>rows.set(path,{...(opt?.merge?rows.get(path):{}),...structuredClone(data)}),delete:async()=>rows.delete(path),collection:name=>collection(path+'/'+name)};}
@@ -50,7 +50,7 @@ function fixture(){
  const customRequire=name=>name==='firebase-admin'?fakeAdmin:name==='./storageRouting'?{}:require('node:module').createRequire(require.resolve('../functions/privateCalendar'))(name);
  const script=fs.readFileSync(require.resolve('../functions/privateCalendar'),'utf8');
  const calls=[];
- const fetch=async url=>{calls.push(url);return {ok:true,status:200,json:async()=>url.includes('calendarList')?{items:[{id:'shared',summary:'社團',accessRole:'reader'}]}:{items:[]}};};
+ const fetch=async url=>{calls.push(url);return {ok:true,status:200,json:async()=>url.includes('calendarList')?{items:[{id:'shared',summary:'社團',accessRole:'reader'}]}:{items:googleItems}};};
  vm.runInNewContext('(function(require,module,exports){'+script+'})',{fetch,URLSearchParams,AbortSignal,Buffer,console,process}).call(null,customRequire,mod,mod.exports);
  const base='privateCalendarUsers/'+crypto.createHash('sha256').update('owner').digest('hex');
  const run=(action,data={})=>mod.exports._test.api({auth:{uid:'owner',token:{email:'danny700808@gmail.com'}},data:{action,...data}});
@@ -81,4 +81,24 @@ test('multiple reminders validate, persist and use independent delivery identiti
  assert.equal(p.dueReminders([{...event,completed:true}],beforeHour).length,0);
  const old={...event,reminderOffsets:undefined,reminderMinutes:60};assert.equal(p.deliveryId(p.dueReminders([old],beforeHour)[0]),p.deliveryId(old));
  const x=fixture();await x.run('save',{id:'multi',revision:0,event:{...event,source:'local'}});assert.deepEqual(Array.from(x.rows.get(x.base+'/entries/multi').reminderOffsets),[60,120,4320]);
+});
+
+test('removing a private Google occurrence survives sync and stops its reminders',async()=>{
+ const x=fixture([{id:'event1',summary:'test',start:{dateTime:'2026-09-24T10:00:00+08:00'},end:{dateTime:'2026-09-24T11:00:00+08:00'}}]);
+ x.rows.set(x.base,{googleConnected:true,calendarIds:['shared']});
+ x.rows.set(x.base+'/secrets/google',{refreshToken:'test',accessToken:'test',expiresAt:Date.now()+3600000});
+ const range={start:'2026-09-24T00:00:00Z',end:'2026-09-25T00:00:00Z'};
+ const [event]=(await x.run('list',range)).events;
+ x.rows.set(x.base+'/entries/'+event.id,{source:'google',remind:true,revision:1});
+ await assert.rejects(x.run('removeEntry',event),/更新/);
+ await x.run('removeEntry',{...event,revision:1});
+ await x.run('removeEntry',{...event,revision:1});
+ assert.equal((await x.run('list',range)).events.length,0);
+ assert.equal(x.rows.get(x.base+'/entries/'+event.id).remind,false);
+});
+test('removing a local entry removes it from the agenda',async()=>{
+ const x=fixture(),event={source:'local',title:'test',start:'2026-09-24T10:00:00+08:00',end:'2026-09-24T11:00:00+08:00'};
+ await x.run('save',{id:'a',event});
+ await x.run('removeEntry',{id:'a',source:'local',revision:1});
+ assert.equal((await x.run('list',{start:'2026-09-24T00:00:00Z',end:'2026-09-25T00:00:00Z'})).events.length,0);
 });

@@ -65,7 +65,7 @@ async function events(uid,start,end){
    do{
     const q=new URLSearchParams({timeMin:start,timeMax:end,singleEvents:'true',maxResults:'2500',timeZone:'Asia/Taipei',...(pageToken?{pageToken}:{})});
     const data=await google(uid,'calendars/'+encodeURIComponent(c.id)+'/events?'+q);
-    for(const raw of data.items||[]){if(raw.status==='cancelled')continue;const row=googleEvent(raw,c),note=local.find(x=>x.id===row.id)||{};result.push({...row,note:note.note||'',assets:note.assets||[],completed:note.completed===true,remind:note.remind===true,reminderMinutes:note.reminderMinutes??10,reminderOffsets:reminderOffsets(note),reminderRevision:note.reminderRevision||0,revision:note.revision||0});}
+    for(const raw of data.items||[]){if(raw.status==='cancelled')continue;const row=googleEvent(raw,c),note=local.find(x=>x.id===row.id)||{};if(note.deleted)continue;result.push({...row,note:note.note||'',assets:note.assets||[],completed:note.completed===true,remind:note.remind===true,reminderMinutes:note.reminderMinutes??10,reminderOffsets:reminderOffsets(note),reminderRevision:note.reminderRevision||0,revision:note.revision||0});}
     pageToken=data.nextPageToken||'';
    }while(pageToken);
   }
@@ -146,6 +146,19 @@ async function api(request){
   if(data.googleId&&!text(data.etag))fail('缺少版本資訊，請重新整理。');
   const raw=await google(uid,'calendars/'+encodeURIComponent(c.id)+'/events'+(data.googleId?'/'+encodeURIComponent(data.googleId):''),{method:data.googleId?'PATCH':'POST',headers:data.googleId?{'If-Match':data.etag}:{},body:JSON.stringify(body)});
   return {event:googleEvent(raw,c)};
+ }
+ if(action==='removeEntry'){
+  if(!validId(data.id))fail('行程編號無效。');
+  const ref=p.collection('entries').doc(data.id);
+  const googleEntry=data.source==='google'&&text(data.calendarId)&&text(data.googleId)&&hash(data.calendarId+'|'+data.googleId)===data.id;
+  await db.runTransaction(async tx=>{
+   const row=(await tx.get(ref)).data();
+   if(row?.deleted)return;
+   if(googleEntry ? row&&row.source!=='google' : data.source!=='local'||row?.source!=='local')fail('找不到這筆私人行程。','not-found');
+   if(Number(data.revision)!==Number(row?.revision||0))fail('行程已更新，請重新整理後再刪除。','aborted');
+   tx.set(ref,{source:data.source,deleted:true,remind:false,revision:Number(row?.revision||0)+1,updatedAt:Date.now()},{merge:true});
+  });
+  return {ok:true};
  }
  if(action==='archive'){
   if(!validId(data.id))fail('記事編號無效。');const ref=p.collection('entries').doc(data.id);

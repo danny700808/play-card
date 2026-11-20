@@ -152,7 +152,7 @@
   if(row&&aligned)for(let h=a.getHours();h<(b.getTime()===midnight.getTime()?24:b.getHours());h++)S.hours.add(h);
   $('preciseUse').checked=!!row&&!aligned;renderHours();$('save').textContent='儲存行程';
   $('googleLink').hidden=row?.source!=='google';$('googleLink').onclick=()=>showGooglePreview(row.id);
-  $('archive').hidden=!row||row.source!=='local';$('assets').replaceChildren();assetsRender();$('editor').showModal();
+  $('archive').hidden=!row||!['local','google'].includes(row.source);$('assets').replaceChildren();assetsRender();$('editor').showModal();
  }
  function workModeChanged(){const shared=!!$('workAssignee').value;$('destinationLabel').hidden=shared||S.current?.source==='google';$('completedLabel').hidden=shared;$('handoffNoteLabel').hidden=!shared;$('remindLabel').textContent=shared?'提醒負責人':'用 LINE 提醒我';$('save').textContent=shared?'儲存並交辦':'儲存行程';}
  $('workAssignee').onchange=workModeChanged;
@@ -200,7 +200,18 @@
   }catch(e){if(S.batch){const done=S.batch.filter(j=>j.done).length;$('save').textContent='重試未完成的部分';throw Error('已完成 '+done+' / '+S.batch.length+' 段。'+e.message+' 按重試繼續。');}editorLock(false);throw e;
   }finally{S.saving=false;$('save').disabled=false;}
  },'formStatus');};
- $('archive').onclick=()=>safely(async()=>{await api('archive',{id:S.current.id});$('editor').close();cleanup();await refresh();},'formStatus');
+ $('archive').onclick=()=>safely(async()=>{
+  const row=S.current;
+  if(!row||S.saving||S.batch)return;
+  const scope=row.source==='google'?'Google 行事曆仍會保留原行程。':'';
+  if(!window.confirm('從私人行事曆刪除「'+row.title+'」？尚未送出的私人 LINE 提醒也會停止。'+scope))return;
+  S.saving=true;editorLock(true);$('save').disabled=true;
+  try{
+   await api('removeEntry',{id:row.id,source:row.source,calendarId:row.calendarId||'',googleId:row.googleId||'',revision:row.revision||0});
+   S.events=S.events.filter(event=>event.id!==row.id);$('editor').close();cleanup();render();
+   message('已從私人行事曆刪除。');await safely(refresh);
+  }finally{editorLock(false);$('save').disabled=false;S.saving=false;}
+ },'formStatus');
  function settingsRender(){const s=S.status;$('googleStatus').textContent=S.googleConnectionError?'Google 連線需要重新授權，請按下方按鈕。':s.googleConnected?'已連接 '+s.googleEmail:s.googleConfigured?'已設定 Google 串接，請按連接完成帳號授權。':'Google 串接程式已就緒，尚需完成下方的首次 OAuth 設定。';$('connectGoogle').textContent=s.googleConnected?'重新授權 Google':'連接 Google 行事曆';$('disconnectGoogle').hidden=!s.googleConnected;$('callback').value=s.callback||'';$('oauthSetup').open=!s.googleConfigured;
   $('calendarChoices').innerHTML=S.calendars.map(c=>'<label class="check"><input type="checkbox" value="'+esc(c.id)+'" '+((s.calendarIds||[]).includes(c.id)?'checked':'')+'>'+esc(c.summary)+' · '+(['owner','writer'].includes(c.accessRole)?'可編輯':'唯讀')+'</label>').join('');$('saveCalendars').hidden=!s.googleConnected;
   $('lineTarget').innerHTML=s.targets?.length?s.targets.map(t=>'<option value="'+esc(t.key)+'">'+esc(t.name)+' ('+esc(t.masked)+')</option>').join(''):'<option value="">尚未找到自己的 LINE 綁定</option>';if(s.targetKey)$('lineTarget').value=s.targetKey;$('lineEnabled').checked=!!s.lineEnabled;
