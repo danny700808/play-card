@@ -23,7 +23,7 @@ class RemoteBoundaryTests(unittest.TestCase):
         self.w.mark_handled.assert_not_called()
 
     def test_snapshot_strips_unrelated_fields_and_old_orders(self):
-        self.w.snapshot.return_value["orders"].append({"key":"old","date":"2020-01-01","items":[]})
+        self.w.snapshot.return_value["orders"].append({"key":"old","date":"2020-01-01","items":[],"handled":True,"handlingAction":"printed","handledAt":"2020-01-01T00:00:00+08:00"})
         result=packing_snapshot(self.w)
         self.assertEqual(len(result["orders"]),1)
         self.assertNotIn("config",result["orders"][0])
@@ -59,12 +59,12 @@ class RemoteBoundaryTests(unittest.TestCase):
         self.assertNotIn("settlementAmount", row)
         self.assertNotIn("raw", row)
 
-    def test_three_day_window_uses_taiwan_day_for_utc_orders(self):
+    def test_old_pending_survives_calendar_boundary(self):
         first_day = (datetime.now(TZ)-timedelta(days=2)).replace(hour=0, minute=30, second=0)
         self.row["date"] = first_day.astimezone(timezone.utc).isoformat()
         self.assertEqual(len(packing_snapshot(self.w)["orders"]), 1)
         self.row["date"] = (first_day-timedelta(hours=1)).astimezone(timezone.utc).isoformat()
-        self.assertEqual(packing_snapshot(self.w)["orders"], [])
+        self.assertEqual(len(packing_snapshot(self.w)["orders"]), 1)
 
     def test_reprint_reuses_document_without_creating_shipment(self):
         self.w.document.return_value=(b"%PDF-test","application/pdf")
@@ -110,5 +110,6 @@ class ProvidedPdfTests(unittest.TestCase):
 
 if __name__=="__main__":
     unittest.main()
+
 
 

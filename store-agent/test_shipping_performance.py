@@ -103,7 +103,7 @@ class CoupangReadTests(unittest.TestCase):
             peak = 0
             finished = []
             pages = []
-            statuses = ['ACCEPT', 'INSTRUCT', 'DEPARTURE', 'DELIVERING', 'FINAL_DELIVERY', 'NONE_TRACKING']
+            statuses = ['ACCEPT', 'INSTRUCT', 'DEPARTURE']
             def request(cfg, method, path, params):
                 nonlocal active, peak
                 self.assertEqual(method, 'GET')
@@ -128,12 +128,11 @@ class CoupangReadTests(unittest.TestCase):
                 return [], False, ['incomplete']
             with patch('shipping_core.source.coupang_request', side_effect=request), \
                  patch('shipping_core.source.coupang_orders_from_payload', side_effect=extract), \
-                 patch('shipping_core.source.fetch_coupang_return_rows', side_effect=claims), \
-                 patch('shipping_core.normalize_cp', side_effect=lambda row, **kw: {**row, **kw}):
+                 patch('shipping_core.source.fetch_coupang_return_rows', side_effect=claims):
                 rows = work.read_cp(datetime.now(TZ), datetime.now(TZ))
             self.assertEqual(peak, 2)
-            self.assertEqual(rows[0]['status'], 'NONE_TRACKING')
-            self.assertFalse(rows[0]['claims_checked'])
+            self.assertEqual(rows[0]['status'], 'DEPARTURE')
+            self.assertEqual(rows[0]['paidAmountStatus'], 'unknown')
             self.assertIn(('ACCEPT', 'page2'), pages)
 
     def test_failed_status_does_not_return_partial_success(self):
@@ -150,3 +149,4 @@ class CoupangReadTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

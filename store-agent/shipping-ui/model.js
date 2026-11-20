@@ -174,6 +174,19 @@
     isHandled(row){
       return !!row.handled&&!['acquired','arranged'].includes(row.handlingAction);
     },
+    visibleInQueue(row,now=Date.now()){
+      if(['shipped','cancelled'].includes(row.stage))return false;
+      if(!model.isHandled(row)||row.handlingAction==='reopen')return true;
+      if(model.deadlineExpired(row,now))return false;
+      const completed=Date.parse(row.handledAt);
+      return Number.isFinite(completed)&&now-completed<86400000;
+    },
+    deadlineExpired(row,now=Date.now()){
+      const parsed=model.parseShippingDeadline(String(row.shippingDeadlineText||''),row.shippingDeadlineVerifiedAt,/EasyStore.*蝦皮/.test(row.shippingDeadlineSource||''));
+      const at=Date.parse(row.shippingDeadlineAt||parsed?.at||''),precision=row.shippingDeadlinePrecision||parsed?.precision;
+      if(!row.shippingDeadlineSource||!Number.isFinite(at)||!['date','minute'].includes(precision))return false;
+      return now>=(precision==='date'?Math.floor((at+28800000)/86400000)*86400000-28800000+86400000:at);
+    },
     status(row){
       if(row.handlingChanged)return '資料有變，需核對';
       if(row.handled)return labels[row.handlingAction]||'已處理';
@@ -184,5 +197,6 @@
   if(typeof module!=='undefined')module.exports=model;
   else root.ShippingModel=model;
 })(typeof window!=='undefined'?window:this);
+
 
 

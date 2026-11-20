@@ -131,7 +131,7 @@ class PlatformPayments(unittest.TestCase):
             root = Path(temp)
             (root / "config.json").write_text(json.dumps({"coupang":{"vendor_id":"TEST"}}))
             w = Workbench(root / "config.json", root / "data")
-            raw = {**self.cp(), "status":"DELIVERING"}
+            raw = {**self.cp(), "status":"INSTRUCT"}
             with patch("shipping_core.source.coupang_request", return_value={}) as request, \
                  patch("shipping_core.source.coupang_orders_from_payload", return_value=([raw], "")), \
                  patch("shipping_core.source.fetch_coupang_return_rows") as claims:
@@ -146,3 +146,4 @@ class PlatformPayments(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

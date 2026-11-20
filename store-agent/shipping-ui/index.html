@@ -11,7 +11,7 @@
 </head>
 <body>
   <main>
-    <header><div class="page-title"><h1>出貨工作台</h1><div class="date-actions"><span class="date-range">近 3 天</span>
+    <header><div class="page-title"><h1>出貨工作台</h1><div class="date-actions"><span class="date-range">待包貨 · 已處理保留 24 小時</span>
       <button id="refresh" class="primary compact-refresh" aria-live="polite">更新讀取最新訂單</button></div></div></header>
     <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
     <section class="workspace">
@@ -22,6 +22,14 @@
         <div class="filters"><input id="search" type="search" placeholder="搜尋訂單、商品、SKU、收件人" aria-label="搜尋訂單">
         </div>
         <div class="list-caption"><span id="resultCount"></span><span id="syncTime"></span></div>
+        <div class="batch-controls" aria-label="批次列印">
+          <label class="select-visible"><input id="selectVisible" type="checkbox">全選目前清單</label>
+          <button id="clearSelection" type="button">清除勾選</button>
+          <select id="batchMode" aria-label="批次列印方式"><option value="label">只印貨運單</option><option value="packing">包貨明細＋貨運單</option></select>
+          <button id="batchPrint" type="button" class="primary" disabled>批次列印（0 筆）</button>
+          <button id="batchStop" type="button" hidden>本筆完成後停止</button>
+          <p id="batchStatus" role="status" aria-live="polite"></p>
+        </div>
         <div id="orders" class="order-list"></div>
       </div>
       <section id="detail" class="detail-panel"><div class="empty">選擇訂單查看包貨內容</div></section>
@@ -61,5 +69,6 @@
   <section id="packingPrint" aria-label="包貨明細列印"></section>
 </body>
 </html>
+
 
 

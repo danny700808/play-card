@@ -65,7 +65,7 @@ class HandlingTests(unittest.TestCase):
 
     def test_platform_printed_and_manual_reopen(self):
         self.row["platformPrinted"] = True
-        self.assertTrue(self.row_state()["handled"])
+        self.assertEqual(self.w.snapshot()["orders"], [])
         self.w.mark_handled(self.row["key"], "reopen")
         self.assertFalse(self.row_state()["handled"])
 
@@ -77,11 +77,7 @@ class HandlingTests(unittest.TestCase):
                     self.w.mark_handled(self.row["key"], "reopen")
                     self.w.mark_handled(self.row["key"], action)
                     self.row["stage"] = stage
-                    actual = self.row_state()
-                    self.assertTrue(actual["handled"])
-                    self.assertEqual(actual["handlingAction"], stage)
-                    self.assertEqual(actual["handlingSource"], "平台")
-                    self.assertEqual(actual["handledAt"], "")
+                    self.assertEqual(self.w.snapshot()["orders"], [])
                     with self.w.connect() as db:
                         saved = db.execute("SELECT action FROM handling WHERE order_key=?",
                                            (self.row["key"],)).fetchone()
@@ -132,3 +128,4 @@ class ImageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

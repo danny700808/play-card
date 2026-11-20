@@ -12,6 +12,7 @@ import time
 
 import requests
 from shipping_core import ShippingError, datetime, TZ, timedelta
+from shipping_active_queue import POLICY, public_visible
 
 ENDPOINT = "https://asia-east1-youzi-c1b74.cloudfunctions.net/shippingDeskApi"
 KEY = re.compile(r"^(?:(?:EasyStore|Coupang):\d{1,30}|MOMO:\d{1,30}:\d{1,6}(?:,\d{1,6}){0,99})$")
@@ -29,24 +30,12 @@ def packing_snapshot(workbench):
         "payableAmount paidAmountSource paidAmountScope paidScopeKey invoiceBuyerAmount "
         "shippingDeadlineText shippingDeadlineAt shippingDeadlinePrecision shippingDeadlineSource shippingDeadlineVerifiedAt shippingDeadlineNote"
     ).split()
-    start = (datetime.now(TZ) - timedelta(days=2)).strftime("%Y-%m-%d")
     rows = []
     for row in payload["orders"]:
-        # MOMO's response omits the order date. Its OrderQuery already restricts
-        # OrderDate to the requested three days; do not discard all MOMO rows.
-        if row.get("date"):
-            try:
-                ordered = datetime.fromisoformat(row["date"].replace("Z", "+00:00"))
-                if ordered.tzinfo is None:
-                    ordered = ordered.replace(tzinfo=TZ)
-                if ordered.astimezone(TZ).strftime("%Y-%m-%d") < start:
-                    continue
-            except (ValueError, TypeError):
-                continue
-        if not row.get("date") and row.get("platform") != "MOMO":
+        if not public_visible(row):
             continue
         rows.append({k: row[k] for k in fields if k in row})
-    return {"orders": rows, "updated": payload.get("updated"), "days": 3,
+    return {"orders": rows, "updated": payload.get("updated"), "days": 3, "queuePolicy":POLICY,
             "errors": payload.get("errors", {}), "connectors": []}
 
 
@@ -56,7 +45,7 @@ def execute(workbench, command, body):
         return packing_snapshot(workbench), None
     key = body.get("key", "")
     if not KEY.fullmatch(key) or not any(r["key"] == key for r in packing_snapshot(workbench)["orders"]):
-        raise ShippingError("此訂單不在近 3 天包貨清單內，請重新讀取。")
+        raise ShippingError("此訂單已不在包貨工作清單內，請重新讀取。")
     if command in ("preview", "process"):
         options = body.get("options") or {}
         if any(k not in ("carrier", "outboundShippingPlaceCode", "returnCenterCode") for k in options):
@@ -73,6 +62,7 @@ def execute(workbench, command, body):
         workbench.mark_handled(key, "print_requested", "包貨窗口")
         return {"ok": True}, None
     if command == "document-link":
+        workbench.revalidate_queued_document(key)
         files = {}
         row = next(r for r in workbench.snapshot()["orders"] if r["key"] == key)
         kinds = ["label"] + (["combined"] if "combined" in row.get("documentKinds", []) else [])
@@ -181,4 +171,5 @@ class RemoteRelay:
         thread = threading.Thread(target=self.run, name="packing-relay", daemon=True)
         thread.start()
         return thread
+
 

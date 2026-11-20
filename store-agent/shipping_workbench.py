@@ -143,6 +143,7 @@ def make_handler(workbench, port):
                     content = base64.b64decode(body["base64"], validate=True)
                     return self.send(workbench.provide_document(body["key"], content, body["binding"]))
                 if self.path == "/api/document-link":
+                    workbench.revalidate_queued_document(body["key"])
                     workbench.document(body["key"])
                     links = {kind: document_link(body["key"], kind) for kind in ("label", "combined")}
                     for kind in ("preview", "print"):
@@ -215,3 +216,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

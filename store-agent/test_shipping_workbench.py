@@ -184,7 +184,10 @@ class ShippingTests(unittest.TestCase):
             changed=copy.deepcopy(raw);changed["listItem"][0].update(changes)
             actual=normalize_momo(changed)[0]
             self.w.rows[row["key"]]=actual
-            self.assertFalse(self.w.snapshot()["orders"][0]["documentReady"])
+            if actual["stage"]=="cancelled":
+                self.assertEqual(self.w.snapshot()["orders"], [])
+            else:
+                self.assertFalse(self.w.snapshot()["orders"][0]["documentReady"])
             with self.assertRaises(ShippingError):
                 self.w.document(row["key"])
 
@@ -194,7 +197,7 @@ class ShippingTests(unittest.TestCase):
             self.w.snapshot()
             call.assert_not_called()
 
-    def test_recent_orders_include_three_taiwan_calendar_days(self):
+    def test_bootstrap_three_days_then_incremental_refresh(self):
         class Clock(datetime):
             @classmethod
             def now(cls, tz=None):
@@ -209,7 +212,7 @@ class ShippingTests(unittest.TestCase):
                 self.assertEqual(snapshot["days"], 3)
                 for reader in (es, momo, cp_read):
                     start, end = reader.call_args.args
-                    self.assertEqual(start.isoformat(), "2026-10-18T00:00:00+08:00")
+                    self.assertEqual(start.isoformat(), "2026-10-19T22:15:00+08:00" if options else "2026-10-18T00:00:00+08:00")
                     self.assertEqual(end.isoformat(), "2026-10-20T00:15:00+08:00")
 
     def test_changed_address_invalidates_review(self):
@@ -298,3 +301,4 @@ class ShippingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

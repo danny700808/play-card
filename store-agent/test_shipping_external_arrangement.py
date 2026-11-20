@@ -80,7 +80,10 @@ class ExternalArrangementTests(unittest.TestCase):
         for row in cases:
             with self.subTest(status=row['status'], stage=row['stage'], tracking=row['tracking']):
                 self.w.rows = {self.key: row}
-                self.assertNotEqual(self.w.snapshot()['orders'][0]['handlingAction'], 'arranged')
+                if row['stage']=='cancelled':
+                    self.assertEqual(self.w.snapshot()['orders'], [])
+                else:
+                    self.assertNotEqual(self.w.snapshot()['orders'][0]['handlingAction'], 'arranged')
         self.w.rows = {self.key: self.row}
         self.w.errors['Coupang'] = 'read failed'
         stale = self.w.snapshot()['orders'][0]
@@ -113,3 +116,4 @@ class ExternalArrangementTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

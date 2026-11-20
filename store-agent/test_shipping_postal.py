@@ -41,6 +41,9 @@ class PostalTests(unittest.TestCase):
             reopened=Workbench(root/'config.json',root/'data');reopened.rows[row['key']]=row
             result=reopened.snapshot()['orders'][0]
             self.assertTrue(result['handled']);self.assertEqual(result['printCount'],1)
+            self.assertTrue(result['stale'])
+            with patch.object(reopened,'read_es',return_value=[]), patch.object(reopened,'read_momo',return_value=[]), patch.object(reopened,'read_cp',return_value=[]), patch.object(reopened,'refresh_images'):
+                reopened.refresh()
             self.assertEqual(original,reopened.document(row['key'])[0])
 
     def test_checkout_method_is_preserved(self):
@@ -91,3 +94,4 @@ class PostalTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+

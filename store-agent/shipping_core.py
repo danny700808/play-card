@@ -27,6 +27,7 @@ from shipping_deadlines import deadline_fields
 from shipping_momo_deadlines import lookup as lookup_momo_deadlines
 from shipping_es_delivery import selected_delivery
 from shipping_payments import easystore_payment, coupang_payment, momo_payment
+from shipping_active_queue import POLICY, pending as queue_pending, visible as queue_visible, parsed_time, expired as queue_expired
 
 TZ = timezone(timedelta(hours=8))
 CARRIERS = {"TWL_HCT": "新竹物流", "TWL_KERRY": "嘉里大榮",
@@ -287,6 +288,59 @@ class Workbench:
                 source TEXT NOT NULL, updated TEXT NOT NULL, print_count INTEGER NOT NULL DEFAULT 0)""")
             db.execute("""CREATE TABLE IF NOT EXISTS product_images (
                 sku TEXT PRIMARY KEY, payload TEXT NOT NULL, updated TEXT NOT NULL)""")
+            db.execute('CREATE TABLE IF NOT EXISTS packing_dismissals (order_key TEXT PRIMARY KEY, updated TEXT NOT NULL)')
+        self.queue_path = self.data_dir / 'packing-active-queue.json'
+        self.refresh_cursors = {}
+        self.refresh_pending = {}
+        self.refresh_frozen = {}
+        if self.queue_path.exists():
+            saved = json.loads(self.queue_path.read_text(encoding='utf-8'))
+            if saved.get('version') != POLICY or not isinstance(saved.get('rows'), list):
+                raise ShippingError('包貨工作清單快取格式不符，請保留檔案並檢查主機。')
+            self.rows = {r['key']:r for r in saved['rows']}
+            self.refresh_cursors = saved.get('cursors', {})
+            self.errors = {r['platform']:'主機重啟後等待重新核對訂單。' for r in self.rows.values()}
+
+    def queue_handling(self, rows):
+        keys = list({r['key'] for r in rows})
+        records, dismissed = {}, set()
+        with self.connect() as db:
+            for offset in range(0, len(keys), 400):
+                group = keys[offset:offset+400]
+                records.update({h['order_key']:dict(h) for h in db.execute(
+                    'SELECT * FROM handling WHERE order_key IN ('+','.join('?' for _ in group)+')', group)})
+                dismissed.update(h['order_key'] for h in db.execute(
+                    'SELECT order_key FROM packing_dismissals WHERE order_key IN ('+','.join('?' for _ in group)+')', group))
+        valid = {r['key']:records[r['key']] for r in rows if r['key'] in records
+                 and records[r['key']]['binding'] == self.handling_binding(r)}
+        valid.update({key:{'dismissed':True} for key in dismissed})
+        return valid
+
+    def queue_rows(self, rows, pending_only=False):
+        records = self.queue_handling(rows)
+        predicate = queue_pending if pending_only else queue_visible
+        return [r for r in rows if predicate(r, records.get(r['key'])) and (not pending_only or not queue_expired(r))]
+
+    def queue_candidates(self, rows):
+        candidates = []
+        for row in rows:
+            old = self.rows.get(row['key'])
+            if old and self.handling_binding(old) == self.handling_binding(row):
+                row = self.preserve_queue_deadline(row)
+            candidates.append(self.refresh_frozen.get(row['key'], row))
+        return self.queue_rows(candidates)
+
+    def save_queue(self):
+        # Caller holds self.lock. Never delete shipment reservations or receipts.
+        visible = self.queue_rows(list(self.rows.values()))
+        self.rows = {r['key']:r for r in visible}
+        temp = self.queue_path.with_suffix('.tmp')
+        temp.write_text(json.dumps({'version':POLICY, 'rows':visible, 'cursors':self.refresh_cursors},
+                                   ensure_ascii=False), encoding='utf-8')
+        temp.replace(self.queue_path)
+
+    def pending_before_refresh(self, platform):
+        return self.refresh_pending.get(platform, [])
 
     @staticmethod
     def handling_binding(row):
@@ -317,12 +371,15 @@ class Workbench:
                 saved_time = old["updated"] if saved_action != action else now()
                 db.execute("INSERT OR REPLACE INTO handling VALUES (?,?,?,?,?,?)",
                            (key, saved_action, self.handling_binding(row), saved_source, saved_time, count))
+                if action == 'processed' and queue_expired(row):
+                    db.execute('INSERT OR REPLACE INTO packing_dismissals VALUES (?,?)', (key, now()))
             self.event(key, "handling-" + action)
+            self.save_queue()
         return {"ok": True}
 
     def refresh_images(self):
         with self.lock:
-            skus = {i["sku"] for row in self.rows.values() for i in row["items"]
+            skus = {i["sku"] for row in self.queue_rows(list(self.rows.values()), pending_only=True) for i in row["items"]
                     if i["sku"] and not i.get("image")}
         cfg = self.config.get("easystore") or {}
         if not cfg.get("access_token"):
@@ -345,7 +402,7 @@ class Workbench:
         with ThreadPoolExecutor(max_workers=4) as pool:
             images = dict(pool.map(lookup, sorted(skus)))
         with self.lock:
-            self.images = images
+            self.images.update(images)
 
     @contextmanager
     def connect(self):
@@ -410,11 +467,21 @@ class Workbench:
                 raw_orders[row["key"]] = order
                 rows.append(row)
             if len(orders) < 100 or (payload.get("page_count") and page >= int(payload["page_count"])):
-                return self.enrich_es_delivery(rows, raw_orders, observations)
+                for old in self.pending_before_refresh('EasyStore'):
+                    if old['key'] in raw_orders:
+                        continue
+                    payload = source.es_request('GET', cfg['store_url'].rstrip('/')+'/api/3.0/orders/'+old['externalId']+'.json',
+                                                cfg['access_token'], timeout=30)
+                    raw = payload.get('order')
+                    if not isinstance(raw, dict) or text(raw.get('id')) != old['externalId']:
+                        raise ShippingError('未處理訂單尚未完整核對，已保留原清單。')
+                    raw_orders[old['key']] = raw
+                    rows.append(normalize_es(raw))
+                return self.enrich_es_delivery(self.queue_candidates(rows), raw_orders, observations)
         raise ShippingError("EasyStore 超過 50 頁，未完整讀取。")
 
     def enrich_es_delivery(self, rows, raw_orders, observations):
-        missing = [r for r in rows if r["channel"] == "蝦皮"
+        missing = [r for r in self.queue_rows(rows, pending_only=True) if r["channel"] == "蝦皮"
                    and r["stage"] not in ("cancelled", "shipped")]
         # Every refresh requests live screen evidence, even if an older
         # observation exists. Identifiers only cross the loopback bridge.
@@ -486,11 +553,16 @@ class Workbench:
             for o in orders:
                 rows.extend(normalize_momo(o))
             if len(orders) < 100:
-                return self.enrich_momo_deadlines(rows, start.date())
+                seen = {r['orderNo'] for r in rows}
+                for number in dict.fromkeys(r['orderNo'] for r in self.pending_before_refresh('MOMO')):
+                    if number not in seen:
+                        rows.extend(self.momo_order_rows(number))
+                return self.enrich_momo_deadlines(self.queue_candidates(rows), start.date())
         raise ShippingError("MOMO 超過 30 頁，未完整讀取。")
 
     def enrich_momo_deadlines(self, rows, start):
-        targets = {r['orderNo'] for r in rows if r['stage'] not in ('cancelled', 'shipped')}
+        pending_keys = {r['key'] for r in self.queue_rows(rows, pending_only=True)}
+        targets = {r['orderNo'] for r in rows if r['key'] in pending_keys}
         if not targets:
             return rows
         expires = time.monotonic() + 40
@@ -527,7 +599,7 @@ class Workbench:
                 row.update(matches[row['orderNo']])
             elif row['orderNo'] in targets:
                 row['shippingDeadlineNote'] = 'MOMO 尚未回傳可核對的最晚出貨日期；請核對官方後台。'
-        missing = [r for r in rows if r['orderNo'] in targets and not r.get('shippingDeadlineAt')]
+        missing = [r for r in rows if r['key'] in pending_keys and not r.get('shippingDeadlineAt')]
         found, error = self.delivery_bridge.read([
             {**{k:r[k] for k in ('key','externalId','orderNo')},
              'orderSeqs':[i['id'] for i in r['items']]} for r in missing], kind='momo')
@@ -571,18 +643,32 @@ class Workbench:
                 raise ShippingError("酷澎超過 30 頁，未完整讀取。")
             return orders_for_status
         rows = {}
-        statuses = ("ACCEPT", "INSTRUCT", "DEPARTURE", "DELIVERING", "FINAL_DELIVERY", "NONE_TRACKING")
+        statuses = ("ACCEPT", "INSTRUCT", "DEPARTURE")
         # Only independent read queries overlap. Preserve status precedence,
         # sequential pagination, and the subsequent return/cancellation checks.
         with ThreadPoolExecutor(max_workers=2) as pool:
             for orders in pool.map(read_status, statuses):
                 for o in orders:
                     rows[text(o["shipmentBoxId"])] = o
+        for old in self.pending_before_refresh('Coupang'):
+            if old['packageId'] not in rows:
+                payload = source.coupang_request(cfg, 'GET', path+'/'+old['packageId'])
+                raw = payload.get('data')
+                if not isinstance(raw, dict) or text(raw.get('shipmentBoxId')) != old['packageId']:
+                    raise ShippingError('未處理包裹尚未完整核對，已保留原清單。')
+                rows[old['packageId']] = raw
+        candidates = self.queue_candidates([normalize_cp(o) for o in rows.values()])
+        working = {r['key'] for r in self.queue_rows(candidates, pending_only=True)}
+        rows = {key:o for key,o in rows.items() if 'Coupang:'+key in working}
+        if not rows:
+            return []
         # Returns are a separate official API; order sheets alone can retain the
         # original payment while a refund is pending. Failure must not confirm it.
         try:
+            claim_dates = [parsed_time(o.get('orderedAt')) for o in rows.values()]
+            claims_start = min([start]+[d for d in claim_dates if d])
             claims, complete, _errors = source.fetch_coupang_return_rows(
-                cfg, start.isoformat(), end.isoformat(), 30, 50)
+                cfg, claims_start.isoformat(), end.isoformat(), 30, 50)
         except Exception:
             claims, complete = [], False
         claimed_orders = {text(c.get("訂單ID")) for c in claims}
@@ -603,16 +689,37 @@ class Workbench:
             days = max(1, min(3, int(days)))
             end = datetime.now(TZ)
             start = (end-timedelta(days=days-1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            with self.lock:
+                self.save_queue()
+                pending = self.queue_rows(list(self.rows.values()), pending_only=True)
+                self.refresh_pending = {platform:[r for r in pending if r['platform']==platform]
+                                        for platform in ('EasyStore','MOMO','Coupang')}
+                active_keys = {r['key'] for r in pending}
+                self.refresh_frozen = {r['key']:r for r in self.rows.values() if r['key'] not in active_keys}
+            def discovery_start(platform):
+                cursor = parsed_time(self.refresh_cursors.get(platform))
+                # Bootstrap once, then overlap only the last successful read.
+                # Failed/offline refreshes never advance this cursor.
+                if not cursor or cursor > end:
+                    return start
+                return cursor - timedelta(hours=2)
             with ThreadPoolExecutor(max_workers=3) as pool:
-                futures = {pool.submit(fn, start, end): name for name, fn in
+                futures = {pool.submit(fn, discovery_start(name), end): name for name, fn in
                            (("EasyStore", self.read_es), ("MOMO", self.read_momo), ("Coupang", self.read_cp))}
                 for future in as_completed(futures):
                     name = futures[future]
                     try:
                         rows = future.result()
                         with self.lock:
+                            pending_keys = {r['key'] for r in self.refresh_pending[name]}
+                            # Retain recent printed rows locally, without re-reading
+                            # their deadlines, photos or individual platform records.
+                            retained = [r for r in self.rows.values() if r['platform']==name and r['key'] not in pending_keys]
+                            merged = {r['key']:r for r in retained}
+                            merged.update({r['key']:r for r in rows})
                             self.rows = {k: v for k, v in self.rows.items() if v["platform"] != name}
-                            self.rows.update({r["key"]: r for r in rows})
+                            self.rows.update({r['key']:r for r in self.queue_rows(list(merged.values()))})
+                            self.refresh_cursors[name] = end.isoformat()
                             self.errors.pop(name, None)
                     except Exception as e:
                         # Never emit upstream exception text: it can contain customer data/credentials.
@@ -622,6 +729,7 @@ class Workbench:
             with self.lock:
                 self.updated = now()
                 self.days = days
+                self.save_queue()
             return self.snapshot()
         finally:
             self.refresh_lock.release()
@@ -629,7 +737,7 @@ class Workbench:
     def snapshot(self):
         with self.lock:
             rows = []
-            for original in self.rows.values():
+            for original in self.queue_rows(list(self.rows.values())):
                 row = dict(original)
                 job = self.job(row["key"])
                 row["jobState"] = job.get("state", "")
@@ -673,7 +781,7 @@ class Workbench:
                 row["items"] = [dict(i, **self.images.get(i["sku"], {})) if not i.get("image")
                                 else dict(i) for i in row["items"]]
                 rows.append(row)
-            return {"orders": rows, "errors": self.errors, "updated": self.updated, "days": self.days,
+            return {"orders": rows, "errors": self.errors, "updated": self.updated, "days": self.days, "queuePolicy":POLICY,
                     "connectors": [
                         {"name": "酷澎", "status": "已接備貨與取單", "detail": "付款完成可確認備貨後取單；新出貨待實單驗收。"},
                         {"name": "MOMO", "status": "既有貨運單已驗證", "detail": "新出貨待實單驗收；部分 PDF 需輸入供應商統編。"},
@@ -692,7 +800,28 @@ class Workbench:
         raw = payload.get("data")
         if not isinstance(raw, dict) or text(raw.get("shipmentBoxId")) != box:
             raise ShippingError("未取得此包裹的即時訂單資料，已停止操作。")
-        return normalize_cp(raw)
+        return self.preserve_queue_deadline(normalize_cp(raw))
+
+    def preserve_queue_deadline(self, row):
+        old = self.rows.get(row['key'], {})
+        if not row.get('shippingDeadlineAt') and old.get('shippingDeadlineAt'):
+            for field in ('shippingDeadlineText','shippingDeadlineAt','shippingDeadlinePrecision',
+                          'shippingDeadlineSource','shippingDeadlineVerifiedAt','shippingDeadlineNote'):
+                if field in old:
+                    row[field] = old[field]
+        return row
+
+    def revalidate_queued_document(self, key):
+        # Expired exceptions are deliberately not polled in the background.
+        # Check the exact order on demand before handing out a cached label.
+        with self.lock:
+            old = self.rows.get(key)
+            if not old or not queue_expired(old):
+                return
+            reader = {'EasyStore':self.fresh_es, 'MOMO':self.fresh_momo, 'Coupang':self.fresh_cp}[old['platform']]
+            fresh = reader(key)
+            if fresh['stage'] in ('shipped','cancelled','review') or self.document_binding(fresh) != self.document_binding(old):
+                raise ShippingError('平台訂單或物流資料已變更，請先核對，這次尚未送印。')
 
     def fresh_es(self, key):
         number = key.partition(':')[2]
@@ -704,7 +833,7 @@ class Workbench:
         raw = payload.get('order')
         if not isinstance(raw, dict) or text(raw.get('id')) != number:
             raise ShippingError('未取得即時訂單資料，已停止取單。')
-        return normalize_es(raw)
+        return self.preserve_queue_deadline(normalize_es(raw))
 
     def preview(self, key, options=None):
         options = dict(options or {})
@@ -1036,22 +1165,35 @@ class Workbench:
             raise ShippingError("MOMO 拒絕此請求；請核對訂單是否已異動或細項不完整。")
         return payload
 
-    def fresh_momo(self, key):
-        parts = key.split(":")
-        if len(parts) != 3 or not parts[1].isdigit():
+    def momo_order_rows(self, number):
+        if not number.isdigit():
             raise ShippingError("MOMO 訂單識別不正確。")
         end = datetime.now(TZ)
-        payload = self.momo_request("OrderQuery", {
-            "orderNo": parts[1], "queryDateType": "OrderDate",
-            "fromDate": (end-timedelta(days=self.days-1)).strftime("%Y-%m-%d"),
-            "toDate": end.strftime("%Y-%m-%d"), "deliveryType": "All",
-            "storeDeliveryType": "All", "orderStatus": "All", "pageIndex": 1, "maxPerPage": 100})
-        for raw in source.extract_orders(payload):
-            if text(raw.get("orderNo")) != parts[1]:
-                continue
-            for row in normalize_momo(raw):
-                if row["key"] == key:
-                    return row
+        rows = []
+        for page in range(1, 31):
+            payload = self.momo_request("OrderQuery", {
+                "listOrderNo": [number], "queryDateType": "OrderDate",
+                "fromDate": end.strftime("%Y-%m-%d"), "toDate": end.strftime("%Y-%m-%d"),
+                "deliveryType": "All", "storeDeliveryType": "All", "orderStatus": "All",
+                "pageIndex":page, "maxPerPage":100})
+            orders = source.extract_orders(payload)
+            for raw in orders:
+                if text(raw.get('orderNo')) != number:
+                    raise ShippingError('MOMO 指定訂單查詢回傳不符，已保留原清單。')
+                rows.extend(normalize_momo(raw))
+            if len(orders) < 100:
+                if not rows:
+                    raise ShippingError('MOMO 未處理訂單尚未完整核對，已保留原清單。')
+                return rows
+        raise ShippingError('MOMO 指定訂單超過查詢頁數，已保留原清單。')
+
+    def fresh_momo(self, key):
+        parts = key.split(':')
+        if len(parts) != 3 or not parts[1].isdigit():
+            raise ShippingError('MOMO 訂單識別不正確。')
+        for row in self.momo_order_rows(parts[1]):
+            if row['key'] == key:
+                return self.preserve_queue_deadline(row)
         raise ShippingError("訂單細項或包裹已變更，請重新讀取訂單後再操作。")
 
     def process_momo(self, row, job):
@@ -1138,5 +1280,6 @@ class Workbench:
         except Exception:
             self.save_job(key, state="download-failed", error="單據尚未保存；請重新核對後取回原貨運單。")
             raise ShippingError("MOMO 文件未能保存；下次會先確認平台狀態，再取回原貨運單。")
+
 
 

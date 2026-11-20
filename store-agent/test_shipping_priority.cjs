@@ -112,7 +112,7 @@ test('logistics filters intersect platform and pending status, and preserve unkn
  const source=fs.readFileSync(__dirname+'/shipping-ui/app.js','utf8').split("$('refresh').addEventListener")[0];
  const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{value:'',innerHTML:'',textContent:'',hidden:false});return elements.get(id);};
  const window={};window.self=window;window.top=window;
- const rows=[{key:'1',channel:'蝦皮',carrier:'新竹物流',handled:false},{key:'2',channel:'MOMO',carrier:'新竹貨運',handled:false},{key:'3',channel:'蝦皮',carrier:'Shipping Fee',handled:false},{key:'4',channel:'MOMO',carrier:'新竹貨運',handled:true}].map(r=>({...r,orderNo:r.key,date:'2026-11-19',items:[]}));
+ const rows=[{key:'1',channel:'蝦皮',carrier:'新竹物流',handled:false},{key:'2',channel:'MOMO',carrier:'新竹貨運',handled:false},{key:'3',channel:'蝦皮',carrier:'Shipping Fee',handled:false},{key:'4',channel:'MOMO',carrier:'新竹貨運',handled:true,handlingAction:'printed',handledAt:new Date().toISOString()}].map(r=>({...r,orderNo:r.key,date:'2026-11-19',items:[]}));
  const ctx=vm.createContext({window,ShippingModel:model,rows,document:{getElementById:element,querySelector:()=>null,documentElement:{classList:{toggle(){}}}}});
  vm.runInContext(source+"\ndata.orders=rows;renderDetail=()=>{};activeLogistics='hct';render();",ctx);
  assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(filtered().map(r=>r.key))',ctx)),['1','2']);
