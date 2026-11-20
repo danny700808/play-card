@@ -19,6 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from render_client import RenderClient
 from packing_footer import validate as validate_footer, VERSION as FOOTER_VERSION
+from packing_sheet import validate as validate_sheet, VERSION as SHEET_VERSION
 
 ROOT = Path(__file__).resolve().parent
 CONFIG = json.loads((ROOT / "config.json").read_text(encoding="utf-8-sig"))
@@ -29,8 +30,8 @@ ORIGINS = {"https://danny700808.github.io", f"http://127.0.0.1:{PORT}"}
 HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 CHANNELS = {"MOMO", "蝦皮", "酷澎", "官網", "LINE"}
 LOCK = threading.Lock()
-MAX_BODY = 22 * 1024 * 1024
-RELEASE = '2.3.1-invoice-reminder'
+MAX_BODY = 30 * 1024 * 1024
+RELEASE = '2.4.0-packing-bundle'
 PROFILE = 'momo-cvs-v1'
 POSTAL_PROFILE = 'postal-address-v1'
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -76,7 +77,7 @@ def read_state(folder):
 def public(state):
     result = {key: state[key] for key in
             ("jobId", "status", "pages", "barcodeCount", "error", "printProfile", "paperMm",
-             "layoutVersion", "alreadySubmitted", "footerMm", "footer") if key in state}
+             "layoutVersion", "alreadySubmitted", "footerMm", "footer", "shippingPages", "packingPages", "packingSheetVersion") if key in state}
     if state.get('layoutVersion') in (FOOTER_VERSION, POSTAL_PROFILE) and state['status'] in ('preview','prepared','submitted'):
         image = JOBS / state['jobId'] / 'label-1-print.png'
         if image.is_file():
@@ -139,7 +140,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {"service": "youzi-shipping-print", "version": 1, "preview": 1, "cachedDocument": 1,
                                    "printer": CONFIG["printer"], "paper": "100x150",
                                    "channels": sorted(CHANNELS), "release": RELEASE, "pid": os.getpid(),
-                                   "printProfiles": [PROFILE, POSTAL_PROFILE], "packingLayouts": [FOOTER_VERSION, POSTAL_PROFILE]})
+                                   "printProfiles": [PROFILE, POSTAL_PROFILE], "packingLayouts": [FOOTER_VERSION, POSTAL_PROFILE], "packingSheets": [SHEET_VERSION]})
         match = re.fullmatch(r"/jobs/([a-f0-9]{32})", self.path)
         if match and self.headers.get("Origin") in ORIGINS:
             try:
@@ -287,6 +288,9 @@ class Handler(BaseHTTPRequestHandler):
             footer = validate_footer(payload['packingFooter'], channel)
             if footer['orderNo'] != payload.get('orderNo'):
                 raise ValueError('商品資料與訂單編號不一致，尚未送印。')
+            sheet = validate_sheet(payload['packingSheet'], footer) if 'packingSheet' in payload else None
+            if sheet and (sheet['channel'] != channel or sheet['tracking'] != payload.get('tracking', '')):
+                raise ValueError('包貨明細的平台或物流單號與貨運單不一致。')
         except ValueError as error:
             return self.reply(400, {'error': str(error)})
         source_digest = hashlib.sha256(channel.encode() + b'\0' + raw).hexdigest()
@@ -295,6 +299,8 @@ class Handler(BaseHTTPRequestHandler):
         postal_binding = [payload.get('orderKey',''), payload.get('orderNo','')] if profile == POSTAL_PROFILE else []
         layout_key = json.dumps([FOOTER_VERSION, profile, method, payload.get('tracking',''), footer] + postal_binding,
                                 sort_keys=True, ensure_ascii=False, separators=(',',':'))
+        if sheet:
+            layout_key += '\0' + json.dumps(sheet, sort_keys=True, ensure_ascii=False, separators=(',',':'))
         digest = hashlib.sha256((source_digest + '\0' + layout_key).encode()).hexdigest()
         history = [read_state(path.parent) for path in JOBS.glob('*/status.json')]
         same_source = [s for s in history if s.get('sourceDigest') == source_digest or s.get('digest') == source_digest]
@@ -329,7 +335,8 @@ class Handler(BaseHTTPRequestHandler):
             result = run([sys.executable, str(ROOT/'prepare.py'), str(folder)], json.dumps({
                 'channel':channel, 'password':PASSWORD, 'printProfile':profile, 'shippingMethod':method,
                 'tracking':payload.get('tracking',''), 'packingFooter':payload['packingFooter'],
-                'orderKey':payload.get('orderKey',''), 'orderNo':payload.get('orderNo','')}))
+                'orderKey':payload.get('orderKey',''), 'orderNo':payload.get('orderNo',''),
+                **({'packingSheet':sheet} if sheet else {})}))
             detail = json.loads(result.stdout)
             if result.returncode:
                 state.update(status='failed', error=detail.get('error','標籤版面準備失敗，尚未送印。'))

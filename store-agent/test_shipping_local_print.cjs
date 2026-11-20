@@ -5,7 +5,8 @@ const vm=require('node:vm');
 const model=require('./shipping-ui/model.js');
 
 function harness({rowChanges={},carrier='7-11店到店',shippingMethod,prepareStatus='prepared',prepareError='',printError='',documentOk=true,
-  layouts=['packing-footer-v1'],replyLayout='packing-footer-v1',channel='MOMO',profiles=['momo-cvs-v1'],replyProfile='momo-cvs-v1',replyPages=1,replyBarcodes=1,printLink=true}={}){
+  layouts=['packing-footer-v1'],replyLayout='packing-footer-v1',channel='MOMO',profiles=['momo-cvs-v1'],replyProfile='momo-cvs-v1',replyPages=1,replyBarcodes=1,printLink=true,
+  packing=false,sheets=['packing-sheet-v1'],omitBundle=false}={}){
   const elements=new Map(),calls=[];
   function el(){return {style:{},children:[],open:true,disabled:false,textContent:'',setAttribute(){},
     append(...nodes){this.children.push(...nodes);},prepend(node){this.children.unshift(node);elements.set(node.id,node);},
@@ -19,17 +20,39 @@ function harness({rowChanges={},carrier='7-11店到店',shippingMethod,prepareSt
       const body=options.body?JSON.parse(options.body):undefined;
       calls.push({url,body});
       if(url==='https://example.test/label.pdf')return {ok:documentOk,blob:async()=>new Blob(['%PDF-1.7\nlabel'])};
-      if(url.endsWith('/health'))return {ok:true,json:async()=>({service:'youzi-shipping-print',printProfiles:profiles,packingLayouts:layouts})};
-      if(url.endsWith('/prepare'))return {ok:!prepareError,json:async()=>prepareError?{error:prepareError}:{jobId:'job-1',status:body.reprint?'prepared':prepareStatus,alreadySubmitted:prepareStatus==='preview',layoutVersion:replyLayout,preview:'data:image/png;base64,cHJldmlldw==',pages:replyPages,barcodeCount:replyBarcodes,printProfile:replyProfile,paperMm:[100,150]}};
+      if(url.endsWith('/health'))return {ok:true,json:async()=>({service:'youzi-shipping-print',printProfiles:profiles,packingLayouts:layouts,packingSheets:sheets})};
+      if(url.endsWith('/prepare'))return {ok:!prepareError,json:async()=>prepareError?{error:prepareError}:{jobId:'job-1',status:body.reprint?'prepared':prepareStatus,alreadySubmitted:prepareStatus==='preview',layoutVersion:replyLayout,preview:'data:image/png;base64,cHJldmlldw==',pages:replyPages,barcodeCount:replyBarcodes,printProfile:replyProfile,paperMm:[100,150],
+        ...(body.packingSheet&&!omitBundle?{packingSheetVersion:'packing-sheet-v1',packingPages:Math.ceil(body.packingSheet.items.length/3),shippingPages:replyPages,pages:replyPages+Math.ceil(body.packingSheet.items.length/3)}:{})}};
       if(url.endsWith('/print'))return {ok:!printError,json:async()=>printError?{error:printError}:{status:'submitted'}};
       throw Error('Unexpected endpoint');
     }});
   vm.runInContext(fs.readFileSync(__dirname+'/../shipping-local-print.js','utf8'),context);
   window.YouziLocalPrint.attach({channel,items:[{name:'測試商品',variant:'藍色',sku:'2044749-17',quantity:2}],paidAmount:'2070',paidAmountStatus:'confirmed',paidCurrency:'TWD',orderNo:'TEST-ORDER',key:'MOMO:TEST',tracking:'TRACK-TEST',carrier,shippingMethod,...rowChanges},
-    printLink?{print:'https://example.test/label.pdf'}:{label:'https://example.test/label.pdf'},async()=>{printed++;});
+    printLink?{print:'https://example.test/label.pdf'}:{label:'https://example.test/label.pdf'},async()=>{printed++;},undefined,{packingSheet:packing});
   const box=elements.get('localPrintControls');
   return {button:box.children[0],status:box.children[1],elements,calls,printed:()=>printed};
 }
+
+test('packing sheets use remaining quantities, formatted SKU, and one combined local print',async()=>{
+  const items=Array.from({length:4},(_,i)=>({name:'商品'+i,variant:'規格'+i,sku:'2044749-'+i,quantity:8,remaining:i+1}));
+  const h=harness({packing:true,rowChanges:{stage:'partial',items}});
+  await h.button.onclick();assert.equal(h.printed(),1);
+  assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,1);
+  const sheet=h.calls.find(c=>c.url.endsWith('/prepare')).body.packingSheet;
+  assert.equal(sheet.items.length,4);assert.equal(sheet.items[0].quantity,1);assert.equal(sheet.items[0].sku,'204-4749-0');
+  assert.equal(sheet.recipient,'');assert.equal(sheet.orderNo,'TEST-ORDER');
+});
+test('old helper or missing combined pages never silently prints only the shipping label',async()=>{
+  for(const changes of [{sheets:[]},{omitBundle:true}]){
+    const h=harness({packing:true,...changes});await h.button.onclick();
+    assert.equal(h.printed(),0);assert.equal(h.calls.some(c=>c.url.endsWith('/print')),false);
+  }
+});
+test('missing product photo stops the whole bundle before any paper is submitted',async()=>{
+  const h=harness({packing:true,rowChanges:{items:[{name:'商品',sku:'123',quantity:1,image:'https://example.test/unavailable.jpg'}]}});
+  await h.button.onclick();assert.equal(h.printed(),0);assert.match(h.status.textContent,/照片尚未讀取完成/);
+  assert.equal(h.calls.some(c=>c.url.endsWith('/print')),false);
+});
 
 test('MOMO CVS uses a single-label caption and reports prepare errors without printing',async()=>{
   const h=harness({prepareError:'尚不支援此 PDF 版型'});
@@ -162,3 +185,4 @@ for (const channel of ['官網','LINE']) test(channel+' postal labels require th
   assert.equal(bad.calls.filter(c=>c.url.endsWith('/print')).length,0);
  }
 });
+

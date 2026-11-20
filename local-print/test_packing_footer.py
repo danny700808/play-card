@@ -150,6 +150,29 @@ class HistoryTests(unittest.TestCase):
         self.assertNotEqual(first['jobId'],second['jobId'])
         self.assertEqual(second['status'],'prepared')
 
+    def bundle(self):
+        return {**self.payload, 'packingSheet':{'version':'packing-sheet-v1','orderNo':'TEST-ORDER',
+            'channel':'蝦皮','items':[{'name':'效果器','variant':'水藍色','sku':'204-4749-17','quantity':1}]}}
+
+    def test_bundle_cache_is_distinct_and_cannot_bypass_submission_history(self):
+        ordinary = self.handler.prepare(self.payload)[1]
+        bundle = self.handler.prepare(self.bundle())[1]
+        self.assertNotEqual(ordinary['jobId'],bundle['jobId'])
+        self.assertEqual(self.handler.prepare(self.bundle())[1]['jobId'],bundle['jobId'])
+        folder=self.bridge.JOBS/ordinary['jobId']; state=self.bridge.read_state(folder)
+        state['status']='submitted';self.bridge.save_state(folder,state)
+        preview=self.handler.prepare(self.bundle())[1]
+        self.assertEqual(preview['status'],'preview')
+        self.assertEqual(self.handler.print_job({'jobId':preview['jobId']})[0],409)
+        self.assertEqual(self.handler.prepare({**self.bundle(),'reprint':True})[1]['status'],'prepared')
+
+    def test_bundle_rejects_mismatches_and_uncertain_original_without_printing(self):
+        payload=self.bundle();payload['packingSheet']['tracking']='OTHER'
+        self.assertEqual(self.handler.prepare(payload)[0],400)
+        self.old('uncertain')
+        self.assertEqual(self.handler.prepare({**self.bundle(),'reprint':True})[0],409)
+        self.assertEqual(self.commands,[])
+
     def test_invoice_reminder_invalidates_old_cache_but_preserves_print_history(self):
         footer = validate(self.payload['packingFooter'])
         layout = json.dumps([VERSION, '', '', '', footer], sort_keys=True, ensure_ascii=False, separators=(',', ':'))

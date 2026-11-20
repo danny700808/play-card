@@ -59,7 +59,7 @@ test('a cancelled MOMO order cannot be manually marked printed or shipped',()=>{
   const html=render({platform:'MOMO',channel:'MOMO',stage:'cancelled',canCreate:false,canDownload:false,
     blockReason:'此訂單已由 MOMO 取消，不需出貨或列印。'});
   assert.doesNotMatch(html,/id="markPrinted"|id="markShipped"/);
-  assert.match(html,/<button id="packing" disabled>/);
+  assert.match(html,/<button id="packing"[^>]* disabled>/);
   assert.match(html,/此訂單已由 MOMO 取消/);
 });
 

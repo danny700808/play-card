@@ -3,6 +3,7 @@
 (function () {
   const BASE = 'http://127.0.0.1:18182';
   const LAYOUT = 'packing-footer-v1';
+  const SHEET = 'packing-sheet-v1';
   let generation = 0, inFlight = false, currentButton = null;
   const $ = id => document.getElementById(id);
   async function local(path, body) {
@@ -42,6 +43,51 @@
     $('localPrintControls')?.remove();
     currentButton = null;
   }
+  async function packingSheet(row) {
+    window.ShippingModel.packingLabel(row);
+    const grouped = new Map(), photos = new Map();
+    for (const item of row.items) {
+      const quantity = Number(row.stage === 'partial' ? item.remaining : item.quantity);
+      if (!quantity) continue;
+      const name = String(item.name || '').trim(), variant = String(item.variant || '').trim();
+      const sku = window.ShippingModel.formatSku(item.sku), key = JSON.stringify([name, variant, sku]);
+      if (grouped.has(key)) grouped.get(key).quantity += quantity;
+      else grouped.set(key, {name, variant, sku, quantity, image: item.image || ''});
+    }
+    const items = [...grouped.values()];
+    if (items.length > 120) throw Error('這筆訂單超過包貨明細的單次列印數量。');
+    async function photo(url) {
+      if (!url) return '';
+      if (!photos.has(url)) photos.set(url, (async () => {
+        if (!url.startsWith('https:')) throw Error('商品圖片網址不正確。');
+        const response = await fetch(url, {credentials:'omit', referrerPolicy:'no-referrer', signal:AbortSignal.timeout(15000)});
+        if (!response.ok) throw Error('商品圖片讀取失敗。');
+        const blob = await response.blob();
+        if (blob.size > 8 * 1024 * 1024) throw Error('商品圖片過大。');
+        const image = await createImageBitmap(blob);
+        try {
+          const scale = Math.min(1, 600 / Math.max(image.width, image.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(image.width * scale));
+          canvas.height = Math.max(1, Math.round(image.height * scale));
+          const context = canvas.getContext('2d');
+          context.fillStyle = '#fff'; context.fillRect(0, 0, canvas.width, canvas.height);
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          return canvas.toDataURL('image/jpeg', .8).split(',')[1];
+        } finally { image.close(); }
+      })());
+      return photos.get(url);
+    }
+    // Bound concurrent decoding; every supplied photo must be ready before paper is sent.
+    for (let start = 0; start < items.length; start += 3) await Promise.all(items.slice(start, start + 3).map(async item => {
+      try { item.imageBase64 = await photo(item.image); }
+      catch { throw Error(`商品 ${item.sku || item.name} 的照片尚未讀取完成，尚未送印，請稍後再試。`); }
+      delete item.image;
+    }));
+    return {version:SHEET, orderNo:row.orderNo, channel:row.channel, items,
+      recipient:/^(未提供|未知|待確認|不提供|—|-|無)$/.test(String(row.recipient || '').trim())?'':String(row.recipient || '').trim(), buyer:String(row.buyerAccount || row.buyerUsername || '').trim(),
+      carrier:String(row.carrier || ''), tracking:String(row.tracking || '')};
+  }
   function attach(row, links, recordPrint, recordSubmitted, options = {}) {
     reset();
     if (!row || !links || !['MOMO', '蝦皮', '酷澎', '官網', 'LINE'].includes(row.channel)) {
@@ -63,11 +109,15 @@
     const prepareBody = () => ({channel: row.channel, pdfBase64,
       orderKey: row.key, orderNo: row.orderNo, tracking: row.tracking || '',
       packingFooter: window.ShippingModel.packingLabel(row),
+      ...(sheet ? {packingSheet:sheet} : {}),
       ...(printProfile ? {printProfile, shippingMethod} : {})});
     function checkPrepared(job) {
       if (job.layoutVersion !== (postal ? printProfile : LAYOUT) || !job.preview?.startsWith('data:image/png;base64,'))
         throw Error('副機尚未回傳新版商品標籤與預覽，尚未送印。');
-      if (momoStore && (job.printProfile !== printProfile || job.pages !== 1 ||
+      if (options.packingSheet && (job.packingSheetVersion !== SHEET || job.packingPages !== Math.ceil(sheet.items.length / 3) ||
+          !Number.isInteger(job.shippingPages) || job.shippingPages < 1 || job.pages !== job.packingPages + job.shippingPages))
+        throw Error('包貨明細與貨運單尚未完整合併，尚未送印。');
+      if (momoStore && (job.printProfile !== printProfile || (job.shippingPages ?? job.pages) !== 1 ||
           !Array.isArray(job.paperMm) || job.paperMm.length !== 2 || job.paperMm[0] !== 100 || job.paperMm[1] !== 150))
         throw Error('副機未回傳正確的超商單張版型，尚未送印。請更新副機列印助手。');
       if (postal && (job.printProfile !== printProfile || job.barcodeCount !== 0 ||
@@ -91,7 +141,7 @@
       };
     }
     let reprint = window.ShippingModel?.documentActionLabel(row) === '重印貨運單';
-    let pdfBase64, preparedJob, ready = false;
+    let pdfBase64, preparedJob, sheet, ready = false;
     const label = () => reprint ? '重印貨運單' : '列印貨運單';
     const active = () => generation === own && (options.silent ? options.isActive?.() !== false : $('documentDialog').open);
     button.textContent = label();
@@ -112,6 +162,8 @@
       if (result.service !== 'youzi-shipping-print') throw Error('本機連線服務不符。');
       if (!result.packingLayouts?.includes(LAYOUT))
         throw Error('副機列印助手需要更新商品標籤版型，尚未送印。');
+      if (options.packingSheet && !result.packingSheets?.includes(SHEET))
+        throw Error('副機列印助手需要更新包貨明細合併列印功能，尚未送印。');
       if (row.channel === 'MOMO' && carrierMethod && carrierMethod !== shippingMethod)
         throw Error('物流方式與列印版型不一致，請先重新讀取最新訂單。');
       if (postal && !result.printProfiles?.includes(printProfile))
@@ -126,6 +178,7 @@
         throw Error('主機尚未完成這張超商原單的版型與條碼核對，尚未送印。請重新讀取訂單。');
       report('正在準備貨運單，請等待…');
       pdfBase64 = await documentBase64(links.print || links.label);
+      if (options.packingSheet) sheet = await packingSheet(row);
       if (!active()) return;
       preparedJob = checkPrepared(await local('/prepare', prepareBody()));
       if (!active()) return;

@@ -16,7 +16,7 @@ import zxingcpp
 from pypdf import PdfReader, PdfWriter, Transformation
 from momo_split import convert, MM
 from shipping_cvs_layout import normalize_cvs_pdf, barcode_signature
-from packing_footer import validate as validate_footer, compose as compose_footer
+from packing_footer import validate as validate_footer, compose as compose_footer, footer_pdf
 
 
 def codes(image):
@@ -93,7 +93,19 @@ def identity(content):
     return hashlib.sha256(json.dumps(values).encode()).hexdigest()
 
 
-def prepare(job, channel, password, print_profile='', shipping_method='', tracking='', packing_footer=None, order_key='', order_no=''):
+def prepare(job, channel, password, print_profile='', shipping_method='', tracking='', packing_footer=None, order_key='', order_no='', packing_sheet=None):
+    sheet = None
+    if packing_sheet is not None:
+        from packing_sheet import validate
+        sheet = validate(packing_sheet, validate_footer(packing_footer, channel))
+    result = prepare_shipping(job, channel, password, print_profile, shipping_method, tracking, packing_footer, order_key, order_no, bool(sheet))
+    if sheet:
+        from packing_sheet import prepend
+        result = prepend(job, result, sheet)
+    return result
+
+
+def prepare_shipping(job, channel, password, print_profile='', shipping_method='', tracking='', packing_footer=None, order_key='', order_no='', separate_packing=False):
     footer = validate_footer(packing_footer, channel) if packing_footer is not None else None
     source = job / "source.pdf"
     reader = PdfReader(source)
@@ -195,7 +207,19 @@ def prepare(job, channel, password, print_profile='', shipping_method='', tracki
                     footer_signatures[i] = expected_signature if cvs else hd_signatures.get(i, reference_codes(bitmap.to_pil()))
                 finally:
                     bitmap.close()
-        composed, layout = compose_footer(normalized, footer)
+        display_footer = footer
+        if separate_packing:
+            try:
+                footer_pdf(footer)
+            except ValueError as error:
+                if not str(error).startswith('商品文字超過底部'):
+                    raise
+                # All original items remain on the preceding picking pages.
+                # Keep amount/invoice reminder on the shipping label itself.
+                display_footer = dict(footer, items=[dict(
+                    name=f"商品明細請見前附包貨明細（共 {len(footer['items'])} 項）", sku='',
+                    quantity=sum(item['quantity'] for item in footer['items']))])
+        composed, layout = compose_footer(normalized, display_footer)
         (job / 'original-labels.pdf').write_bytes(normalized)
         (job / 'labels.pdf').write_bytes(composed)
         metadata.update(layout)
@@ -238,7 +262,7 @@ if __name__ == "__main__":
         request = json.load(sys.stdin)
         result = prepare(Path(sys.argv[1]), request["channel"], request.get("password", ""),
                          request.get('printProfile',''),request.get('shippingMethod',''),request.get('tracking',''),request.get('packingFooter'),
-                         request.get('orderKey',''),request.get('orderNo',''))
+                         request.get('orderKey',''),request.get('orderNo',''),request.get('packingSheet'))
         print(json.dumps(result, ensure_ascii=False))
     except Exception as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False))

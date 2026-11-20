@@ -174,7 +174,7 @@ function renderDetail() {
     ${shippingNote?`<p class="muted shipping-note">${escapeHtml(shippingNote)}</p>`:''}
     ${ShippingModel.isHandled(row)&&!['shipped','cancelled'].includes(row.stage)?'<div class="handling-actions"><button id="reopen" class="quiet">移回未處理</button></div>':''}
     ${row.jobError||row.stale||row.blockReason&&row.platform!=='EasyStore'?`<div class="block-note">${escapeHtml(row.stale?'資料尚未更新，請重新讀取。':row.jobError||row.blockReason)}</div>`:''}
-    <div class="actions">${shippingAction}<button id="packing" ${busy||['cancelled','review'].includes(row.stage)?'disabled':''}>列印包貨明細</button>${row.documentReady?'<button id="showDocument" '+(busy?'disabled':'')+'>預覽正式貨運單</button>':''}${!remote&&row.platform==='EasyStore'?'<button id="provideDocument">提供貨運單給副機</button>':''}</div><div id="directShipmentOptions"></div>`;
+    <div class="actions">${shippingAction}<button id="packing" title="先印包貨明細，最後接著印同筆訂單的貨運單" ${busy||['cancelled','review'].includes(row.stage)?'disabled':''}>列印包貨明細</button>${row.documentReady?'<button id="showDocument" '+(busy?'disabled':'')+'>預覽正式貨運單</button>':''}${!remote&&row.platform==='EasyStore'?'<button id="provideDocument">提供貨運單給副機</button>':''}</div><div id="directShipmentOptions"></div>`;
   $('prepare')?.addEventListener('click',()=>printOrder(row));
   $('shopeeDirectPrint')?.addEventListener('click',()=>printOrder(row));
   $('showProvidedDocument')?.addEventListener('click',()=>printOrder(row));
@@ -262,7 +262,7 @@ function directProgress(message){
   const buttons=$('detail').querySelectorAll('#prepare,#shopeeDirectPrint,#showProvidedDocument');
   if(selected===directPrintKey)for(const button of buttons){button.textContent=directPrintStatus;button.disabled=true;}
 }
-async function printOrder(original,shipmentOptions={}){
+async function printOrder(original,shipmentOptions={},printOptions={}){
   if(busy)return;
   if(original.stale||original.handlingChanged||['cancelled','review'].includes(original.stage)){
     notice('這筆訂單需要先更新並核對，尚未送印。',true);return;
@@ -301,7 +301,7 @@ async function printOrder(original,shipmentOptions={}){
     }
     if(!active())return;
     directProgress('正在準備列印，請等待…');
-    await window.YouziLocalPrint.printDocument(row,links,()=>recordLocalSubmission(row),{isActive:active,onStatus:directProgress});
+    await window.YouziLocalPrint.printDocument(row,links,()=>recordLocalSubmission(row),{...printOptions,isActive:active,onStatus:directProgress});
   }catch(error){
     needsOptions=row.platform==='Coupang'&&/出貨地址代碼|退貨地址代碼/.test(error.message);
     notice(error.message,true);
@@ -309,17 +309,17 @@ async function printOrder(original,shipmentOptions={}){
   finally{
     if(own===documentGeneration)releaseExternalDocument();
     busy=false;directPrintKey='';directPrintStatus='';$('refresh').disabled=false;render();
-    if(needsOptions&&selected===original.key)showDirectShippingOptions(original);
+    if(needsOptions&&selected===original.key)showDirectShippingOptions(original,printOptions);
   }
 }
-function showDirectShippingOptions(row){
+function showDirectShippingOptions(row,printOptions={}){
   const home=['TWL_HCT','TWL_KERRY'].includes(row.carrierCode);
   const field=home?'outboundShippingPlaceCode':'returnCenterCode';
   const label=home?'酷澎出貨地址代碼':'酷澎退貨地址代碼';
   $('directShipmentOptions').innerHTML=`<form id="directShippingForm"><label class="option-row">${label}<input name="${field}" required ${home?'inputmode="numeric" pattern="[0-9]+"':''}></label><button class="primary" type="submit">確認資料並列印貨運單</button></form>`;
   $('directShippingForm').addEventListener('submit',event=>{
     event.preventDefault();if(busy)return;
-    printOrder(data.orders.find(r=>r.key===row.key)||row,{[field]:event.currentTarget.elements.namedItem(field).value});
+    printOrder(data.orders.find(r=>r.key===row.key)||row,{[field]:event.currentTarget.elements.namedItem(field).value},printOptions);
   });
 }
 
@@ -473,12 +473,7 @@ async function showDocument(key) {
   finally{documentBusy(false);}
 }
 async function printPacking(row) {
-  if(['cancelled','review'].includes(row.stage)){notice('此訂單需要先核對狀態，暫不列印包貨明細。',true);return;}
-  if(row.stage==='partial'&&row.items.some(i=>i.remaining==null)){notice('平台未提供部分出貨的剩餘數量，請先核對，暫不列印。',true);return;}
-  const items=packingItems(row);
-  $('packingPrint').innerHTML=`<div class="print-top"><div><h1>柚子樂器 · 包貨明細</h1>${escapeHtml(row.channel)} / ${escapeHtml(row.orderNo)}</div><div>核對單，非貨運單<br>${escapeHtml(new Date().toLocaleString('zh-TW'))}</div></div><div class="recipient">收件人：${escapeHtml(row.recipient)}</div><div class="subline">${escapeHtml(row.address)}</div>${row.tracking?`<p>物流單號：${escapeHtml(row.tracking)}</p>`:''}${row.note?`<div class="note">${escapeHtml(row.note)}</div>`:''}${items.map(itemHtml).join('')}<div class="print-footer"><span>包貨人：________________</span><span>□ 規格　□ 數量　□ 配件／贈品</span></div>`;
-  await Promise.all([...$('packingPrint').querySelectorAll('img')].map(img=>img.complete?Promise.resolve():Promise.race([new Promise(resolve=>{img.onload=resolve;img.onerror=resolve;}),new Promise(resolve=>setTimeout(resolve,5000))])));
-  window.print();
+  return printOrder(row, {}, {packingSheet:true});
 }
 $('refresh').addEventListener('click',refresh);
 // Keep the older installed helper usable until the packing PC is updated.

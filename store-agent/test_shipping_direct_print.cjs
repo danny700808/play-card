@@ -44,6 +44,17 @@ for(const channel of ['蝦皮','MOMO','酷澎','官網','LINE'])test(channel+' o
   if(channel==='蝦皮')assert.equal(h.calls.find(c=>c.path==='helper').options.direct,true);
   assert.equal(h.run('busy'),false);
 });
+for(const channel of ['蝦皮','MOMO','酷澎','官網','LINE'])test(channel+' packing action obtains the same label and submits one combined job',async()=>{
+  const h=harness({channel});await h.run('printPacking(row)');
+  assert.equal(h.prints.length,1);assert.equal(h.prints[0].options.packingSheet,true);
+  assert.equal(h.prints[0].row.orderNo,h.row.orderNo);assert.equal(h.dialogs(),0);
+  assert.equal(h.row.handled,true);assert.equal(h.run('activeWork'),'pending');
+});
+test('a combined print failure leaves the order pending and never requests a separate label print',async()=>{
+  const h=harness({saved:true,printFailure:true});await h.run('printPacking(row)');
+  assert.equal(h.prints.length,1);assert.equal(h.row.handled,false);
+  assert.equal(h.calls.some(c=>c.path==='/api/print-event'),false);
+});
 test('saved labels go straight to their document link without creating another shipment',async()=>{
  const h=harness({saved:true});await h.run('printOrder(row)');
  assert.equal(h.prints.length,1);assert.equal(h.calls.some(c=>['/api/preview','/api/process'].includes(c.path)),false);
