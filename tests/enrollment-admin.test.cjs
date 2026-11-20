@@ -30,7 +30,7 @@ test('admin schedules from the inbox with filtered choices, conflict recovery, e
 });
 test('native form loads all course image assets from its own asset directory and private data collections are not client allowlisted',()=>{
  const html=fs.readFileSync('enrollment.html','utf8'),js=fs.readFileSync('enrollment-assets/app.js','utf8');
- assert.match(html,/src="enrollment-assets\/app.js\?v=20261116-notice"/);assert.match(js,/document.currentScript/);assert(!html.includes('lineDialog'));assert.match(html,/id="accessPanel"/);
+ assert.match(html,/src="enrollment-assets\/app.js\?v=20261120-contact"/);assert.match(js,/document.currentScript/);assert(!html.includes('lineDialog'));assert.match(html,/id="accessPanel"/);
  for(let n=1;n<=23;n++)assert(fs.existsSync('enrollment-assets/assets/course-'+String(n).padStart(2,'0')+'.jpg'));
  const rules=fs.readFileSync('firestore.rules','utf8');assert(!/onlineEnrollment/.test(rules));assert.match(rules,/match \/\{document=\*\*\} \{\s+allow read, write: if false;/);
  const routes=require('../internal-workspace-routes');assert.deepEqual(routes.pageContext('/enrollment-admin.html','','').map(n=>n.id),['root','enrollment','online-enrollment']);
@@ -45,7 +45,11 @@ test('completion distinguishes verified LINE identity from formal enrollment for
   w.fetch=async(url,options)=>{assert.equal(JSON.parse(options.body).action,'redeem');return {ok:true,json:async()=>({ok:true,receiptId:'enr-test',courseName:'鋼琴',optionName:'單人班',price:2800,lessons:4,date:'2026-11-26',time:'13:30',name:'測試',lineFriendFlag:friend})};};
   w.eval(fs.readFileSync('enrollment-assets/app.js','utf8'));assert.equal(await w.catalogReady,true);
   assert.equal(d.getElementById('step4').hidden,false);assert.match(d.querySelector('.success-badge').textContent,/LINE 身分已確認/);assert(!d.querySelector('.success-badge').textContent.includes('已綁定'));
-  assert.match(d.getElementById('successMessage').textContent,/課程尚未排定/);if(!friend)assert.match(d.getElementById('successMessage').textContent,/加入官方 LINE/);w.close();
+  assert.match(d.getElementById('successMessage').textContent,/課程尚未排定/);if(!friend)assert.match(d.getElementById('successMessage').textContent,/加入官方 LINE/);
+  assert.equal(d.getElementById('addOfficialFriend').hidden,friend);
+  const chat=new URL(d.getElementById('officialLine').href);
+  assert.equal(decodeURIComponent(chat.pathname),'/R/oaMessage/@046xzcpz/');
+  assert.match(decodeURIComponent(chat.search.slice(1)),/測試.*鋼琴.*希望上課時間.*13:30/);w.close();
  }
 });
 

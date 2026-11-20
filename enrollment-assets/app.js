@@ -202,9 +202,14 @@ function showCompletion(r){
  state.step=4;state.contact=null;document.body.dataset.stage='';$('detailsForm').reset();$('accessPanel').hidden=true;
  for(let n=1;n<=4;n++)$('step'+n).hidden=n!==4;
  document.querySelector('.progress').hidden=true;$('bottomBar').hidden=true;
- $('successSummary').innerHTML=`<h3>${esc(r.courseName)}</h3><p>${esc(r.optionName)} · NT$ ${money(r.price)}／${esc(r.lessons)} 堂</p><p>${esc(r.name+(r.secondName?'、'+r.secondName:''))}</p><p>${displayDate(r.date)} ${esc(r.time)}–${endTime(r.time)}</p><p class="fine">報名編號：${esc(r.receiptId)}</p>`;
- $('successMessage').textContent=r.lineFriendFlag?'報名與 LINE 聯絡資料已送至教室，課程尚未排定。教室會與你確認老師、時間及學費。':'報名與 LINE 身分已送至教室，課程尚未排定。請點下方按鈕加入官方 LINE 好友，方便教室聯絡你。';
- $('officialLine').href='https://lin.ee/Fx5Y2mL';window.scrollTo({top:0,behavior:'instant'});$('successHeading').focus({preventScroll:true});
+ $('successSummary').innerHTML=`<h3>${esc(r.courseName)}</h3><p>${esc(r.optionName)} · NT$ ${money(r.price)}／${esc(r.lessons)} 堂</p><p>${esc(r.name+(r.secondName?'、'+r.secondName:''))}</p><p>希望時段：${displayDate(r.date)} ${esc(r.time)}–${endTime(r.time)}</p><p class="fine">報名編號：${esc(r.receiptId)}</p>`;
+ $('addOfficialFriend').hidden = r.lineFriendFlag === true;
+ $('successMessage').textContent = r.lineFriendFlag
+   ? '謝謝你的報名！課程尚未排定。請開啟聊天室，按「傳送」把已填好的報名訊息傳給我們，我們會在 LINE 和你確認上課時間。'
+   : '謝謝你的報名！課程尚未排定。請先加入官方 LINE 好友，再回到這裡開啟聊天室，按「傳送」把已填好的報名訊息傳給我們，方便一起確認上課時間。';
+ const message = `您好，我是${r.name}，剛報名${r.courseName}（${r.optionName}），希望上課時間是${displayDate(r.date)} ${r.time}，想和教室確認時段，謝謝！`;
+ $('officialLine').href = 'https://line.me/R/oaMessage/%40046xzcpz/?' + encodeURIComponent(message);
+ window.scrollTo({top:0,behavior:'instant'});$('successHeading').focus({preventScroll:true});
 }
 function resetForm(){Object.assign(state,{step:1,category:'全部',search:'',course:null,plan:null,date:'',time:'',contact:null});$('detailsForm').reset();$('search').value='';$('dateYear').innerHTML='';$('dateMonth').innerHTML='';$('dateDay').innerHTML='';$('dateError').textContent='';$('timeError').textContent='';$('submitError').textContent='';resetConsent();}
 $('restart').onclick=async()=>{saveContext({expiresAt:Date.now()+30*60000});resetForm();await boot();};
