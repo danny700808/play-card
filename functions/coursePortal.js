@@ -6732,6 +6732,7 @@ function attendanceRolloverSourcePeriod({ periods, event, studentId, sourceDate 
   const newestSameCourse = newestAttendancePeriod(sameCourse);
   if (newestSameCourse && sourceId(newestSameCourse) !== sourceId(completed)) return null;
 
+  if (completed.planId === 'single-gift-' + wantedSubjectId) return null;
   return completed;
 }
 
@@ -10603,7 +10604,8 @@ async function adminSaveSchedule(data, integration = {}) {
   if (type === 'trial' && (!clean(raw.trialName) || !teacherId || !subjectId)) throw new HttpsError('invalid-argument', '體驗課資料不完整。');
   if (type === 'rental' && !clean(raw.clientName)) throw new HttpsError('invalid-argument', '請填寫租用者。');
   const expectedVersion = await readScheduleVersion();
-  const recurring = !clean(data.sourceEventId) && !clean(data.sourceCourseId) && type === 'fixed' && ['weekly','biweekly'].includes(clean(raw.frequency));
+  const onlyGift = type === 'fixed' && enrollment?.planId === 'single-gift-' + subjectId;
+  const recurring = !onlyGift && !clean(data.sourceEventId) && !clean(data.sourceCourseId) && type === 'fixed' && ['weekly','biweekly'].includes(clean(raw.frequency));
   const requestHash = hash(JSON.stringify({ event: raw, mode, sourceEventId: clean(data.sourceEventId), sourceCourseId: clean(data.sourceCourseId), sourceDate: clean(data.sourceDate), repeatUntil: clean(data.repeatUntil), ...(enrollment ? {enrollment} : {}) }));
   const id = `manager-${operationId}`;
   const target = db.collection(recurring ? 'coursePortalFixedCourses' : 'coursePortalScheduleChanges').doc(id);
@@ -10619,8 +10621,8 @@ async function adminSaveSchedule(data, integration = {}) {
     const plans = (await mirrorRows('feePlans')).filter(p => clean(p.subjectId) === subjectId && sourceActive(p) && p.listed !== false);
     const giftId = 'intro-gift-' + subjectId;
     let selectedPlans;
-    if (enrollment.planId === giftId && type === 'fixed') {
-      // Generate the same three terms even for subjects without a matching legacy price.
+    if (onlyGift || (enrollment.planId === giftId && type === 'fixed')) {
+      // Fill missing catalog prices only for the two paid periods in the sequence.
       const paidPlan = ratio => {
         const match = plans.find(p => Number(p.amount) === 2800 && Number(p.lessonCount) === 4 &&
           p.splitType === 'ratio' && [ratio, Math.round(ratio * 100)].includes(Number(p.splitValue)) &&
@@ -10628,7 +10630,8 @@ async function adminSaveSchedule(data, integration = {}) {
         return match || {id:'intro-paid-' + Math.round(ratio*100) + '-' + subjectId,
           name:ratio === 0.7 ? '外聘七三' : '外聘六四',amount:2800,lessonCount:4,splitType:'ratio',splitValue:ratio};
       };
-      selectedPlans = [{id:giftId,name:'免費課程（首堂贈課）',amount:0,lessonCount:1,splitType:'none',splitValue:0},paidPlan(0.7),paidPlan(0.6)];
+      const gift = {id:enrollment.planId,name:'首堂贈課',amount:0,lessonCount:1,splitType:'none',splitValue:0};
+      selectedPlans = onlyGift ? [gift] : [gift,paidPlan(0.7),paidPlan(0.6)];
     } else {
       selectedPlans = [plans.find(p => sourceId(p) === clean(enrollment.planId))];
     }
@@ -10639,7 +10642,7 @@ async function adminSaveSchedule(data, integration = {}) {
       const snapshot = {id:sourceId(plan),name:clean(plan.name),amount:Number(plan.amount),lessonCount:Number(plan.lessonCount),splitType:clean(plan.splitType),splitValue:Number(plan.splitValue||0),leaveNoDeduct:plan.leaveNoDeduct!==false,expiryDays:Number(plan.expiryDays||0),discountType:clean(plan.discountType),payByDiscount:typeof plan.payByDiscount==='boolean'?plan.payByDiscount:null,teacherPayBasis:clean(plan.teacherPayBasis),splitSource:clean(plan.splitSource)||'manager'};
       // All three are eligible from the first date. Attendance consumes the earliest unfinished period, including after leave or a move.
       return {id:index ? firstId+'-'+(index+1) : firstId,studentId:studentIds[0],teacherId,subjectId,planId:sourceId(plan),startDate:date,expiryDate:snapshot.expiryDays>0?addDays(date,snapshot.expiryDays):'',lessonCount:snapshot.lessonCount,expectedAmount:snapshot.amount,discount:0,usedCount:0,status:'active',transactions:[],paidAmount:0,active:true,planSnapshot:snapshot,creationOperationId:operationId,note:'排課時建立課程方案',
-        ...(plan.id===giftId&&duration===30 ? {lessonUnitMinutes:30} : {})};
+        ...(index===0&&(onlyGift||plan.id===giftId)&&duration===30 ? {lessonUnitMinutes:30} : {})};
     });
     enrollmentPeriod = enrollmentPeriods[0];
   }

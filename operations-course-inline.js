@@ -5,7 +5,7 @@
 
   var VERSION = '20260917-room-subject-v1';
   var TEMPLATE_URL = 'operations-course-inline-template.html?v=20261106-enrollment-list-v9';
-  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20261120-intro-periods';
+  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20261120-intro-periods-options';
   var STYLE_URL = 'course-scheduler.css?v=20261031-student-phone-v2';
   var DB_NAME = 'youzi-course-scheduler';
   var STORE_NAME = 'formalSnapshots';

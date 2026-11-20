@@ -113,6 +113,11 @@ test('legacy half-hour plan names work without changing ordinary one-hour plans;
  const {c,event:e}=halfHourFixture();assert.equal((await c.attendancePeriodsForEvent(e,e.date,{})).rows[0].lessonUnits,2);
 });
 
+test('a used standalone gift cannot renew into another free period',()=>{
+ const lesson={...event,endTime:'16:00'},gift={...period('gift'),planId:'single-gift-'+event.subjectId,lessonCount:1,usedCount:1};
+ assert.equal(api.buildAttendanceTuitionRollover({periods:[gift],event:lesson,studentId:'s',sourceDate:lesson.date}),null);
+});
+
 test('intro sequence uses three prepared periods and renews at the final teacher share',()=>{
  const lesson={...event,endTime:'16:00'},periods=[0,.7,.6].map((ratio,index)=>({
   ...period('intro-'+index),periodNo:index+1,lessonCount:index?4:1,expectedAmount:index?2800:0,

@@ -802,7 +802,10 @@
       return ratio===0.6?0:ratio===0.7?1:2;
     }
     plans.sort(function(a,b){return group(a)-group(b)||Number(b.amount)-Number(a.amount)||bySort(a,b);});
-    if(type==='fixed')plans.unshift({id:'intro-gift-'+subjectId,subjectId:subjectId,name:'免費課程（首堂贈課）',amount:0,lessonCount:1,introGift:true});
+    if(type==='fixed')plans.unshift(
+      {id:'single-gift-'+subjectId,subjectId:subjectId,name:'只排贈課 1 堂（0 元）',amount:0,lessonCount:1,giftOnly:true},
+      {id:'intro-gift-'+subjectId,subjectId:subjectId,name:'首堂 0 元＋預排兩期（七三 → 六四）',amount:0,lessonCount:1,introGift:true}
+    );
     return plans;
   }
   function updateScheduleEnrollment(){
@@ -812,10 +815,28 @@
     if(fresh||!rows.length)$('scheduleSetup').value='new';
     $('scheduleSetupField').classList.toggle('hidden',!course||fresh||special||!rows.length||!!permanentScheduleSource||!!$('eventId').value);
     var newPlan=scheduleNeedsPlan(),selected=$('schedulePlan').value,plans=schedulePlans(subjectId,type);
-    fillSelect($('schedulePlan'),plans,function(p){return p.name+'・'+money(p.amount)+'／'+p.lessonCount+' 堂';},function(p){return p.id;},subjectId?'請選擇收費方案':'請先選擇課程科目');if(plans.some(function(p){return p.id===selected;}))$('schedulePlan').value=selected;
+    fillSelect($('schedulePlan'),plans,function(p){return p.giftOnly||p.introGift?p.name:p.name+'・'+money(p.amount)+'／'+p.lessonCount+' 堂';},function(p){return p.id;},subjectId?'請選擇收費方案':'請先選擇課程科目');if(plans.some(function(p){return p.id===selected;}))$('schedulePlan').value=selected;
     $('schedulePlanField').classList.toggle('hidden',!newPlan);$('tuitionPeriodField').classList.toggle('hidden',!course||special||newPlan||!!permanentScheduleSource);$('scheduleNewTuition').classList.add('hidden');
     var catalogMissing=calendarPartial()&&(scheduleCatalogState!==state||!scheduleCatalogReady);
-    var plan=plans.find(function(p){return p.id===selected;})||{};$('schedulePlanHint').textContent=plan.introGift?'一次建立三期：首堂免費，老師鐘點費 0 元；接著 4 堂 2,800 元，老師七成；再 4 堂 2,800 元，老師六成。':plan.id?'共 '+plan.lessonCount+' 堂，學費 '+money(plan.amount)+'。確認排課時一併建立課程；收款另外登記。':subjectId&&!plans.length?(catalogMissing?(scheduleCatalogState===state&&scheduleCatalogError?'收費方案讀取失敗，請重新開啟排課重試。':'正在讀取收費方案，請稍候…'):'此科目尚未設定收費方案，請先到設定新增方案。'):'選擇方案後，系統會建立學費資料，不會自動登記收款。';
+    var plan=plans.find(function(p){return p.id===selected;})||{};
+    var onlyGift=newPlan&&plan.giftOnly,frequency=$('eventFrequency');
+    if(onlyGift){
+      if(!frequency.dataset.beforeGift)frequency.dataset.beforeGift=frequency.value;
+      frequency.value='once';frequency.disabled=true;
+      $('repeatUntilField').classList.add('hidden');
+    }else if(frequency.dataset.beforeGift){
+      frequency.value=frequency.dataset.beforeGift;delete frequency.dataset.beforeGift;
+      frequency.disabled=!!$('eventId').value;
+      $('repeatUntilField').classList.toggle('hidden',type!=='fixed'||frequency.value==='once'||!!$('eventId').value||!!permanentScheduleSource);
+    }
+    if(!permanentScheduleSource){
+      var sequence=newPlan&&plan.introGift;
+      frequency.querySelector('[value=once]').disabled=!!sequence;
+      if(sequence&&frequency.value==='once'){
+        frequency.value='weekly';$('repeatUntilField').classList.remove('hidden');
+      }
+    }
+    $('schedulePlanHint').textContent=plan.giftOnly?'只排這一堂。學生學費與老師鐘點費都是 0 元，後續由你決定是否續課。':plan.introGift?'首堂學費與鐘點費都是 0 元。接著兩期各 4 堂、各 2,800 元，分期收款；老師依序領七成、六成。':plan.id?'共 '+plan.lessonCount+' 堂，學費 '+money(plan.amount)+'。確認排課時一併建立課程；收款另外登記。':subjectId&&!plans.length?(catalogMissing?(scheduleCatalogState===state&&scheduleCatalogError?'收費方案讀取失敗，請重新開啟排課重試。':'正在讀取收費方案，請稍候…'):'此科目尚未設定收費方案，請先到設定新增方案。'):'選擇方案後，系統會建立學費資料，不會自動登記收款。';
     $('scheduleStudentLabel').textContent=type==='single'?'選擇要加課的既有學生':'選擇學生';
   }
   function setScheduleStudentMode(mode){
@@ -899,7 +920,7 @@
   function updateScheduleConflict(){var event=formEvent(),ignore=event.id?[event.id]:[];if(permanentScheduleSource){var source=permanentScheduleSource;ignore=effectiveEventsForDate(event.date).filter(function(e){return e.id===source.id||(source.sourceCourseId&&e.sourceCourseId===source.sourceCourseId&&normalizedStatus(e.status)==='scheduled');}).map(function(e){return e.id;});}var reasons=eventConflictReasons(event,ignore),box=$('conflictBox');box.classList.toggle('has-conflict',reasons.length>0);box.innerHTML=reasons.length?'<b>發現 '+reasons.length+' 項衝突</b><span>'+reasons.map(esc).join('<br>')+'</span>':'<b>目前未發現衝突</b><span>系統會依已填寫的資料檢查衝突。</span>';return reasons;}
   function clearScheduleForm(){
     delete $('scheduleForm').dataset.sourceSubjectId;delete $('scheduleForm').dataset.halfHourAcknowledged;delete $('scheduleForm').dataset.studentMode;
-    permanentScheduleSource=null;$('eventFrequency').querySelector('[value=once]').disabled=false;['eventSubject','eventTeacher','eventDuration','eventStudentSearch'].forEach(function(id){$(id).disabled=false;});$('scheduleTypeTabs').classList.remove('hidden');$('studentField').classList.remove('hidden');$('scheduleNewTuition').classList.remove('hidden');$('schedulePurposeHint').textContent='先選用途。新學生填姓名、手機後選科目、老師與方案；舊學生可搜尋後沿用原課程或選新方案。';
+    permanentScheduleSource=null;delete $('eventFrequency').dataset.beforeGift;$('eventFrequency').querySelector('[value=once]').disabled=false;['eventSubject','eventTeacher','eventDuration','eventStudentSearch'].forEach(function(id){$(id).disabled=false;});$('scheduleTypeTabs').classList.remove('hidden');$('studentField').classList.remove('hidden');$('scheduleNewTuition').classList.remove('hidden');$('schedulePurposeHint').textContent='先選用途。新學生填姓名、手機後選科目、老師與方案；舊學生可搜尋後沿用原課程或選新方案。';
     $('scheduleForm').reset();delete $('scheduleForm').dataset.operationId;$('eventId').value='';$('eventSeriesId').value='';$('eventDate').disabled=false;$('eventStart').disabled=false;$('eventRoom').disabled=false;$('eventDate').value=state.currentDate;$('eventDuration').value='60';$('eventType').value='fixed';$('eventFrequency').value='weekly';$('eventRepeatUntil').value='';$('eventSingleKind').value='normal';$('eventSpecialLessonPrice').value='';$('eventSpecialTeacherPay').value='';$('repeatUntilField').classList.remove('hidden');$('eventNote').value='';$('eventRenterType').value='walkin';$('rentalStudentPicker').classList.add('hidden');$('rentalStudentSearch').value='';$('rentalStudentId').value='';$('rentalStudentSelected').textContent='';$('rentalStudentMatches').classList.add('hidden');$('eventClient').value='';$('eventClientPhone').value='';$('eventRentalFee').value='';$('eventRentalPaymentStatus').value='unpaid';$('eventTrialName').value='';$('eventTrialPhone').value='';$('eventTrialFee').value='';$('eventStudentSearch').value='';$('eventStudentSelected').innerHTML='';$('eventStudentSelected').classList.add('hidden');$('eventStudentMatches').classList.add('hidden');
   }
   function openSchedule(options){

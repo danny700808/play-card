@@ -143,6 +143,16 @@ test('a paired class conflict does not create either student, group or tuition',
  const f=fixture([{id:'busy',date:'2026-09-14',startTime:'18:00',endTime:'19:00',roomId:'room',studentIds:[]}]),data=enroll();delete data.enrollment.newStudent;data.enrollment.newStudents=[{name:'第一位'},{name:'第二位'}];await assert.rejects(f.c.adminSaveSchedule(data),/已被占用/);assert.equal(f.docs.size,1);
 });
 
+test('standalone gift creates one calendar occurrence and one zero-fee period with no receipt',async()=>{
+ const f=fixture(),data=enroll();data.enrollment.planId='single-gift-guitar';
+ const saved=await f.c.adminSaveSchedule(data);
+ assert.equal(saved.recurring,false);assert.equal(saved.tuitionPeriods.length,1);
+ const p=saved.tuitionPeriod;
+ assert.deepEqual([p.lessonCount,p.expectedAmount,p.paidAmount,p.transactions.length,p.planSnapshot.splitType],[1,0,0,0,'none']);
+ assert.ok(f.docs.has('coursePortalScheduleChanges/'+saved.id));
+ assert.equal((await f.c.adminSaveSchedule(data)).duplicate,true);
+});
+
 test('intro offer atomically adds one unpaid gift and two four-lesson periods in order for any subject',async()=>{
  const f=fixture(),data=enroll();data.enrollment.planId='intro-gift-guitar';
  const saved=await f.c.adminSaveSchedule(data), periods=saved.tuitionPeriods;
@@ -177,7 +187,7 @@ test('manager fixed-course selector puts the gift first, then 60% and 70% by des
  const rows=[fee('專職',4000,.6),fee('免費課程',0,0),fee('七三 A',2800,70),fee('六四 A',2800,.6),fee('七三 B',3600,.7),fee('六四 B',3000,60)];
  const ctx={state:{feePlans:rows},teacherShareRatio:v=>v>1?v/100:v,bySort:()=>0};
  vm.createContext(ctx);vm.runInContext(ui.slice(start,end),ctx);
- assert.deepEqual(Array.from(ctx.schedulePlans('s','fixed'),p=>p.id),['intro-gift-s','六四 B','六四 A','七三 B','七三 A','專職']);
+ assert.deepEqual(Array.from(ctx.schedulePlans('s','fixed'),p=>p.id),['single-gift-s','intro-gift-s','六四 B','六四 A','七三 B','七三 A','專職']);
  assert.equal(ctx.schedulePlans('another','fixed')[0].lessonCount,1);
  const details=ui.slice(ui.indexOf('  function eventDetails('),ui.indexOf('  function detailLine('));
  assert.match(details,/event-command-row">.\+newPeriodButton\+.<button data-attendance="attended"/);
