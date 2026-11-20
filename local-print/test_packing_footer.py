@@ -21,6 +21,18 @@ def data(**changes):
 
 
 class FooterTests(unittest.TestCase):
+    def test_invoice_reminder_only_on_shopee_and_official_store(self):
+        for channel in ('蝦皮', '官網', 'MOMO', '酷澎', 'LINE', ''):
+            with self.subTest(channel=channel):
+                normalized = validate(data(), channel)
+                pdf, _ = footer_pdf(normalized)
+                text = PdfReader(io.BytesIO(pdf)).pages[0].extract_text()
+                expected = '客人號碼 需要開票- 2070' if channel in ('蝦皮', '官網') else '客人號碼- 2070'
+                self.assertEqual(text.count(expected), 1)
+                self.assertEqual('需要開票' in text, channel in ('蝦皮', '官網'))
+        pdf, _ = footer_pdf(validate(data(paidAmountStatus='review'), '蝦皮'))
+        self.assertIn('客人號碼 需要開票- 待確認', PdfReader(io.BytesIO(pdf)).pages[0].extract_text())
+
     def test_missing_sku_prints_full_name_variant_and_quantity(self):
         for sku in ('', None, '   '):
             raw = data(items=[{'name': '木箱鼓 / P02', 'sku': '134-0106', 'quantity': 1},
@@ -138,6 +150,21 @@ class HistoryTests(unittest.TestCase):
         self.assertNotEqual(first['jobId'],second['jobId'])
         self.assertEqual(second['status'],'prepared')
 
+    def test_invoice_reminder_invalidates_old_cache_but_preserves_print_history(self):
+        footer = validate(self.payload['packingFooter'])
+        layout = json.dumps([VERSION, '', '', '', footer], sort_keys=True, ensure_ascii=False, separators=(',', ':'))
+        digest = hashlib.sha256((self.source_digest+'\0'+layout).encode()).hexdigest()
+        old, before = self.old('submitted', digest=digest)
+        state = json.loads(before); state['sourceDigest'] = self.source_digest
+        self.bridge.save_state(old, state)
+        before = (old/'status.json').read_bytes()
+        result = self.handler.prepare(self.payload)[1]
+        self.assertNotEqual(result['jobId'], old.name)
+        self.assertEqual(result['status'], 'preview')
+        saved = json.loads((self.bridge.JOBS/result['jobId']/'packing-footer.json').read_text(encoding='utf-8'))
+        self.assertTrue(saved['invoiceRequired'])
+        self.assertEqual((old/'status.json').read_bytes(), before)
+
     def test_missing_sku_reaches_preparation_without_auto_printing(self):
         payload = {**self.payload, 'packingFooter':data(items=[{'name':'木箱鼓專用袋 / P02', 'quantity':1}])}
         code, result = self.handler.prepare(payload)
@@ -157,3 +184,4 @@ class HistoryTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

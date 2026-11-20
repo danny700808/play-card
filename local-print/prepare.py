@@ -94,7 +94,7 @@ def identity(content):
 
 
 def prepare(job, channel, password, print_profile='', shipping_method='', tracking='', packing_footer=None, order_key='', order_no=''):
-    footer = validate_footer(packing_footer) if packing_footer is not None else None
+    footer = validate_footer(packing_footer, channel) if packing_footer is not None else None
     source = job / "source.pdf"
     reader = PdfReader(source)
     if reader.is_encrypted and not reader.decrypt(password):
@@ -243,3 +243,4 @@ if __name__ == "__main__":
     except Exception as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False))
         raise SystemExit(1)
+

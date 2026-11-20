@@ -30,7 +30,7 @@ HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 CHANNELS = {"MOMO", "蝦皮", "酷澎", "官網", "LINE"}
 LOCK = threading.Lock()
 MAX_BODY = 22 * 1024 * 1024
-RELEASE = '2.3.0-postal-label'
+RELEASE = '2.3.1-invoice-reminder'
 PROFILE = 'momo-cvs-v1'
 POSTAL_PROFILE = 'postal-address-v1'
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -284,7 +284,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def prepare_footer(self, payload, raw, channel, profile, method):
         try:
-            footer = validate_footer(payload['packingFooter'])
+            footer = validate_footer(payload['packingFooter'], channel)
             if footer['orderNo'] != payload.get('orderNo'):
                 raise ValueError('商品資料與訂單編號不一致，尚未送印。')
         except ValueError as error:
@@ -402,3 +402,4 @@ if __name__ == "__main__":
     if warmed.returncode:
         raise RuntimeError('Local document renderer could not start.')
     LocalPrintServer(("127.0.0.1", PORT), Handler).serve_forever()
+

@@ -21,7 +21,7 @@ def clean(value, limit):
     return ' '.join(value.split())
 
 
-def validate(data):
+def validate(data, channel=''):
     if not isinstance(data, dict) or data.get('version') != VERSION:
         raise ValueError('商品標籤版型不符，請更新包貨頁。')
     order = clean(data.get('orderNo', ''), 100)
@@ -49,7 +49,8 @@ def validate(data):
     number = str(amount).rstrip('0').rstrip('.') if confirmed and '.' in str(amount) else str(amount) if confirmed else '待確認'
     return {'version': VERSION, 'orderNo': order,
             'items': [{'name': name, 'sku': sku, 'quantity': qty} for (name, sku), qty in grouped.items()],
-            'customerNumber': number}
+            'customerNumber': number,
+            **({'invoiceRequired': True} if channel in ('蝦皮', '官網') else {})}
 
 
 def font():
@@ -111,7 +112,8 @@ def footer_pdf(data):
                 y -= size * 1.12
         top -= heights[start // columns]
     c.setFont(FONT, 9)
-    c.drawRightString(97 * MM, 1.8 * MM, '客人號碼- ' + data['customerNumber'])
+    prefix = '客人號碼 需要開票- ' if data.get('invoiceRequired') else '客人號碼- '
+    c.drawRightString(97 * MM, 1.8 * MM, prefix + data['customerNumber'])
     c.showPage()
     c.save()
     return output.getvalue(), {'fontPt': size, 'columns': columns, 'itemCount': len(rows)}
@@ -152,3 +154,4 @@ def compose(content, data):
     writer.write(result)
     return result.getvalue(), {'layoutVersion': VERSION, 'footerMm': 20, 'paperMm': [100,150],
                                'layoutScales': scales, 'footer': details}
+
