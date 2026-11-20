@@ -124,8 +124,6 @@ function render() {
   const logistics=[['all','全部物流'],['hct','新竹物流／貨運'],['other','其他物流'],['unknown','物流待確認']];
   $('logisticsTabs').hidden=activeWork!=='pending';
   $('logisticsTabs').innerHTML=logistics.map(([key,label])=>`<button data-logistics="${key}" aria-pressed="${activeLogistics===key}" class="${activeLogistics===key?'active':''}">${label} <strong>${pendingRows.filter(r=>key==='all'||ShippingModel.logisticsGroup(r)===key).length}</strong></button>`).join('');
-  $('shippingReminder').hidden=activeWork!=='pending';
-  $('shippingReminder').textContent='新竹物流：店內交寄提醒 17:00 前處理。各組依平台期限由近到遠排列；期限待確認的訂單仍需核對平台。';
   const rows=filtered();
   if(!rows.some(r=>r.key===selected))selected=rows[0]?.key||'';
   $('resultCount').textContent=`${rows.length} 筆`;
