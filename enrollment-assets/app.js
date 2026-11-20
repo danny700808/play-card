@@ -62,7 +62,7 @@ function renderSelected(){if(!state.course)return;
  $('selectedCourse').innerHTML=`<img src="${state.course.image}" alt="${esc(state.course.name)}"><div><h2>${esc(state.course.name)}</h2><p>${esc(state.plan.name)} · NT$ ${money(state.plan.price)}／${state.plan.lessons} 堂</p>${duo?'<p>雙人班請自行找好同伴，教室不配對。</p>':''}${note?`<p class="price-note">${esc(note)}</p>`:''}<button type="button" class="text-button" id="changeCourse">更換課程或班別</button></div>`;
  $('changeCourse').onclick=()=>go(1);
  for(const field of ['secondName','secondPhone']){ $(field+'Field').hidden=!duo; $(field).required=duo; $(field).disabled=!duo; }
- $('phoneLabel').innerHTML=(duo?'第一位上課人手機':'聯絡手機')+' <em>必填</em>';
+ $('phoneLabel').innerHTML=(duo?'第一位上課人行動電話':'行動電話')+' <em>必填</em>';
  $('nameLabel').innerHTML=state.plan.id==='band'?'上課人姓名（請填團員姓名） <em>必填</em>' : (duo?'第一位上課人姓名':'上課人姓名')+' <em>必填</em>';
 }
 function updateSummary(){
@@ -120,6 +120,10 @@ function renderDayOptions(preferred=''){
  $('dateDay').innerHTML=options;
 }
 function clearDate(){state.date='';resetConsent();$('dateError').textContent='';$('timeError').textContent='';renderSlots();renderContactFields();updateSummary();}
+$('addDate').onclick=()=>{
+ $('dateDay').value='';clearDate();
+ $('dateDay').focus();$('dateFields').scrollIntoView({block:'center'});
+};
 $('dateYear').onchange=()=>{clearDate();renderMonthOptions(1);renderDayOptions();};
 $('dateMonth').onchange=()=>{clearDate();renderDayOptions();};
 $('dateDay').onchange=()=>{
@@ -137,7 +141,23 @@ function renderSlots(){
  $('slotTitle').textContent=state.date&&!dateIssue(state.date)?displayDate(state.date)+' · 可複選時段':'選好日期後，再選時段。';
  $('slots').innerHTML=slotsFor(state.date).map(t=>`<button type="button" data-time="${t}" aria-pressed="${state.times.includes(state.date+' '+t)}" class="${state.times.includes(state.date+' '+t)?'selected':''}">${t}–${endTime(t)}</button>`).join('');
  $('slots').querySelectorAll('[data-time]').forEach(b=>b.onclick=()=>{const key=state.date+' '+b.dataset.time;state.times=state.times.includes(key)?state.times.filter(v=>v!==key):[...state.times,key].sort();resetConsent();$('timeError').textContent='';renderSlots();renderContactFields();updateSummary();});
- $('chosenTimes').textContent=state.times.length?'已選 '+state.times.length+' 個時段：'+describeTimes(state.times):'';
+ const days=new Map();
+ for(const key of state.times){
+  const [date,time]=key.split(' ');
+  if(!days.has(date))days.set(date,[]);
+  days.get(date).push(time+'–'+endTime(time));
+ }
+ const chosen=$('chosenTimes');
+ chosen.replaceChildren();
+ if(days.size){
+  const heading=document.createElement('strong');heading.textContent='已選 '+days.size+' 天，共 '+state.times.length+' 個時段';chosen.append(heading);
+  const list=document.createElement('ul');
+  for(const [date,ranges] of days){
+   const item=document.createElement('li');item.textContent=displayDate(date)+'　'+ranges.join('、');list.append(item);
+  }
+  chosen.append(list);
+ }
+ $('addDate').hidden=!days.has(state.date);
 }
 function describeTimes(times){return times.map(key=>{const [date,time]=key.split(' ');return date.slice(5).replace('-','/')+' '+time+'–'+endTime(time);}).join('、');}
 function validateTime(){
@@ -166,7 +186,7 @@ function validateDetails(){
  if(!validateTime()){go(2);return false;}
  if(!$('detailsForm').reportValidity())return false;
  for(const id of state.plan.id==='duo'?['phone','secondPhone']:['phone']){
-  if(!/^(?:09\d{8}|\+8869\d{8})$/.test($(id).value.replace(/[\s()-]/g,''))){$('detailsError').textContent='請確認'+(id==='secondPhone'?'第二位上課人的':'')+'手機號碼，例如 0912 345 678。';$(id).focus();return false;}
+  if(!/^(?:09\d{8}|\+8869\d{8})$/.test($(id).value.replace(/[\s()-]/g,''))){$('detailsError').textContent='請確認'+(id==='secondPhone'?'第二位上課人的':'')+'行動電話號碼，例如 0912 345 678。';$(id).focus();return false;}
  }
  if(!$('studentName').value.trim()||(state.plan.id==='duo'&&!$('secondName').value.trim())){$('detailsError').textContent='請填寫上課人的姓名。';return false;}
  state.contact={name:$('studentName').value.trim(),secondName:state.plan.id==='duo'?$('secondName').value.trim():'',phone:$('phone').value.trim(),...(state.plan.id==='duo'?{secondPhone:$('secondPhone').value.trim()}:{}),email:$('email').value.trim(),note:$('note').value.trim()};return true;
@@ -175,7 +195,7 @@ $('detailsForm').onsubmit=e=>{e.preventDefault();if(validateDetails())go(3);};
 $('detailsForm').oninput=resetConsent;
 function renderReview(){
  const c=state.contact;
- const rows=[['希望時間',describeTimes(state.times)],...(c.secondName?[['第一位上課人',c.name+' · '+c.phone],['第二位上課人',c.secondName+' · '+c.secondPhone]]:[['上課人',c.name],['聯絡手機',c.phone]]),['Email',c.email],...(c.note?[['其他需求',c.note]]:[])],note=feeNote(state.course,state.plan);
+ const rows=[['希望時間',describeTimes(state.times)],...(c.secondName?[['第一位上課人',c.name+' · '+c.phone],['第二位上課人',c.secondName+' · '+c.secondPhone]]:[['上課人',c.name],['行動電話',c.phone]]),['Email',c.email],...(c.note?[['其他需求',c.note]]:[])],note=feeNote(state.course,state.plan);
  $('review').className='review';$('review').innerHTML=`${note?`<p class="price-note">${esc(note)}</p>`:''}<dl>${rows.map(([k,v])=>`<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`;
 }
 $('editDetails').onclick=()=>{go(2);if(!$('contactFields').hidden){$('detailsHeading').focus({preventScroll:true});$('contactFields').scrollIntoView({behavior:'smooth',block:'start'});}};

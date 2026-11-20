@@ -30,7 +30,7 @@ test('admin schedules from the inbox with filtered choices, conflict recovery, e
 });
 test('native form loads all course image assets from its own asset directory and private data collections are not client allowlisted',()=>{
  const html=fs.readFileSync('enrollment.html','utf8'),js=fs.readFileSync('enrollment-assets/app.js','utf8');
- assert.match(html,/src="enrollment-assets\/app.js\?v=20261120-pair"/);assert.match(js,/document.currentScript/);assert(!html.includes('lineDialog'));assert.match(html,/id="accessPanel"/);
+ assert.match(html,/src="enrollment-assets\/app.js\?v=20261120-dates"/);assert.match(js,/document.currentScript/);assert(!html.includes('lineDialog'));assert.match(html,/id="accessPanel"/);
  for(let n=1;n<=23;n++)assert(fs.existsSync('enrollment-assets/assets/course-'+String(n).padStart(2,'0')+'.jpg'));
  const rules=fs.readFileSync('firestore.rules','utf8');assert(!/onlineEnrollment/.test(rules));assert.match(rules,/match \/\{document=\*\*\} \{\s+allow read, write: if false;/);
  const routes=require('../internal-workspace-routes');assert.deepEqual(routes.pageContext('/enrollment-admin.html','','').map(n=>n.id),['root','enrollment','online-enrollment']);
@@ -73,7 +73,12 @@ test('duo registration keeps multiple dates, requires each phone, and clears com
  for(let i=1;dates.length<2;i++){const key=api.addDays(api.todayKey(),i);if(api.slotsFor(key).includes('13:00'))dates.push(key);}
  function pickDate(date){const [y,m,day]=date.split('-').map(Number);for(const [key,v] of [['dateYear',y],['dateMonth',m],['dateDay',day]]){$(key).value=String(v);$(key).dispatchEvent(new w.Event('change'));}}
  const slot=t=>d.querySelector('[data-time="'+t+'"]');
- pickDate(dates[0]);slot('13:00').click();slot('15:00').click();pickDate(dates[1]);slot('13:00').click();
+ pickDate(dates[0]);slot('13:00').click();slot('15:00').click();
+ assert(!$('addDate').hidden);$('addDate').click();assert.equal($('dateDay').value,'');assert.equal(d.activeElement,$('dateDay'));
+ assert.equal(api.state.times.length,2);assert.match($('chosenTimes').textContent,/已選 1 天，共 2 個時段/);
+ pickDate(dates[1]);slot('13:00').click();
+ assert.equal($('chosenTimes').querySelectorAll('li').length,2);assert.match($('chosenTimes').textContent,/已選 2 天，共 3 個時段/);
+ assert.match($('phoneLabel').textContent,/第一位上課人行動電話/);assert.match($('secondPhoneField').textContent,/第二位上課人行動電話/);
  pickDate(dates[0]);assert.equal(slot('13:00').getAttribute('aria-pressed'),'true');slot('13:00').click();
  assert.deepEqual(Array.from(api.state.times),[dates[0]+' 15:00',dates[1]+' 13:00']);
  $('studentName').value='甲';$('phone').value='0911111111';$('secondName').value='乙';$('email').value='test@example.invalid';
