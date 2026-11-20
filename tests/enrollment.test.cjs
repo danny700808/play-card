@@ -78,7 +78,7 @@ test('student creation requires manager choice, keeps existing matches untouched
  const v=h.rows.get(C.records+'/'+r.receiptId);await h.manager({action:'update',id:r.receiptId,version:v.version,status:'admitted',note:'checked'});await assert.rejects(h.manager({action:'update',id:r.receiptId,version:1,status:'closed',note:''}),/資料已更新/);
 });
 test('two-person enrollment creates distinct profiles and same verified LINE for both',async()=>{
- const h=harness(),{r}=await h.submit({form:{...h.form,optionId:'duo',secondName:'第二位學生'}});const v=await h.manager({action:'admit',id:r.receiptId,version:1,studentIds:['new','new']});assert.equal(new Set(v.studentIds).size,2);assert.equal(h.count('coursePortalStudentBindings'),2);assert.equal(h.count('notificationQueue'),1);
+ const h=harness(),{r}=await h.submit({form:{...h.form,optionId:'duo',secondName:'第二位學生',secondPhone:'0922222222'}});const v=await h.manager({action:'admit',id:r.receiptId,version:1,studentIds:['new','new']});assert.equal(new Set(v.studentIds).size,2);assert.equal(h.count('coursePortalStudentBindings'),2);assert.equal(h.count('notificationQueue'),1);
 });
 test('manual contact derives recipient from verified identity and de-duplicates a retried operation',async()=>{
  const h=harness(),{r}=await h.submit(),operationId=random(),args={action:'message',id:r.receiptId,text:'fixture message',operationId,targetLineUserId:'forged'};assert.equal(h.count('notificationQueue'),1);
@@ -103,4 +103,17 @@ test('only verified submissions notify the primary manager once, and detail read
  for(let n=0;n<3;n++)await h.publicApi({action:'redeem',ticket:c.ticket,verifier:s.verifier});assert.equal(h.count('notificationQueue'),1);
  q.status='已發送';q.sentAt=h.now();
  const detail=await h.manager({action:'detail',id:r.receiptId});assert.equal(detail.record.managerNotification.status,'已發送');assert.equal(detail.record.managerNotification.sentAt,h.now());
+});
+
+test('both students have a phone and all requested slots survive LINE authorization',async()=>{
+ const h=harness(),times=['2026-11-21 13:00','2026-11-21 15:00','2026-11-22 10:00'];
+ const form={...h.form,optionId:'duo',secondName:'乙',times};
+ await assert.rejects(h.start({token:''},{form}),/第二位/);
+ const complete={...form,secondPhone:'0922-222-222'};
+ await assert.rejects(h.start({token:''},{form:{...complete,times:[times[0],'2026-11-23 13:00']}}),/時段/);
+ const {r}=await h.submit({form:complete}),row=h.rows.get(C.records+'/'+r.receiptId);
+ assert.deepEqual(row.form.times,times);assert.deepEqual(r.times,times);
+ assert.equal(row.form.secondPhone,'0922222222');
+ const {studentIds}=await h.manager({action:'admit',id:r.receiptId,version:1,studentIds:['new','new']});
+ assert.deepEqual(studentIds.map(id=>h.rows.get('coursePortalStudentProfiles/'+id).phone),[form.phone,'0922222222']);
 });

@@ -41,17 +41,18 @@ function createEnrollmentScheduling({db,scheduler,matches,now=Date.now,stamp=()=
   if(row.studentIds?.length&&JSON.stringify(draft.studentIds)!==JSON.stringify(row.studentIds))fail('已建檔學生不可在排課時換成其他人。');
   const newIds=new Set(),ids=selected.map((v,n)=>{if(v==='new'){const sid='online-'+data.id+'-'+(n+1);newIds.add(sid);return sid;}if(!row.studentIds?.includes(v)&&!candidates.some(c=>c.id===v))fail('請核對學生資料，或選擇建立新學生。');return v;});
   if(new Set(ids).size!==ids.length)fail('兩位學生不能選擇同一份資料。');
+  const phones=[row.form.phone,row.form.secondPhone||''];
   const profiles=await Promise.all(ids.map(async sid=>({id:sid,data:(await db.collection('coursePortalStudentProfiles').doc(sid).get()).data()})));
   const groups=context.groups||[],linked=groups.filter(g=>g.active!==false&&(g.memberIds||[]).some(sid=>ids.includes(sid)));
   let group=null,createGroup=false;
   if(linked.length){if(ids.length!==2||linked.length!==1||linked[0].memberIds.length!==2||!linked[0].memberIds.every(sid=>ids.includes(sid)))fail('所選學生目前已有其他雙人班分組，請先到課務確認分組。');group=linked[0];}
   else if(ids.length===2){
    if(profiles.some(p=>!newIds.has(p.id)&&p.data?.enrollmentId!==data.id))fail('既有學生的雙人班請先在課務確認分組，再回這裡排課，避免影響原有課程。');
-   group={id:ids[0],name:names.join('－'),memberIds:ids,memberNames:names,memberPhones:ids.map(()=>row.form.phone),startDate:draft.date,active:true};createGroup=true;
+   group={id:ids[0],name:names.join('－'),memberIds:ids,memberNames:names,memberPhones:phones,startDate:draft.date,active:true};createGroup=true;
   }
   const scheduleStudentId=group?.id||ids[0],operationId='online-enrollment-'+hash(data.id).slice(0,32),courseId='manager-'+operationId;
-  const virtualStudents=ids.filter(sid=>newIds.has(sid)).map((sid,n)=>({id:sid,name:names[ids.indexOf(sid)],phone:row.form.phone,active:true,managerCreated:true}));
-  if(group)virtualStudents.push({id:group.id,name:group.name,memberIds:group.memberIds,memberNames:group.memberNames,active:true});
+  const virtualStudents=ids.flatMap((sid,n)=>newIds.has(sid)?[{id:sid,name:names[n],phone:phones[n],active:true,managerCreated:true}]:[]);
+  if(group)virtualStudents.push({id:group.id,name:group.name,memberIds:group.memberIds,memberNames:group.memberNames,memberPhones:group.memberPhones,active:true});
   let savedSchedule;
   const request={operationId,event:{date:draft.date,start:draft.time,duration:draft.duration,frequency:draft.frequency,type:'fixed',roomId:draft.roomId,teacherId:draft.teacherId,subjectId:draft.subjectId,studentIds:[scheduleStudentId],note:draft.note,halfHourAcknowledged:draft.halfHourAcknowledged},enrollment:{planId:draft.planId}};
   await scheduler.commit(request,{virtualStudents,conflictStudentIds:ids,requireTeacherSubject:true,prepare:async(tx,result)=>{
@@ -79,8 +80,8 @@ function createEnrollmentScheduling({db,scheduler,matches,now=Date.now,stamp=()=
    const confirmationNotification={queueId,body,queuedAt:now()};
    return write=>{
     ids.forEach((sid,n)=>{
-     if(newIds.has(sid))write.create(studentRefs[n],{id:sid,name:names[n],phone:row.form.phone,email:row.form.email,active:true,studentActive:true,managerCreated:true,managerNote:'由線上報名確認排課',enrollmentId:data.id,updatedAt:stamp(),updatedBy:actor});
-     if(!bindingSnapshots[n].exists)write.create(bindingRefs[n],{id:bindingRefs[n].id,type:'student',studentId:sid,targetId:sid,targetName:names[n],name:names[n],phone:row.form.phone,email:row.form.email,status:'active',method:'line',lineUserId:row.line.lineUserId,lineDisplayName:row.line.lineDisplayName,lineFriendFlag:row.line.lineFriendFlag,authAccountId:hash('line-account|student|'+row.line.lineUserId),approvedAt:stamp(),approvedBy:actor,sourceEnrollmentId:data.id,createdAt:stamp()});
+     if(newIds.has(sid))write.create(studentRefs[n],{id:sid,name:names[n],phone:phones[n],email:row.form.email,active:true,studentActive:true,managerCreated:true,managerNote:'由線上報名確認排課',enrollmentId:data.id,updatedAt:stamp(),updatedBy:actor});
+     if(!bindingSnapshots[n].exists)write.create(bindingRefs[n],{id:bindingRefs[n].id,type:'student',studentId:sid,targetId:sid,targetName:names[n],name:names[n],phone:phones[n],email:row.form.email,status:'active',method:'line',lineUserId:row.line.lineUserId,lineDisplayName:row.line.lineDisplayName,lineFriendFlag:row.line.lineFriendFlag,authAccountId:hash('line-account|student|'+row.line.lineUserId),approvedAt:stamp(),approvedBy:actor,sourceEnrollmentId:data.id,createdAt:stamp()});
     });
     if(groupRef)write.create(groupRef,{...group,sourceCourseIds:[courseId],updatedAt:stamp(),createdBy:actor});
     write.create(queueRef,{queueId,channel:'line',status:'待發送',source:'online-enrollment-confirmed',eventCode:'online_enrollment_confirmed',targetLineUserId:current.line.lineUserId,targetName:names.join('、'),title:'柚子樂器｜報名確認',body,lineText:body,emailFallbackEnabled:false,enrollmentId:data.id,courseId:result.id,createdAt:stamp(),createdBy:actor});

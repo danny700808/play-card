@@ -5,7 +5,7 @@ const assetBase=new URL('.',document.currentScript?.src||new URL('app.js',locati
 const API='https://asia-east1-youzi-c1b74.cloudfunctions.net/enrollmentPublicHttp',CONTEXT='youzi.enrollment.pending.v1',CONSENT_VERSION='enrollment-line-2026-11-15-v1';
 let submitBusy=false;
 let catalogLoaded=false;
-const state={step:1,category:'全部',search:'',course:null,plan:null,date:'',time:'',contact:null};
+const state={step:1,category:'全部',search:'',course:null,plan:null,date:'',times:[],contact:null};
 const todayKey=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const dateOf=key=>new Date(key+'T12:00:00+08:00');
 const dayOf=key=>dateOf(key).getUTCDay();
@@ -54,19 +54,20 @@ function planHint(){
 }
 $('chooseCourse').onclick=()=>{
  const wasDuo=state.plan?.id==='duo';state.course=draftCourse;state.plan=draftPlan;
- if(wasDuo&&state.plan.id!=='duo')$('secondName').value='';
+ if(wasDuo&&state.plan.id!=='duo'){ $('secondName').value=''; $('secondPhone').value=''; }
  resetConsent();closeDialog('courseDialog');renderCatalog();go(2);
 };
 function renderSelected(){if(!state.course)return;
- const note=feeNote(state.course,state.plan);
- $('selectedCourse').innerHTML=`<img src="${state.course.image}" alt="${esc(state.course.name)}"><div><h2>${esc(state.course.name)}</h2><p>${esc(state.plan.name)} · NT$ ${money(state.plan.price)}／${state.plan.lessons} 堂</p>${note?`<p class="price-note">${esc(note)}</p>`:''}<button type="button" class="text-button" id="changeCourse">更換課程或班別</button></div>`;
+ const duo=state.plan.id==='duo',note=feeNote(state.course,state.plan);
+ $('selectedCourse').innerHTML=`<img src="${state.course.image}" alt="${esc(state.course.name)}"><div><h2>${esc(state.course.name)}</h2><p>${esc(state.plan.name)} · NT$ ${money(state.plan.price)}／${state.plan.lessons} 堂</p>${duo?'<p>雙人班請自行找好同伴，教室不配對。</p>':''}${note?`<p class="price-note">${esc(note)}</p>`:''}<button type="button" class="text-button" id="changeCourse">更換課程或班別</button></div>`;
  $('changeCourse').onclick=()=>go(1);
- $('secondNameField').hidden=state.plan.id!=='duo';$('secondName').required=state.plan.id==='duo';
- $('nameLabel').innerHTML=state.plan.id==='band'?'上課人姓名（請填團員姓名） <em>必填</em>':'上課人姓名 <em>必填</em>';
+ for(const field of ['secondName','secondPhone']){ $(field+'Field').hidden=!duo; $(field).required=duo; $(field).disabled=!duo; }
+ $('phoneLabel').innerHTML=(duo?'第一位上課人手機':'聯絡手機')+' <em>必填</em>';
+ $('nameLabel').innerHTML=state.plan.id==='band'?'上課人姓名（請填團員姓名） <em>必填</em>' : (duo?'第一位上課人姓名':'上課人姓名')+' <em>必填</em>';
 }
 function updateSummary(){
  $('bottomSummary').textContent=state.course?state.course.name:'';
- $('nextButton').disabled=!state.course||(state.step===2&&!slotsFor(state.date).includes(state.time));
+ $('nextButton').disabled=!state.course||(state.step===2&&!state.times.length);
  $('nextButton').textContent='確認資料，前往 LINE →';
  $('bottomBar').hidden=state.step!==2;
 }
@@ -118,7 +119,7 @@ function renderDayOptions(preferred=''){
  }
  $('dateDay').innerHTML=options;
 }
-function clearDate(){state.date='';state.time='';resetConsent();$('dateError').textContent='';$('timeError').textContent='';renderSlots();renderContactFields();updateSummary();}
+function clearDate(){state.date='';resetConsent();$('dateError').textContent='';$('timeError').textContent='';renderSlots();renderContactFields();updateSummary();}
 $('dateYear').onchange=()=>{clearDate();renderMonthOptions(1);renderDayOptions();};
 $('dateMonth').onchange=()=>{clearDate();renderDayOptions();};
 $('dateDay').onchange=()=>{
@@ -133,39 +134,48 @@ $('dateDay').onchange=()=>{
 };
 $('dateLimitDialog').addEventListener('close',()=>$('dateDay').focus());
 function renderSlots(){
- $('slotTitle').textContent=state.date&&!dateIssue(state.date)?displayDate(state.date)+' · 選擇時段':'選好日期後，再選時段。';
- $('slots').innerHTML=slotsFor(state.date).map(t=>`<button type="button" data-time="${t}" aria-pressed="${state.time===t}" class="${state.time===t?'selected':''}">${t}–${endTime(t)}</button>`).join('');
- $('slots').querySelectorAll('[data-time]').forEach(b=>b.onclick=()=>{state.time=b.dataset.time;resetConsent();$('timeError').textContent='';renderSlots();renderContactFields();updateSummary();$('detailsHeading').focus({preventScroll:true});$('contactFields').scrollIntoView({behavior:'smooth',block:'start'});});
+ $('slotTitle').textContent=state.date&&!dateIssue(state.date)?displayDate(state.date)+' · 可複選時段':'選好日期後，再選時段。';
+ $('slots').innerHTML=slotsFor(state.date).map(t=>`<button type="button" data-time="${t}" aria-pressed="${state.times.includes(state.date+' '+t)}" class="${state.times.includes(state.date+' '+t)?'selected':''}">${t}–${endTime(t)}</button>`).join('');
+ $('slots').querySelectorAll('[data-time]').forEach(b=>b.onclick=()=>{const key=state.date+' '+b.dataset.time;state.times=state.times.includes(key)?state.times.filter(v=>v!==key):[...state.times,key].sort();resetConsent();$('timeError').textContent='';renderSlots();renderContactFields();updateSummary();});
+ $('chosenTimes').textContent=state.times.length?'已選 '+state.times.length+' 個時段：'+describeTimes(state.times):'';
 }
+function describeTimes(times){return times.map(key=>{const [date,time]=key.split(' ');return date.slice(5).replace('-','/')+' '+time+'–'+endTime(time);}).join('、');}
 function validateTime(){
- if(slotsFor(state.date).includes(state.time))return true;
+ const expired=state.times.filter(key=>{const [date,time]=key.split(' ');return dateIssue(date)||Date.parse(date+'T'+time+':00+08:00')<=Date.now();});
+ if(expired.length){
+  state.times=state.times.filter(key=>!expired.includes(key));
+  renderSlots();renderContactFields();updateSummary();resetConsent();
+  $('timeError').textContent='部分時段已過，請確認剩餘時段或重新選擇。';return false;
+ }
+ if(state.times.length)return true;
  $('timeError').textContent='請選擇有效的上課日期與時段。';return false;
 }
 function renderBookingSummary(){
- $('bookingSummary').innerHTML=`<div><strong>${esc(state.course.name)} · ${esc(state.plan.name)}</strong><p>${displayDate(state.date)} ${state.time}–${endTime(state.time)}</p></div><button type="button" class="text-button" id="editTime">修改時間</button>`;
+ $('bookingSummary').innerHTML=`<div><strong>${esc(state.course.name)} · ${esc(state.plan.name)}</strong><p>${esc(describeTimes(state.times))}</p></div><button type="button" class="text-button" id="editTime">修改時間</button>`;
  $('editTime').onclick=()=>{$('timeHeading').focus({preventScroll:true});$('timeHeading').scrollIntoView({behavior:'smooth',block:'start'});};
 }
 function renderContactFields(){
- const valid=slotsFor(state.date).includes(state.time);$('contactFields').hidden=!valid;
+ const valid=state.times.length>0;$('contactFields').hidden=!valid;
  if(valid)renderBookingSummary();
 }
 function renderLineSummary(){
- $('lineSummary').innerHTML=`<h3>${esc(state.course.name)}</h3><p>${esc(state.plan.name)} · NT$ ${money(state.plan.price)}／${state.plan.lessons} 堂</p><p>${displayDate(state.date)} ${state.time}–${endTime(state.time)}</p>`;
+ $('lineSummary').innerHTML=`<h3>${esc(state.course.name)}</h3><p>${esc(state.plan.name)} · NT$ ${money(state.plan.price)}／${state.plan.lessons} 堂</p><p>${esc(describeTimes(state.times))}</p>`;
 }
 function validateDetails(){
  $('detailsError').textContent='';$('timeError').textContent='';
  if(!validateTime()){go(2);return false;}
  if(!$('detailsForm').reportValidity())return false;
- const phone=$('phone').value.replace(/[\s()-]/g,'');
- if(!/^(?:09\d{8}|\+8869\d{8})$/.test(phone)){$('detailsError').textContent='請確認手機號碼，例如 0912 345 678。';$('phone').focus();return false;}
+ for(const id of state.plan.id==='duo'?['phone','secondPhone']:['phone']){
+  if(!/^(?:09\d{8}|\+8869\d{8})$/.test($(id).value.replace(/[\s()-]/g,''))){$('detailsError').textContent='請確認'+(id==='secondPhone'?'第二位上課人的':'')+'手機號碼，例如 0912 345 678。';$(id).focus();return false;}
+ }
  if(!$('studentName').value.trim()||(state.plan.id==='duo'&&!$('secondName').value.trim())){$('detailsError').textContent='請填寫上課人的姓名。';return false;}
- state.contact={name:$('studentName').value.trim(),secondName:state.plan.id==='duo'?$('secondName').value.trim():'',phone:$('phone').value.trim(),email:$('email').value.trim(),note:$('note').value.trim()};return true;
+ state.contact={name:$('studentName').value.trim(),secondName:state.plan.id==='duo'?$('secondName').value.trim():'',phone:$('phone').value.trim(),...(state.plan.id==='duo'?{secondPhone:$('secondPhone').value.trim()}:{}),email:$('email').value.trim(),note:$('note').value.trim()};return true;
 }
 $('detailsForm').onsubmit=e=>{e.preventDefault();if(validateDetails())go(3);};
 $('detailsForm').oninput=resetConsent;
 function renderReview(){
  const c=state.contact;
- const rows=[['希望時間',displayDate(state.date)+' '+state.time+'–'+endTime(state.time)],['上課人',c.name+(c.secondName?'、'+c.secondName:'')],['聯絡手機',c.phone],['Email',c.email],...(c.note?[['其他需求',c.note]]:[])],note=feeNote(state.course,state.plan);
+ const rows=[['希望時間',describeTimes(state.times)],...(c.secondName?[['第一位上課人',c.name+' · '+c.phone],['第二位上課人',c.secondName+' · '+c.secondPhone]]:[['上課人',c.name],['聯絡手機',c.phone]]),['Email',c.email],...(c.note?[['其他需求',c.note]]:[])],note=feeNote(state.course,state.plan);
  $('review').className='review';$('review').innerHTML=`${note?`<p class="price-note">${esc(note)}</p>`:''}<dl>${rows.map(([k,v])=>`<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`;
 }
 $('editDetails').onclick=()=>{go(2);if(!$('contactFields').hidden){$('detailsHeading').focus({preventScroll:true});$('contactFields').scrollIntoView({behavior:'smooth',block:'start'});}};
@@ -187,7 +197,7 @@ async function prepareLine(){
  if(!validateTime()){go(2);return null;}
  submitBusy=true;syncConsent();$('submitError').textContent='';
  try{
-  const form={courseId:state.course.id,optionId:state.plan.id,date:state.date,time:state.time,...state.contact};
+  const form={courseId:state.course.id,optionId:state.plan.id,date:state.times[0].slice(0,10),time:state.times[0].slice(11),times:state.times,...state.contact};
   const previous=readContext(),same=previous?.form&&JSON.stringify(previous.form)===JSON.stringify(form);
   const pending={verifier:random(),submissionKey:same?previous.submissionKey:random(),form,expiresAt:Date.now()+30*60000};
   saveContext(pending);
@@ -202,16 +212,16 @@ function showCompletion(r){
  state.step=4;state.contact=null;document.body.dataset.stage='';$('detailsForm').reset();$('accessPanel').hidden=true;
  for(let n=1;n<=4;n++)$('step'+n).hidden=n!==4;
  document.querySelector('.progress').hidden=true;$('bottomBar').hidden=true;
- $('successSummary').innerHTML=`<h3>${esc(r.courseName)}</h3><p>${esc(r.optionName)} · NT$ ${money(r.price)}／${esc(r.lessons)} 堂</p><p>${esc(r.name+(r.secondName?'、'+r.secondName:''))}</p><p>希望時段：${displayDate(r.date)} ${esc(r.time)}–${endTime(r.time)}</p><p class="fine">報名編號：${esc(r.receiptId)}</p>`;
+ $('successSummary').innerHTML=`<h3>${esc(r.courseName)}</h3><p>${esc(r.optionName)} · NT$ ${money(r.price)}／${esc(r.lessons)} 堂</p><p>${esc(r.name+(r.secondName?'、'+r.secondName:''))}</p><p>希望時段：${esc(describeTimes(r.times||[r.date+' '+r.time]))}</p>`;
  $('addOfficialFriend').hidden = r.lineFriendFlag === true;
  $('successMessage').textContent = r.lineFriendFlag
    ? '謝謝你的報名！課程尚未排定。請開啟聊天室，按「傳送」把已填好的報名訊息傳給我們，我們會在 LINE 和你確認上課時間。'
    : '謝謝你的報名！課程尚未排定。請先加入官方 LINE 好友，再回到這裡開啟聊天室，按「傳送」把已填好的報名訊息傳給我們，方便一起確認上課時間。';
- const message = `您好，我是${r.name}，剛報名${r.courseName}（${r.optionName}），希望上課時間是${displayDate(r.date)} ${r.time}，想和教室確認時段，謝謝！`;
+ const message = `您好，我是${r.name}，剛報名${r.courseName}（${r.optionName}），希望上課時間是${r.times?.length>5?'報名表所列的 '+r.times.length+' 個可選時段':describeTimes(r.times||[r.date+' '+r.time])}，想和教室確認時段，謝謝！`;
  $('officialLine').href = 'https://line.me/R/oaMessage/%40046xzcpz/?' + encodeURIComponent(message);
  window.scrollTo({top:0,behavior:'instant'});$('successHeading').focus({preventScroll:true});
 }
-function resetForm(){Object.assign(state,{step:1,category:'全部',search:'',course:null,plan:null,date:'',time:'',contact:null});$('detailsForm').reset();$('search').value='';$('dateYear').innerHTML='';$('dateMonth').innerHTML='';$('dateDay').innerHTML='';$('dateError').textContent='';$('timeError').textContent='';$('submitError').textContent='';resetConsent();}
+function resetForm(){Object.assign(state,{step:1,category:'全部',search:'',course:null,plan:null,date:'',times:[],contact:null});$('detailsForm').reset();$('search').value='';$('dateYear').innerHTML='';$('dateMonth').innerHTML='';$('dateDay').innerHTML='';$('dateError').textContent='';$('timeError').textContent='';$('submitError').textContent='';resetConsent();}
 $('restart').onclick=async()=>{saveContext({expiresAt:Date.now()+30*60000});resetForm();await boot();};
 function access(heading,message,retry=false){
  for(let n=1;n<=4;n++)$('step'+n).hidden=true;
@@ -221,9 +231,9 @@ function access(heading,message,retry=false){
 function restoreForm(p){
  const f=p.form;if(!f)return false;
  const course=courses.find(c=>String(c.id)===String(f.courseId)),plan=course?.options.find(o=>o.id===f.optionId);if(!plan)return false;
- Object.assign(state,{course,plan,date:f.date,time:f.time,contact:{name:f.name,secondName:f.secondName,phone:f.phone,email:f.email,note:f.note}});
- for(const [field,key] of Object.entries({studentName:'name',secondName:'secondName',phone:'phone',email:'email',note:'note'}))$(field).value=f[key]||'';
- renderCatalog();go(slotsFor(f.date).includes(f.time)?3:2);return true;
+ Object.assign(state,{course,plan,date:f.date,times:f.times||[f.date+' '+f.time],contact:{name:f.name,secondName:f.secondName,phone:f.phone,secondPhone:f.secondPhone,email:f.email,note:f.note}});
+ for(const [field,key] of Object.entries({studentName:'name',secondName:'secondName',phone:'phone',secondPhone:'secondPhone',email:'email',note:'note'}))$(field).value=f[key]||'';
+ state.times=state.times.filter(key=>{const [date,time]=key.split(' ');return slotsFor(date).includes(time);});renderCatalog();go(state.times.length&&(plan.id!=='duo'||f.secondPhone)?3:2);return true;
 }
 async function boot(){
  access('正在載入報名表','請稍候…');

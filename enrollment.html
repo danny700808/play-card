@@ -20,7 +20,8 @@
 </section>
 <section id="step2" class="step-panel narrow" hidden aria-labelledby="timeHeading">
 <div class="selected-course" id="selectedCourse"></div>
-<section class="panel time-panel"><h2 id="timeHeading" tabindex="-1">選擇希望上課的時間</h2>
+<section class="panel time-panel"><h2 id="timeHeading" tabindex="-1">第一堂課，哪些時段方便？</h2>
+<p class="time-note">可複選，也可換日期再選。我們會用 LINE 和你確認第一堂課，之後可再與老師協調調課。</p>
 <div class="date-fields" id="dateFields">
 <label for="dateYear">年<select id="dateYear" aria-label="年份"></select></label>
 <label for="dateMonth">月<select id="dateMonth" aria-label="月份"></select></label>
@@ -30,14 +31,16 @@
 <p class="slot-title" id="slotTitle">選好日期後，再選時段。</p>
 <div class="slots" id="slots" aria-label="上課時段"></div>
 <p id="timeError" class="error" role="alert"></p>
-<p class="time-note">這是你希望的時間，教室會再聯絡確認。</p>
+<p class="time-note">點一下選取，再點一下取消。</p>
+<div id="chosenTimes" aria-live="polite"></div>
 </section>
 <section id="contactFields" class="contact-step" hidden aria-labelledby="detailsHeading">
 <h2 id="detailsHeading" tabindex="-1">填寫聯絡資料</h2><div class="booking-summary" id="bookingSummary"></div>
 <form id="detailsForm" class="panel">
 <div class="field"><label for="studentName" id="nameLabel">上課人姓名 <em>必填</em></label><input id="studentName" name="studentName" autocomplete="name" placeholder="請填上課人的姓名" maxlength="80" required></div>
-<div class="field" id="secondNameField" hidden><label for="secondName">第二位上課人姓名 <em>必填</em></label><input id="secondName" name="secondName" placeholder="請填另一位上課人的姓名" maxlength="80"><small>雙人班請自行找好同伴，教室不配對。</small></div>
-<div class="field"><label for="phone">聯絡手機 <em>必填</em></label><input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="09xx xxx xxx" maxlength="24" required></div>
+<div class="field"><label for="phone" id="phoneLabel">聯絡手機 <em>必填</em></label><input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="09xx xxx xxx" maxlength="24" required></div>
+<div class="field" id="secondNameField" hidden><label for="secondName">第二位上課人姓名 <em>必填</em></label><input id="secondName" name="secondName" placeholder="請填另一位上課人的姓名" maxlength="80"></div>
+<div class="field" id="secondPhoneField" hidden><label for="secondPhone">第二位上課人手機 <em>必填</em></label><input id="secondPhone" name="secondPhone" type="tel" inputmode="tel" autocomplete="section-companion tel" placeholder="09xx xxx xxx" maxlength="24"></div>
 <div class="field"><label for="email">Email <em>必填</em></label><input id="email" name="email" type="email" autocomplete="email" placeholder="yourname@example.com" maxlength="160" required></div>
 <div class="field"><label for="note">其他需求 <span class="optional">選填</span></label><textarea id="note" name="note" rows="3" maxlength="600" placeholder="例如方便聯絡的時間"></textarea></div>
 <p class="error" id="detailsError" role="alert"></p>
@@ -64,11 +67,11 @@
 <div class="bottom-bar" id="bottomBar" hidden><div class="bottom-inner"><button type="button" class="back-button" id="backButton">← 上一步</button><div class="bottom-summary" id="bottomSummary"></div><button type="button" class="primary" id="nextButton" disabled>下一步</button></div></div>
 <dialog id="courseDialog" class="course-dialog" aria-labelledby="dialogTitle">
 <button type="button" class="close-dialog icon-button" data-close="courseDialog" aria-label="關閉課程選擇">×</button><img id="dialogImage" class="dialog-image" alt="">
-<div class="dialog-body"><h2 id="dialogTitle"></h2><fieldset><legend>選擇班別</legend><div id="classOptions" class="class-options"></div></fieldset>
-<p id="priceNote" class="price-note" hidden></p><p id="classHint" class="fine" hidden></p>
+<div class="dialog-body"><h2 id="dialogTitle"></h2><p id="classHint" hidden></p><fieldset><legend>選擇班別</legend><div id="classOptions" class="class-options"></div></fieldset>
+<p id="priceNote" class="price-note" hidden></p>
 <button type="button" class="primary full" id="chooseCourse">下一步：選時間 <span aria-hidden="true">→</span></button></div>
 </dialog>
 <dialog id="dateLimitDialog" class="info-dialog" aria-labelledby="dateLimitTitle"><h2 id="dateLimitTitle">這個日期還太遠囉</h2><p id="dateLimitMessage"></p><button type="button" class="primary full" data-close="dateLimitDialog">重新選擇日期</button></dialog>
 <dialog id="privacyDialog" class="info-dialog" aria-labelledby="privacyTitle"><button type="button" class="close-dialog icon-button" data-close="privacyDialog" aria-label="關閉資料使用說明">×</button><h2 id="privacyTitle">資料使用說明</h2><p>姓名、手機、Email、課程、希望上課的時間與其他需求，以及授權取得的 LINE 帳號識別資料，會提供柚子樂器處理報名、聯絡與排課。</p><p>勾選同意後，系統會暫存這份資料並帶你前往 LINE。成功授權並返回此頁後，才會正式送至教室後台；取消授權時，報名尚未完成。</p><p>授權期間，這個瀏覽器分頁會暫存填寫內容，方便取消後返回修改。完成後清除暫存內容；需要修改已送出的資料時，請聯絡教室。</p><button type="button" class="primary full" data-close="privacyDialog">我知道了</button></dialog>
-<script src="enrollment-assets/app.js?v=20261120-contact"></script>
+<script src="enrollment-assets/app.js?v=20261120-pair"></script>
 </body></html>

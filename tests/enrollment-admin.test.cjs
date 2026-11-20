@@ -30,7 +30,7 @@ test('admin schedules from the inbox with filtered choices, conflict recovery, e
 });
 test('native form loads all course image assets from its own asset directory and private data collections are not client allowlisted',()=>{
  const html=fs.readFileSync('enrollment.html','utf8'),js=fs.readFileSync('enrollment-assets/app.js','utf8');
- assert.match(html,/src="enrollment-assets\/app.js\?v=20261120-contact"/);assert.match(js,/document.currentScript/);assert(!html.includes('lineDialog'));assert.match(html,/id="accessPanel"/);
+ assert.match(html,/src="enrollment-assets\/app.js\?v=20261120-pair"/);assert.match(js,/document.currentScript/);assert(!html.includes('lineDialog'));assert.match(html,/id="accessPanel"/);
  for(let n=1;n<=23;n++)assert(fs.existsSync('enrollment-assets/assets/course-'+String(n).padStart(2,'0')+'.jpg'));
  const rules=fs.readFileSync('firestore.rules','utf8');assert(!/onlineEnrollment/.test(rules));assert.match(rules,/match \/\{document=\*\*\} \{\s+allow read, write: if false;/);
  const routes=require('../internal-workspace-routes');assert.deepEqual(routes.pageContext('/enrollment-admin.html','','').map(n=>n.id),['root','enrollment','online-enrollment']);
@@ -44,7 +44,7 @@ test('completion distinguishes verified LINE identity from formal enrollment for
   w.sessionStorage.setItem('youzi.enrollment.pending.v1',JSON.stringify({verifier:'v'.repeat(43),expiresAt:Date.now()+600000}));
   w.fetch=async(url,options)=>{assert.equal(JSON.parse(options.body).action,'redeem');return {ok:true,json:async()=>({ok:true,receiptId:'enr-test',courseName:'鋼琴',optionName:'單人班',price:2800,lessons:4,date:'2026-11-26',time:'13:30',name:'測試',lineFriendFlag:friend})};};
   w.eval(fs.readFileSync('enrollment-assets/app.js','utf8'));assert.equal(await w.catalogReady,true);
-  assert.equal(d.getElementById('step4').hidden,false);assert.match(d.querySelector('.success-badge').textContent,/LINE 身分已確認/);assert(!d.querySelector('.success-badge').textContent.includes('已綁定'));
+  assert.doesNotMatch(d.getElementById('step4').textContent,/報名編號|enr-test/);assert.equal(d.getElementById('step4').hidden,false);assert.match(d.querySelector('.success-badge').textContent,/LINE 身分已確認/);assert(!d.querySelector('.success-badge').textContent.includes('已綁定'));
   assert.match(d.getElementById('successMessage').textContent,/課程尚未排定/);if(!friend)assert.match(d.getElementById('successMessage').textContent,/加入官方 LINE/);
   assert.equal(d.getElementById('addOfficialFriend').hidden,friend);
   const chat=new URL(d.getElementById('officialLine').href);
@@ -57,4 +57,29 @@ test('completion distinguishes verified LINE identity from formal enrollment for
 test('browser preview uses the same formatter as the server and loads it before the scheduling controls',()=>{
  assert.equal(fs.readFileSync('enrollment-confirmation-message.js','utf8').replace(/\r\n/g,'\n'),fs.readFileSync('functions/enrollmentConfirmationMessage.js','utf8').replace(/\r\n/g,'\n'));
  const html=fs.readFileSync('enrollment-admin.html','utf8');assert(html.indexOf('enrollment-confirmation-message.js')<html.indexOf('enrollment-scheduling-ui.js'));
+});
+
+test('duo registration keeps multiple dates, requires each phone, and clears companion data on return to solo',async()=>{
+ const dom=new JSDOM(fs.readFileSync('enrollment.html','utf8'),{url:'https://danny700808.github.io/play-card/enrollment.html',runScripts:'outside-only'});
+ const w=dom.window,d=w.document,$=id=>d.getElementById(id);
+ w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};
+ w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
+ const options=[{id:'solo',name:'單人班',price:2800,lessons:4},{id:'duo',name:'雙人班',price:3600,lessons:4}];
+ w.fetch=async()=>({ok:true,json:async()=>({ok:true,courses:[{id:1,subjectId:'piano',name:'流行鋼琴',image:'piano.jpg',options}]})});
+ w.eval(fs.readFileSync('enrollment-assets/app.js','utf8'));assert(await w.catalogReady);
+ d.querySelector('[data-course]').click();d.querySelector('[value="duo"]').click();
+ assert(!$('classHint').hidden);assert($('classHint').compareDocumentPosition($('classOptions'))&4);$('chooseCourse').click();
+ const api=w.YouziEnrollment,dates=[];
+ for(let i=1;dates.length<2;i++){const key=api.addDays(api.todayKey(),i);if(api.slotsFor(key).includes('13:00'))dates.push(key);}
+ function pickDate(date){const [y,m,day]=date.split('-').map(Number);for(const [key,v] of [['dateYear',y],['dateMonth',m],['dateDay',day]]){$(key).value=String(v);$(key).dispatchEvent(new w.Event('change'));}}
+ const slot=t=>d.querySelector('[data-time="'+t+'"]');
+ pickDate(dates[0]);slot('13:00').click();slot('15:00').click();pickDate(dates[1]);slot('13:00').click();
+ pickDate(dates[0]);assert.equal(slot('13:00').getAttribute('aria-pressed'),'true');slot('13:00').click();
+ assert.deepEqual(Array.from(api.state.times),[dates[0]+' 15:00',dates[1]+' 13:00']);
+ $('studentName').value='甲';$('phone').value='0911111111';$('secondName').value='乙';$('email').value='test@example.invalid';
+ assert($('secondPhone').required);$('nextButton').click();assert.equal(api.state.step,2);
+ $('secondPhone').value='0922222222';$('nextButton').click();assert.equal(api.state.step,3);assert.match($('review').textContent,/乙 · 0922222222/);
+ $('editDetails').click();$('changeCourse').click();d.querySelector('[data-course]').click();d.querySelector('[value="solo"]').click();$('chooseCourse').click();
+ assert($('secondPhoneField').hidden);assert.equal($('secondPhone').value,'');$('nextButton').click();assert.equal(api.state.step,3);assert.doesNotMatch($('review').textContent,/乙|0922222222/);
+ w.close();
 });

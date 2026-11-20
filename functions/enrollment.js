@@ -30,13 +30,23 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
  const col=k=>db.collection(C[k]),row=async(k,key)=>(await col(k).doc(key).get()).data();
  function activeInvite(r){return r&&r.active===true&&r.expiresAt>now()&&Number(r.usedCount||0)<Number(r.maxSubmissions||100);}
  async function invite(raw){if(!token(raw))fail('請使用教室提供的測試邀請連結。','permission-denied');const key=hash(raw),r=await row('invites',key);if(!activeInvite(r))fail('這個測試邀請已到期或停止使用，請聯絡教室。','permission-denied');return {key,row:r};}
- async function form(value){
+ async function form(value,issuedGrant=false){
   const f=value||{},data=await catalog(),course=data.courses.find(c=>String(c.id)===String(f.courseId)),option=course?.options.find(p=>p.id===f.optionId);
   if(!course||!option)fail('課程或班別已更新，請重新選擇。');
   const out={courseId:course.id,subjectId:course.subjectId,courseName:course.name,optionId:option.id,optionName:option.name,price:option.price,lessons:option.lessons,people:option.people,date:clean(f.date),time:clean(f.time),name:clean(f.name),secondName:option.id==='duo'?clean(f.secondName):'',phone:clean(f.phone).replace(/[\s()-]/g,''),email:clean(f.email).toLowerCase(),note:clean(f.note)};
+  if(option.id==='duo'&&(!issuedGrant||f.secondPhone!==undefined)){
+   out.secondPhone=clean(f.secondPhone).replace(/[\s()-]/g,'');
+   if(!/^(09\d{8}|\+8869\d{8})$/.test(out.secondPhone))fail('請確認第二位上課人的手機號碼。');
+  }
   if(!out.name||out.name.length>80||out.secondName.length>80||(option.id==='duo'&&(!out.secondName||out.name===out.secondName)))fail('請填寫上課人的姓名。');
   if(!/^(09\d{8}|\+8869\d{8})$/.test(out.phone)||out.email.length>160||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(out.email)||out.note.length>600)fail('請確認手機、Email 或其他需求的內容。');
   if(!dateValid(out.date,out.time,now()))fail('請選擇未來 45 天內、週二至週日的有效時段。');
+  if(f.times!==undefined){
+   if(!Array.isArray(f.times)||!f.times.length||f.times.length>1000)fail('請確認希望時段。');
+   const valid=f.times.every(key=>typeof key==='string'&&/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(key)&&dateValid(key.slice(0,10),key.slice(11),now()));
+   if(!valid||f.times[0]!==out.date+' '+out.time)fail('請重新選擇有效的希望時段。');
+   out.times=[...new Set(f.times)];
+  }
   return out;
  }
  async function rate(key,max){
@@ -79,14 +89,14 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
    return res.redirect(302,target+'#enrollmentError=expired');
   }
  }
- function receipt(r,key){return {receiptId:key,courseName:r.form.courseName,optionName:r.form.optionName,price:r.form.price,lessons:r.form.lessons,date:r.form.date,time:r.form.time,name:r.form.name,secondName:r.form.secondName,lineDisplayName:r.line.lineDisplayName,lineFriendFlag:r.line.lineFriendFlag,officialLineUrl:OFFICIAL_LINE};}
+ function receipt(r,key){return {receiptId:key,courseName:r.form.courseName,optionName:r.form.optionName,price:r.form.price,lessons:r.form.lessons,date:r.form.date,time:r.form.time,...(r.form.times?{times:r.form.times}:{}),name:r.form.name,secondName:r.form.secondName,lineDisplayName:r.line.lineDisplayName,lineFriendFlag:r.line.lineFriendFlag,officialLineUrl:OFFICIAL_LINE};}
  async function redeem(d){
   if(!token(d.ticket)||!token(d.verifier))fail('請回原本填寫的瀏覽器完成 LINE 綁定。');
   const ref=col('grants').doc(hash(d.ticket)),t=(await ref.get()).data();
   if(!t||t.challenge!==hash(d.verifier)||t.expiresAt<=now())fail('請回原本填寫的瀏覽器，或重新綁定 LINE。');
   if(t.status==='used'){const r=await row('records',t.receiptId);if(r)return receipt(r,t.receiptId);fail('找不到報名資料。');}
   if(t.status!=='verified')fail('LINE 驗證尚未完成。');
-  const f=await form(t.form);
+  const f=await form(t.form,true);
   if(formKey(f)!==formKey(t.form))fail('課程資訊已更新，請重新確認報名。');
   const key='enr-'+hash((t.inviteId||'direct')+'|'+t.submissionKey).slice(0,32),recordRef=col('records').doc(key);
   return db.runTransaction(async tx=>{
@@ -117,7 +127,7 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
   const values=new Map();
   for(const doc of mirror.docs){const v=doc.data().source||{};if(doc.data().sourceActive!==false)values.set(clean(v.id||v._id||doc.id),v);}
   for(const doc of profiles.docs)values.set(doc.id,{...(values.get(doc.id)||{}),...doc.data()});
-  return [...values].filter(([key,v])=>v.active!==false&&(clean(v.phone).replace(/[\s()-]/g,'')===r.form.phone||[r.form.name,r.form.secondName].includes(clean(v.name)))).map(([key,v])=>({id:key,name:clean(v.name),phone:clean(v.phone)})).slice(0,25);
+  return [...values].filter(([key,v])=>v.active!==false&&([r.form.phone,r.form.secondPhone].filter(Boolean).includes(clean(v.phone).replace(/[\s()-]/g,''))||[r.form.name,r.form.secondName].includes(clean(v.name)))).map(([key,v])=>({id:key,name:clean(v.name),phone:clean(v.phone)})).slice(0,25);
  }
  async function adminApi(request){
   const actor=assertManager(request),d=request.data||{};
@@ -168,9 +178,9 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
     ids.forEach((sid,n)=>{
      if(selected[n]==='new'){
       if(snapshots[n].exists)fail('學生建檔編號已使用，請重新整理。');
-      tx.create(refs[n],{id:sid,name:names[n],phone:r.form.phone,email:r.form.email,active:true,studentActive:true,managerCreated:true,managerNote:'由線上報名確認建檔',enrollmentId:d.id,updatedAt:stamp(),updatedBy:actor});
+      tx.create(refs[n],{id:sid,name:names[n],phone:n===0?r.form.phone:(r.form.secondPhone||''),email:r.form.email,active:true,studentActive:true,managerCreated:true,managerNote:'由線上報名確認建檔',enrollmentId:d.id,updatedAt:stamp(),updatedBy:actor});
      }
-     if(!oldBindings[n].exists)tx.create(bindings[n],{id:bindings[n].id,type:'student',studentId:sid,targetId:sid,targetName:names[n],name:names[n],phone:r.form.phone,email:r.form.email,status:'active',method:'line',lineUserId:r.line.lineUserId,lineDisplayName:r.line.lineDisplayName,lineFriendFlag:r.line.lineFriendFlag,authAccountId:hash('line-account|student|'+r.line.lineUserId),approvedAt:stamp(),approvedBy:actor,sourceEnrollmentId:d.id,createdAt:stamp()});
+     if(!oldBindings[n].exists)tx.create(bindings[n],{id:bindings[n].id,type:'student',studentId:sid,targetId:sid,targetName:names[n],name:names[n],phone:n===0?r.form.phone:(r.form.secondPhone||''),email:r.form.email,status:'active',method:'line',lineUserId:r.line.lineUserId,lineDisplayName:r.line.lineDisplayName,lineFriendFlag:r.line.lineFriendFlag,authAccountId:hash('line-account|student|'+r.line.lineUserId),approvedAt:stamp(),approvedBy:actor,sourceEnrollmentId:d.id,createdAt:stamp()});
     });
     tx.update(ref,{studentIds:ids,status:'admitted',version:v.version+1,updatedAt:now(),updatedBy:actor});
     return ids;
