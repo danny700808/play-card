@@ -120,11 +120,13 @@ class DeliveryBridge:
     def read(self, orders, timeout=55, kind='shopee'):
         # The platform refreshes run in parallel but the paired browser owns one
         # short-lived job at a time. Never overwrite a lookup awaiting its reply.
-        started=time.monotonic()
         if not self.read_lock.acquire(timeout=timeout):
             return {}, 'timeout'
         try:
-            return self._read(orders, max(.01, timeout-(time.monotonic()-started)), kind)
+            # Queue waiting and browser reading have separate bounded budgets.
+            # The extension may need 42 s after claiming a job; subtracting an
+            # earlier platform's wait made a healthy MOMO read expire mid-scan.
+            return self._read(orders, timeout, kind)
         finally:
             self.read_lock.release()
 
@@ -146,4 +148,5 @@ class DeliveryBridge:
                 return job.get('results', {}), job.get('error', 'timeout')
             finally:
                 self.pending = None
+
 
