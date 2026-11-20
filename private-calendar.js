@@ -5,7 +5,7 @@
  const local=d=>{const date=new Date(d);return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);};
  const stamp=d=>new Date(d).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});
  let call,accessCall;
- S.view="list";S.listStart=new Date();S.listStart.setHours(0,0,0,0);S.days=7;S.refreshVersion=0;S.lastRefresh=0;
+ S.view="month";S.listStart=new Date();S.listStart.setHours(0,0,0,0);S.days=7;S.refreshVersion=0;S.lastRefresh=0;
  let calendarSession=sessionStorage.getItem("youziCalendarSession")||"";
  async function api(action,data={}){if(!call)throw Error('請稍候再試。');try{return (await call({action,...data,...(calendarSession?{calendarSession}:{})})).data;}catch(e){if(e.code==='functions/unauthenticated')showGate(e.message);throw e;}}
  async function workApi(action,data={}){try{return (await calendarRequest('sharedCalendarApi',{action,...data,calendarSession})).data;}catch(e){if(e.code==='functions/unauthenticated')showGate(e.message);throw e;}}
@@ -239,6 +239,7 @@
  async function openCalendar(result){
   if(result?.token){calendarSession=result.token;sessionStorage.setItem('youziCalendarSession',calendarSession);}
   const sharedParams=new URLSearchParams(location.search);if(sharedParams.get('shared')==='1'&&!sharedParams.get('task')){location.replace('shared-calendar.html?owner=1');return;}
+  S.view='month';S.month=new Date();S.selected=dayKey(S.month);
   syncSharedDate();$('calendarGate').hidden=true;$('calendarWorkspace').hidden=false;$('settingsButton').hidden=false;await safely(refresh);if(!calendarSession)return;$('calendarGate').hidden=true;$('calendarWorkspace').hidden=false;$('settingsButton').hidden=false;$('newButton').disabled=false;$('newDay').disabled=false;
   if(location.hash==='#google')openSettings();
   if(sharedParams.get('task')){await showWork(sharedParams.get('task'),true);return;}if(sharedParams.get('shared')==='1'){location.replace('shared-calendar.html?owner=1'+(sharedParams.get('task')?'&task='+encodeURIComponent(sharedParams.get('task')):''));return;}
