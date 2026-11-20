@@ -12,7 +12,7 @@ async function scan(job){
   // Always use a new inactive tab, leaving the user's existing work untouched.
   const tab=await chrome.tabs.create({url:momo?'https://3p.momo.com.tw/FrameServlet.do':'https://admin.easystore.co/channels/shopee/taiwan/orders',active:false});
   const found=new Map();let error='missing',previous='',pages=1;
-  const deadline=Date.now()+42000;let selected=!momo;
+  const deadline=Date.now()+42000;let selected=!momo, emptySince=0, retriedEmpty=false;
   try{
     while(Date.now()<deadline){
       let page;
@@ -21,6 +21,20 @@ async function scan(job){
         const result=await chrome.scripting.executeScript({target:{tabId:tab.id},func:momo?readMomoPage:readDeliveryPage,args:[job.orders]});page=result[0]?.result;
       }
       catch(e){await new Promise(r=>setTimeout(r,500));continue;}
+      // E001 can select All before its initial empty Not-shipped request finishes.
+      // Retry the tab transition once, only inside the private scan tab.
+      if(momo && page?.emptyAll && !retriedEmpty){
+        if(!emptySince)emptySince=Date.now();
+        if(Date.now()-emptySince>=4500){
+          retriedEmpty=true;
+          const reset=await chrome.scripting.executeScript({target:{tabId:tab.id},func:resetEmptyMomoAll});
+          if(reset[0]?.result){
+            selected=false;
+            await new Promise(r=>setTimeout(r,1500));
+            continue;
+          }
+        }
+      }else emptySince=0;
       if(!page||page.error==='loading'){await new Promise(r=>setTimeout(r,500));continue;}
       if(page.error){error=page.error;break;}
       if(previous&&page.signature===previous){await new Promise(r=>setTimeout(r,500));continue;}

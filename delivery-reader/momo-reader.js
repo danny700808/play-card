@@ -3,7 +3,7 @@ function readMomoPage(orders) {
   if (location.origin !== 'https://3p.momo.com.tw' ||
       !['/','/order/all','/FrameServlet.do'].includes(location.pathname)) return {error:'login',results:[]};
   const products=[...document.querySelectorAll('.product__right')];
-  if(!products.length)return {error:document.querySelector('input[type=password]')?'login':'loading',results:[]};
+  if(!products.length)return {emptyAll:document.querySelector('[role=tab][aria-selected=true]')?.innerText.trim()==='全部' && /共\s*0\s*筆/.test(document.body.innerText),error:document.querySelector('input[type=password]')?'login':'loading',results:[]};
   const observed=new Map();
   for(const product of products){
     const text=product.innerText;
@@ -59,6 +59,15 @@ function selectMomoAll(){
     if(menu){menu.click();break;}
   }
   return false;
+}
+function resetEmptyMomoAll(){
+  if(location.origin!=='https://3p.momo.com.tw'||document.querySelector('.product__right'))return false;
+  const tabs=[...document.querySelectorAll('[role=tab]')];
+  if(!tabs.some(t=>t.getAttribute('aria-selected')==='true'&&t.innerText.trim()==='全部'))return false;
+  const other=tabs.find(t=>/^未出貨(?:\(|$)/.test(t.innerText.trim()));
+  if(!other)return false;
+  other.click();
+  return true;
 }
 function nextMomoPage(){
   if(location.origin!=='https://3p.momo.com.tw')return false;
