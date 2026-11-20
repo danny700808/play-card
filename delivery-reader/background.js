@@ -17,7 +17,7 @@ async function scan(job){
     while(Date.now()<deadline){
       let page;
       try{
-        if(!selected){const selection=await chrome.scripting.executeScript({target:{tabId:tab.id},func:selectMomoAll});selected=selection[0]?.result===true;await new Promise(r=>setTimeout(r,300));continue;}
+        if(!selected){const selection=await chrome.scripting.executeScript({target:{tabId:tab.id},func:selectMomoAll});if(selection[0]?.result==='login'){error='login';break;}selected=selection[0]?.result===true;await new Promise(r=>setTimeout(r,300));continue;}
         const result=await chrome.scripting.executeScript({target:{tabId:tab.id},func:momo?readMomoPage:readDeliveryPage,args:[job.orders]});page=result[0]?.result;
       }
       catch(e){await new Promise(r=>setTimeout(r,500));continue;}

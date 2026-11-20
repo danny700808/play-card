@@ -33,6 +33,7 @@ function readMomoPage(orders) {
   return {results,next:!!next&&!next.disabled,signature:[...observed].map(([k,v])=>k+'='+v).join('|')};
 }
 function selectMomoAll(){
+  if(location.origin==='https://3p.momo.com.tw' && (location.pathname==='/LoginServlet.do'||document.querySelector('input[type=password]')))return 'login';
   if(location.origin!=='https://3p.momo.com.tw')return false;
   const tab=[...document.querySelectorAll('[role=tab]')].find(t=>/^全部(?:\(|$)/.test(t.innerText.trim()));
   if(tab){

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "柚子樂器 配送資料讀取助手",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "主機更新訂單時，只讀取 EasyStore 蝦皮物流與 MOMO 官方後台的最晚出貨日期。",
   "permissions": ["alarms", "scripting"],
   "host_permissions": ["https://admin.easystore.co/*", "https://3p.momo.com.tw/*", "http://127.0.0.1:18765/*"],
