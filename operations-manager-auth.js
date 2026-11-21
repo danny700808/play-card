@@ -181,7 +181,7 @@
     const page = lower(pathname.split('/').pop());
     const entry = page === 'operations-hub.html' ? 'operations-hub.html' : 'portal.html';
     const currentHash = clean(runtime && runtime.location && runtime.location.hash);
-    const safeHash = /^#[a-z0-9-]+$/i.test(currentHash) ? currentHash : '#course-calendar';
+    const safeHash = /^#[a-z0-9-]+$/i.test(currentHash) ? currentHash : '';
     return `${entry}${safeHash}`;
   }
 

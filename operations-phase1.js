@@ -8415,7 +8415,13 @@ function rerenderKeepingFocus(id,value){
   function initDb(){
     const cfg=global.APP_CONFIG&&global.APP_CONFIG.FIREBASE_CONFIG; if(!cfg||!cfg.projectId) throw new Error('找不到 Firebase 設定'); if(!global.firebase||!global.firebase.firestore) throw new Error('Firebase Firestore SDK 尚未載入'); if(!global.firebase.apps.length)global.firebase.initializeApp(cfg); return global.firebase.firestore();
   }
+  function selectManagerLandingView(){
+    if(location.hash)return;
+    const mobile=global.matchMedia('(max-width:820px)').matches;
+    global.history.replaceState(global.history.state,'',mobile?'#overview':'#course-calendar');
+  }
   async function init(){
+    selectManagerLandingView();
     if(typeof global.fillHeader==='function')global.fillHeader();
     const user=typeof global.requireLogin==='function'?global.requireLogin():null; if(!user)return;
     if(typeof global.hasSettingsZoneAccess==='function'&&!global.hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}

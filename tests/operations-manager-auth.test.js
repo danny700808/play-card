@@ -125,7 +125,7 @@ test('missing Firebase session requests one safe login redirect back to course c
   };
 
   assert.equal(await Auth.redirectToLoginOnce(runtime, auth, 1000), true);
-  assert.deepEqual(redirects, ['login.html?next=portal.html%23course-calendar']);
+  assert.deepEqual(redirects, ['login.html?next=portal.html']);
   assert.equal(signOutCount, 0);
   assert.equal(localStorage.has('employeeUser'), false);
   assert.equal(localStorage.has('employeeSecureAuthVersion'), false);
