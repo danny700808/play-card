@@ -37,6 +37,7 @@ h2{font-size:23px}.section-top{display:block}.search{width:100%;display:block;ma
 @media(max-width:360px){.progress button{font-size:11px;gap:3px}.progress{gap:4px}.class-option{gap:6px;padding:11px 8px}.course-card .photo{height:115px}.date-fields select{font-size:14px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 .contact-step{margin-top:30px;scroll-margin-top:20px}
+.trial-preference{margin-top:18px;padding:0 14px 12px;background:#f1f5e9;border-radius:8px}.trial-preference .consent-check{border:0;padding:12px 0 4px;min-height:44px;font-weight:650}.trial-preference p{margin:0 0 0 34px;color:var(--muted);font-size:14px;line-height:1.6}
 .line-step{max-width:480px;margin:0 auto}.line-step>h2{font-size:26px;margin:0 0 16px}
 .line-summary{border:1px solid var(--line);border-radius:10px;background:white;padding:14px 18px;overflow-wrap:anywhere}.line-summary h3{font-size:19px;margin:0 0 5px}.line-summary p{font-size:14px;line-height:1.5;margin:4px 0;color:var(--muted)}
 .line-explanation{font-size:15px;line-height:1.6;margin:16px 0 0}.line-consent .consent-check{border:0;padding:14px 0;font-size:15px;line-height:1.65}.line-consent .line-button{margin-top:0;min-height:54px;font-size:17px}.line-consent .consent-hint{margin:7px 0 0}

@@ -17,6 +17,8 @@ const validDate=key=>/^\d{4}-\d{2}-\d{2}$/.test(key)&&!Number.isNaN(dateOf(key).
 const dateIssue=key=>!validDate(key)?'missing':key<todayKey()?'past':key>addDays(todayKey(),MAX_BOOKING_DAYS)?'far':dayOf(key)===1?'closed':'';
 const money=value=>String(value).split('～').map(n=>Number(n).toLocaleString('en-US')).join('～');
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const trialStatus=preferred=>preferred?'優先安排免費試上（待確認）':'未要求優先安排免費試上';
+const trialPendingNote='免費試上能否安排、是否有費用，將由教室先和你確認。';
 let draftCourse=null,draftPlan=null;
 function showDialog(id){const el=$(id);el.showModal();document.body.style.overflow='hidden';}
 function closeDialog(id){$(id).close();document.body.style.overflow='';}
@@ -176,10 +178,13 @@ function renderBookingSummary(){
 }
 function renderContactFields(){
  const valid=state.times.length>0;$('contactFields').hidden=!valid;
+ $('trialPreference').hidden=!valid;$('preferFreeTrial').disabled=!valid;
  if(valid)renderBookingSummary();
 }
+$('preferFreeTrial').onchange=resetConsent;
 function renderLineSummary(){
- $('lineSummary').innerHTML=`<h3>${esc(state.course.name)}</h3><p>${esc(state.plan.name)} · NT$ ${money(state.plan.price)}／${state.plan.lessons} 堂</p><p>${esc(describeTimes(state.times))}</p>`;
+ const preferred=$('preferFreeTrial').checked;
+ $('lineSummary').innerHTML=`<h3>${esc(state.course.name)}</h3><p>${esc(state.plan.name)} · ${preferred?'正式課程參考學費：':''}NT$ ${money(state.plan.price)}／${state.plan.lessons} 堂</p><p>${esc(describeTimes(state.times))}</p>${preferred?`<p>${trialStatus(true)}。${trialPendingNote}</p>`:''}`;
 }
 function validateDetails(){
  $('detailsError').textContent='';$('timeError').textContent='';
@@ -195,7 +200,7 @@ $('detailsForm').onsubmit=e=>{e.preventDefault();if(validateDetails())go(3);};
 $('detailsForm').oninput=resetConsent;
 function renderReview(){
  const c=state.contact;
- const rows=[['希望時間',describeTimes(state.times)],...(c.secondName?[['第一位上課人',c.name+' · '+c.phone],['第二位上課人',c.secondName+' · '+c.secondPhone]]:[['上課人',c.name],['行動電話',c.phone]]),['Email',c.email],...(c.note?[['其他需求',c.note]]:[])],note=feeNote(state.course,state.plan);
+ const rows=[['希望時間',describeTimes(state.times)],['試上偏好',trialStatus($('preferFreeTrial').checked)],...(c.secondName?[['第一位上課人',c.name+' · '+c.phone],['第二位上課人',c.secondName+' · '+c.secondPhone]]:[['上課人',c.name],['行動電話',c.phone]]),['Email',c.email],...(c.note?[['其他需求',c.note]]:[])],note=feeNote(state.course,state.plan);
  $('review').className='review';$('review').innerHTML=`${note?`<p class="price-note">${esc(note)}</p>`:''}<dl>${rows.map(([k,v])=>`<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`;
 }
 $('editDetails').onclick=()=>{go(2);if(!$('contactFields').hidden){$('detailsHeading').focus({preventScroll:true});$('contactFields').scrollIntoView({behavior:'smooth',block:'start'});}};
@@ -217,8 +222,8 @@ async function prepareLine(){
  if(!validateTime()){go(2);return null;}
  submitBusy=true;syncConsent();$('submitError').textContent='';
  try{
-  const form={courseId:state.course.id,optionId:state.plan.id,date:state.times[0].slice(0,10),time:state.times[0].slice(11),times:state.times,...state.contact};
-  const previous=readContext(),same=previous?.form&&JSON.stringify(previous.form)===JSON.stringify(form);
+  const form={courseId:state.course.id,optionId:state.plan.id,date:state.times[0].slice(0,10),time:state.times[0].slice(11),times:state.times,...state.contact,preferFreeTrial:$('preferFreeTrial').checked};
+  const previous=readContext(),same=previous?.form&&JSON.stringify({...previous.form,preferFreeTrial:previous.form.preferFreeTrial===true})===JSON.stringify(form);
   const pending={verifier:random(),submissionKey:same?previous.submissionKey:random(),form,expiresAt:Date.now()+30*60000};
   saveContext(pending);
   const result=await request('start',{form,consent:true,consentVersion:CONSENT_VERSION,challenge:await digest(pending.verifier),submissionKey:pending.submissionKey,returnUrl:location.origin+location.pathname});
@@ -229,19 +234,20 @@ async function prepareLine(){
 }
 $('lineButton').onclick=async()=>{const url=await prepareLine();if(url){submitBusy=true;syncConsent();location.assign(url);}};
 function showCompletion(r){
- state.step=4;state.contact=null;document.body.dataset.stage='';$('detailsForm').reset();$('accessPanel').hidden=true;
+ state.step=4;state.contact=null;document.body.dataset.stage='';$('detailsForm').reset();$('preferFreeTrial').checked=false;$('accessPanel').hidden=true;
  for(let n=1;n<=4;n++)$('step'+n).hidden=n!==4;
  document.querySelector('.progress').hidden=true;$('bottomBar').hidden=true;
- $('successSummary').innerHTML=`<h3>${esc(r.courseName)}</h3><p>${esc(r.optionName)} · NT$ ${money(r.price)}／${esc(r.lessons)} 堂</p><p>${esc(r.name+(r.secondName?'、'+r.secondName:''))}</p><p>希望時段：${esc(describeTimes(r.times||[r.date+' '+r.time]))}</p>`;
+ const preferred=r.preferFreeTrial===true;
+ $('successSummary').innerHTML=`<h3>${esc(r.courseName)}</h3><p>${esc(r.optionName)} · ${preferred?'正式課程參考學費：':''}NT$ ${money(r.price)}／${esc(r.lessons)} 堂</p><p>${esc(r.name+(r.secondName?'、'+r.secondName:''))}</p><p>希望時段：${esc(describeTimes(r.times||[r.date+' '+r.time]))}</p>${preferred?`<p>${trialStatus(true)}。${trialPendingNote}</p>`:''}`;
  $('addOfficialFriend').hidden = r.lineFriendFlag === true;
  $('successMessage').textContent = r.lineFriendFlag
    ? '謝謝你的報名！課程尚未排定。請開啟聊天室，按「傳送」把已填好的報名訊息傳給我們，我們會在 LINE 和你確認上課時間。'
    : '謝謝你的報名！課程尚未排定。請先加入官方 LINE 好友，再回到這裡開啟聊天室，按「傳送」把已填好的報名訊息傳給我們，方便一起確認上課時間。';
- const message = `您好，我是${r.name}，剛報名${r.courseName}（${r.optionName}），希望上課時間是${r.times?.length>5?'報名表所列的 '+r.times.length+' 個可選時段':describeTimes(r.times||[r.date+' '+r.time])}，想和教室確認時段，謝謝！`;
+ const message = `您好，我是${r.name}，剛報名${r.courseName}（${r.optionName}），希望上課時間是${r.times?.length>5?'報名表所列的 '+r.times.length+' 個可選時段':describeTimes(r.times||[r.date+' '+r.time])}，${preferred?'想請教室優先詢問是否能安排免費試上，':'想和教室確認時段，'}謝謝！`;
  $('officialLine').href = 'https://line.me/R/oaMessage/%40046xzcpz/?' + encodeURIComponent(message);
  window.scrollTo({top:0,behavior:'instant'});$('successHeading').focus({preventScroll:true});
 }
-function resetForm(){Object.assign(state,{step:1,category:'全部',search:'',course:null,plan:null,date:'',times:[],contact:null});$('detailsForm').reset();$('search').value='';$('dateYear').innerHTML='';$('dateMonth').innerHTML='';$('dateDay').innerHTML='';$('dateError').textContent='';$('timeError').textContent='';$('submitError').textContent='';resetConsent();}
+function resetForm(){Object.assign(state,{step:1,category:'全部',search:'',course:null,plan:null,date:'',times:[],contact:null});$('detailsForm').reset();$('preferFreeTrial').checked=false;$('search').value='';$('dateYear').innerHTML='';$('dateMonth').innerHTML='';$('dateDay').innerHTML='';$('dateError').textContent='';$('timeError').textContent='';$('submitError').textContent='';resetConsent();}
 $('restart').onclick=async()=>{saveContext({expiresAt:Date.now()+30*60000});resetForm();await boot();};
 function access(heading,message,retry=false){
  for(let n=1;n<=4;n++)$('step'+n).hidden=true;
@@ -252,6 +258,7 @@ function restoreForm(p){
  const f=p.form;if(!f)return false;
  const course=courses.find(c=>String(c.id)===String(f.courseId)),plan=course?.options.find(o=>o.id===f.optionId);if(!plan)return false;
  Object.assign(state,{course,plan,date:f.date,times:f.times||[f.date+' '+f.time],contact:{name:f.name,secondName:f.secondName,phone:f.phone,secondPhone:f.secondPhone,email:f.email,note:f.note}});
+ $('preferFreeTrial').checked=f.preferFreeTrial===true;
  for(const [field,key] of Object.entries({studentName:'name',secondName:'secondName',phone:'phone',secondPhone:'secondPhone',email:'email',note:'note'}))$(field).value=f[key]||'';
  state.times=state.times.filter(key=>{const [date,time]=key.split(' ');return slotsFor(date).includes(time);});renderCatalog();go(state.times.length&&(plan.id!=='duo'||f.secondPhone)?3:2);return true;
 }

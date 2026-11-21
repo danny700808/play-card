@@ -117,3 +117,75 @@ test('both students have a phone and all requested slots survive LINE authorizat
  const {studentIds}=await h.manager({action:'admit',id:r.receiptId,version:1,studentIds:['new','new']});
  assert.deepEqual(studentIds.map(id=>h.rows.get('coursePortalStudentProfiles/'+id).phone),[form.phone,'0922222222']);
 });
+
+test('optional trial preference survives LINE, receipt and inbox without scheduling, tuition or payment',async()=>{
+ for(const preferFreeTrial of [true,false]){
+  const h=harness(),s=await h.start({token:''},{form:{...h.form,preferFreeTrial,price:0}});
+  assert.equal(h.rows.get(C.oauth+'/'+hash(s.state)).form.preferFreeTrial,preferFreeTrial);
+  const c=await h.callback(s),grant=h.rows.get(C.grants+'/'+hash(c.ticket));
+  assert.equal(grant.form.preferFreeTrial,preferFreeTrial);
+  assert.equal(h.count('records'),0);
+  const args={action:'redeem',ticket:c.ticket,verifier:s.verifier,preferFreeTrial:!preferFreeTrial};
+  const r=await h.publicApi(args),retry=await h.publicApi(args);
+  assert.deepEqual(retry,r);
+  assert.equal(r.preferFreeTrial,preferFreeTrial);
+  assert.equal(r.price,'2800～3000');
+  assert.equal(r.lessons,4);
+  const record=(await h.manager({action:'detail',id:r.receiptId})).record;
+  assert.equal(record.form.preferFreeTrial,preferFreeTrial);
+  assert.equal((await h.manager({action:'list'})).records[0].form.preferFreeTrial,preferFreeTrial);
+  assert.equal(record.status,'received');
+  assert.equal(record.schedule,undefined);
+  assert.deepEqual(record.studentIds,[]);
+  const q=h.rows.get('notificationQueue/'+record.managerNotification.queueId);
+  assert.equal(q.targetEmployeeId,'PRIMARY_MANAGER_LINE');
+  assert.equal(/免費試上（待確認）/.test(q.body),preferFreeTrial);
+  assert.match(q.body,preferFreeTrial?/正式課程參考學費：NT\$ 2800～3000/:/報名費用：NT\$ 2800～3000/);
+  assert.equal(h.count('notificationQueue'),1);
+  assert.deepEqual([...new Set([...h.rows.keys()].map(p=>p.split('/')[0]))].sort(),[C.grants,C.limits,C.oauth,C.records,'notificationQueue'].sort());
+ }
+});
+
+test('trial preference rejects non-booleans and does not bypass contact or time validation',async()=>{
+ const h=harness();
+ for(const invalid of ['true','false',1,0,null,[],{}])await assert.rejects(h.start({token:''},{form:{...h.form,preferFreeTrial:invalid}}),/免費試上偏好/);
+ await assert.rejects(h.start({token:''},{form:{...h.form,preferFreeTrial:true,date:'2026-11-16'}}),/有效時段/);
+ await assert.rejects(h.start({token:''},{form:{...h.form,preferFreeTrial:true,phone:''}}),/手機/);
+ assert.equal(h.count('oauth'),0);
+ assert.equal(h.count('records'),0);
+});
+
+test('old pending/verified forms may omit the preference; unchecked retries dedupe, checked differs',async()=>{
+ const h=harness(),direct={token:''},s=await h.start(direct);
+ assert(!Object.hasOwn(h.rows.get(C.oauth+'/'+hash(s.state)).form,'preferFreeTrial'));
+ const c=await h.callback(s);
+ assert(!Object.hasOwn(h.rows.get(C.grants+'/'+hash(c.ticket)).form,'preferFreeTrial'));
+ const r=await h.publicApi({action:'redeem',ticket:c.ticket,verifier:s.verifier});
+ assert(!Object.hasOwn(r,'preferFreeTrial'));
+ assert(!Object.hasOwn((await h.manager({action:'detail',id:r.receiptId})).record.form,'preferFreeTrial'));
+ const click=async preferFreeTrial=>{
+  const start=await h.start(direct,{submissionKey:s.submissionKey,form:{...h.form,preferFreeTrial}}),callback=await h.callback(start);
+  return h.publicApi({action:'redeem',ticket:callback.ticket,verifier:start.verifier});
+ };
+ assert.deepEqual(await click(false),r);
+ await assert.rejects(click(true),/已經送出/);
+ assert.equal(h.count('records'),1);
+ assert.equal(h.count('notificationQueue'),1);
+});
+
+test('trial preference rollout status is safe to check without writing any data',async()=>{
+ const h=harness(),status=await h.publicApi({action:'status'});
+ assert.equal(status.supportsFreeTrialPreference,true);
+ assert.equal(status.consentVersion,CONSENT_VERSION);
+ assert.equal(h.rows.size,0);
+});
+
+test('a checked trial preference does not create a record or staff notice after LINE cancellation',async()=>{
+ const h=harness(),s=await h.start({token:''},{form:{...h.form,preferFreeTrial:true}});
+ const c=await h.callback(s,{query:{error:'access_denied'}});
+ assert.match(c.url,/enrollmentError=cancelled/);
+ assert.equal(h.rows.get(C.oauth+'/'+hash(s.state)).form,null);
+ assert.equal(h.count('grants'),0);
+ assert.equal(h.count('records'),0);
+ assert.equal(h.count('notificationQueue'),0);
+});
