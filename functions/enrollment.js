@@ -11,6 +11,8 @@ const C={invites:'onlineEnrollmentInvites',oauth:'onlineEnrollmentOAuth',grants:
 const clean=v=>String(v==null?'':v).trim(),hash=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
 const random=()=>crypto.randomBytes(32).toString('base64url');
 const formKey=v=>JSON.stringify(Object.keys(v).sort().map(k=>[k,v[k]]));
+// Only for submission deduplication: an old form with no preference is equivalent to unchecked.
+const submissionFormKey=v=>formKey({...v,preferFreeTrial:v.preferFreeTrial??false});
 const token=v=>/^[\w-]{43}$/.test(clean(v)),id=v=>/^[a-zA-Z0-9_-]{1,130}$/.test(clean(v));
 const fail=(message,code='failed-precondition')=>{throw new HttpsError(code,message);};
 const dayKey=t=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(t));
@@ -46,6 +48,11 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
    const valid=f.times.every(key=>typeof key==='string'&&/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(key)&&dateValid(key.slice(0,10),key.slice(11),now()));
    if(!valid||f.times[0]!==out.date+' '+out.time)fail('請重新選擇有效的希望時段。');
    out.times=[...new Set(f.times)];
+  }
+  // Keep omitted fields omitted on older OAuth requests/grants so strict formKey validation still works.
+  if(Object.hasOwn(f,'preferFreeTrial')){
+   if(typeof f.preferFreeTrial!=='boolean')fail('請確認免費試上偏好。','invalid-argument');
+   out.preferFreeTrial=f.preferFreeTrial;
   }
   return out;
  }
@@ -89,7 +96,7 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
    return res.redirect(302,target+'#enrollmentError=expired');
   }
  }
- function receipt(r,key){return {receiptId:key,courseName:r.form.courseName,optionName:r.form.optionName,price:r.form.price,lessons:r.form.lessons,date:r.form.date,time:r.form.time,...(r.form.times?{times:r.form.times}:{}),name:r.form.name,secondName:r.form.secondName,lineDisplayName:r.line.lineDisplayName,lineFriendFlag:r.line.lineFriendFlag,officialLineUrl:OFFICIAL_LINE};}
+ function receipt(r,key){return {receiptId:key,courseName:r.form.courseName,optionName:r.form.optionName,price:r.form.price,lessons:r.form.lessons,date:r.form.date,time:r.form.time,...(r.form.times?{times:r.form.times}:{}),...(typeof r.form.preferFreeTrial==='boolean'?{preferFreeTrial:r.form.preferFreeTrial}:{}),name:r.form.name,secondName:r.form.secondName,lineDisplayName:r.line.lineDisplayName,lineFriendFlag:r.line.lineFriendFlag,officialLineUrl:OFFICIAL_LINE};}
  async function redeem(d){
   if(!token(d.ticket)||!token(d.verifier))fail('請回原本填寫的瀏覽器完成 LINE 綁定。');
   const ref=col('grants').doc(hash(d.ticket)),t=(await ref.get()).data();
@@ -104,7 +111,7 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
    if(!g||g.challenge!==hash(d.verifier)||g.expiresAt<=now())fail('LINE 驗證已失效。');
    if(g.status==='used'&&existing)return receipt(existing,key);
    if(g.status!=='verified'||(ir&&!activeInvite(i)))fail('LINE 驗證或報名連結已失效，請重新操作。');
-   if(existing&&(existing.line.lineUserId!==g.profile.lineUserId||formKey(existing.form)!==formKey(g.form)))fail('這份報名已經送出，請重新開始另一份報名。');
+   if(existing&&(existing.line.lineUserId!==g.profile.lineUserId||submissionFormKey(existing.form)!==submissionFormKey(g.form)))fail('這份報名已經送出，請重新開始另一份報名。');
    const r=existing||{form:g.form,line:g.profile,inviteId:g.inviteId||'',inviteLabel:i?.label||'直接報名',source:ir?'legacy-invite':'direct',status:'received',version:1,consent:{version:g.consentVersion,acceptedAt:g.consentAt,verifiedAt:now()},createdAt:now(),updatedAt:now(),studentIds:[],messages:[],managerNote:''};
    if(!existing){
     const notice=require('./enrollmentNotifications').managerNotification(key,r,stamp()),queueRef=db.collection('notificationQueue').doc(notice.queueId),queued=await tx.get(queueRef);
@@ -116,7 +123,7 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
   });
  }
  async function publicApi(d,req){
-  if(d.action==='status')return {consentVersion:CONSENT_VERSION,officialLineUrl:OFFICIAL_LINE};
+  if(d.action==='status')return {consentVersion:CONSENT_VERSION,officialLineUrl:OFFICIAL_LINE,supportsFreeTrialPreference:true};
   if(d.action==='inviteStatus'){const i=await invite(d.invite);return {label:i.row.label||'課程報名',consentVersion:CONSENT_VERSION,officialLineUrl:OFFICIAL_LINE};}
   if(d.action==='start')return start(d,req);
   if(d.action==='redeem')return redeem(d);

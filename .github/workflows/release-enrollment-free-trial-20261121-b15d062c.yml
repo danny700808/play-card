@@ -1,0 +1,74 @@
+name: Release enrollment free-trial preference
+on:
+  push:
+    branches: [release/enrollment-free-trial-20261121-b15d062c]
+    paths:
+      - ".github/workflows/release-enrollment-free-trial-20261121-b15d062c.yml"
+permissions:
+  contents: read
+concurrency:
+  group: release-enrollment-free-trial-20261121-b15d062c
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: npm ci --prefix functions --ignore-scripts --no-audit --no-fund
+      - name: Verify enrollment backend and schedule compatibility
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node --check functions/enrollment.js
+          node --check functions/enrollmentNotifications.js
+          node --test tests/enrollment.test.cjs tests/enrollment-scheduling.test.cjs tests/course-login-region-migration.test.cjs
+      - run: npm install --global firebase-tools@15.24.0 --no-audit --no-fund
+      - name: Deploy only enrollmentPublicHttp (both configured regions)
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then echo "Enrollment deployment credential not configured"; exit 1; fi
+          umask 077
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/enrollment-firebase-account.json"
+          trap 'rm -f "$GOOGLE_APPLICATION_CREDENTIALS"' EXIT
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          unset FIREBASE_SERVICE_ACCOUNT
+          firebase deploy --project youzi-c1b74 --non-interactive --only functions:enrollmentPublicHttp
+      - name: Verify both live revisions without creating a submission
+        run: |
+          node --input-type=module <<'NODE'
+          for (const region of ["asia-east1", "us-central1"]) {
+            let verified = false;
+            for (let attempt = 0; attempt < 12; attempt++) {
+              try {
+                const response = await fetch(
+                  `https://${region}-youzi-c1b74.cloudfunctions.net/enrollmentPublicHttp`,
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
+                    body: JSON.stringify({ action: "status" }),
+                    signal: AbortSignal.timeout(15000)
+                  }
+                );
+                const data = await response.json();
+                if (response.ok && data.ok === true && data.supportsFreeTrialPreference === true) {
+                  verified = true;
+                  console.log(region + ": enrollment preference revision verified");
+                  break;
+                }
+              } catch {}
+              await new Promise(resolve => setTimeout(resolve, 5000));
+            }
+            if (!verified) throw Error(region + ": live enrollment preference revision did not verify");
+          }
+          NODE
