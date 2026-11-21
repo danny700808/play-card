@@ -18,7 +18,7 @@ function database(){
 }
 function harness(){
  const fixture=database();let clock=Date.parse('2026-11-15T04:15:00Z');
- const courses=[{id:1,subjectId:'piano',name:'古典鋼琴',options:[{id:'solo',name:'單人班',price:'2800～3000',lessons:4,people:1},{id:'duo',name:'雙人班',price:'3600～3800',lessons:4,people:2}]}];
+ const courses=[{id:1,subjectId:'631813def9b3a600b1fcb07a',name:'古典鋼琴',options:[{id:'solo',name:'單人班',price:'2800～3000',lessons:4,people:1},{id:'duo',name:'雙人班',price:'3600～3800',lessons:4,people:2}]}];
  const service=createEnrollmentService({db:fixture.db,catalog:async()=>({courses}),now:()=>clock,stamp:()=>clock});
  const manager=data=>service.adminApi({auth:{uid:'manager',token:{role:'admin'}},data});
  const publicApi=data=>service.publicApi(data,{ip:'fixture-only'});
@@ -188,4 +188,58 @@ test('a checked trial preference does not create a record or staff notice after 
  assert.equal(h.count('grants'),0);
  assert.equal(h.count('records'),0);
  assert.equal(h.count('notificationQueue'),0);
+});
+
+
+test('free-trial eligibility matches the eight live offering IDs and their canonical subjects exactly',async()=>{
+ const h=harness(),status=await h.publicApi({action:'status'});
+ const expected=[
+  [1,'631813def9b3a600b1fcb07a'],[5,'631813caf0ea0e00b13acdef'],[7,'631813f0f0ea0e00b13acdf0'],[8,'648823805bce9600b204d45c'],
+  [9,'64ad1a8919d06000b27286c6'],[10,'64b3957b95ae1700b1aa46e4'],[11,'6482daaeb3d73400b1f2c180'],[12,'648823898e9b2800b28d339e']
+ ];
+ assert.deepEqual(status.freeTrialEligibleCourses.map(c=>[c.courseId,c.subjectId]),expected);
+ assert.equal(status.freeTrialEligibleCourses.find(c=>c.courseId===8).scope,'爵士鼓');
+ for(const [id,subjectId] of expected.slice(1))h.courses.push({...h.courses[0],id,subjectId});
+ h.courses.push({...h.courses[0],id:6,subjectId:'portal-subject-5b1c4b3b3b6491083cfce026',name:'民謠吉他演奏 Fingerstyle'});
+ h.courses.push({...h.courses[0],id:13,name:'古典鋼琴同名課'});
+ for(const [courseId] of expected)assert((await h.start({token:''},{form:{...h.form,courseId,preferFreeTrial:true,willingToDiscussPaidTrial:false}})).state);
+ for(const courseId of [6,13]){
+  for(const field of [{preferFreeTrial:true},{preferFreeTrial:true,willingToDiscussPaidTrial:true}]){
+   await assert.rejects(h.start({token:''},{form:{...h.form,courseId,...field}}),/未開放免費試上洽詢/);
+  }
+  assert((await h.start({token:''},{form:{...h.form,courseId,preferFreeTrial:false}})).state);
+ }
+ h.courses.find(c=>c.id===7).subjectId='reassigned';
+ await assert.rejects(h.start({token:''},{form:{...h.form,courseId:7,preferFreeTrial:true,willingToDiscussPaidTrial:false}}),/未開放免費試上洽詢/);
+});
+
+test('paid-trial willingness is a strict separate boolean only for an eligible free-trial inquiry',async()=>{
+ for(const willingness of [true,false]){
+  const h=harness(),{r}=await h.submit({form:{...h.form,preferFreeTrial:true,willingToDiscussPaidTrial:willingness}});
+  assert.equal(r.willingToDiscussPaidTrial,willingness);
+  const record=(await h.manager({action:'detail',id:r.receiptId})).record;
+  assert.equal(record.form.willingToDiscussPaidTrial,willingness);
+  const queue=h.rows.get('notificationQueue/'+record.managerNotification.queueId);
+  assert.match(queue.body,willingness?/願意先討論一堂付費試上.*先告知單堂費用，經同意再安排/:/未表示可接受付費試上/);
+  assert.equal(r.price,'2800～3000');assert.equal(record.schedule,undefined);assert.deepEqual(record.studentIds,[]);
+ }
+ const h=harness();
+ for(const v of [null,1,0,'true',[],{}])await assert.rejects(h.start({token:''},{form:{...h.form,preferFreeTrial:true,willingToDiscussPaidTrial:v}}),/付費試上偏好/);
+ for(const preferFreeTrial of [false,undefined])for(const willingToDiscussPaidTrial of [true,false]){
+  const form={...h.form,willingToDiscussPaidTrial};if(preferFreeTrial===false)form.preferFreeTrial=false;
+  await assert.rejects(h.start({token:''},{form}),/請先勾選洽詢免費試上/);
+ }
+ assert.equal(h.count('oauth'),0);
+});
+
+test('legacy pending free-trial inquiries can redeem on previously unrestricted courses and convey no paid consent',async()=>{
+ const h=harness();h.courses.push({...h.courses[0],id:6,name:'Fingerstyle',subjectId:'fingerstyle'});
+ const s=await h.start({token:''},{form:{...h.form,courseId:6,preferFreeTrial:false}});
+ // The previous release issued the same form with true on any course, without the new field.
+ h.rows.get(C.oauth+'/'+hash(s.state)).form.preferFreeTrial=true;
+ const c=await h.callback(s),r=await h.publicApi({action:'redeem',ticket:c.ticket,verifier:s.verifier});
+ assert.equal(r.preferFreeTrial,true);assert(!Object.hasOwn(r,'willingToDiscussPaidTrial'));
+ const record=await h.manager({action:'detail',id:r.receiptId});
+ assert(!Object.hasOwn(record.record.form,'willingToDiscussPaidTrial'));
+ assert.match(h.rows.get('notificationQueue/'+record.record.managerNotification.queueId).body,/舊版報名未記錄付費試上偏好.*不可視為同意/);
 });

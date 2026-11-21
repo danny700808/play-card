@@ -45,3 +45,5 @@ h2{font-size:23px}.section-top{display:block}.search{width:100%;display:block;ma
 .review-details{border-top:1px solid var(--line);margin-top:6px;padding-top:10px}.review-details>summary{cursor:pointer;padding:6px 0;font-size:14px}.review-details .review dl{border:0;margin-top:8px;padding:0}.review-details .price-note{margin-top:12px}
 body[data-stage=line] main{padding-bottom:32px}body[data-stage=line] .site-header{padding-top:12px;padding-bottom:12px}body[data-stage=line] .progress{max-width:480px;padding:16px 0;margin-bottom:10px}
 @media(max-width:640px){.line-step>h2{font-size:24px;margin-bottom:14px}.line-summary{padding:12px 15px}.line-summary h3{font-size:18px}.line-summary p{font-size:14px}.line-explanation{margin-top:12px}.line-consent .consent-check{padding:12px 0}.line-secondary{margin-top:6px}.line-step .review dl div{grid-template-columns:68px 1fr;gap:8px}}
+
+.course-card .trial-badge{display:inline-block;margin:5px 0 0;border-radius:5px;padding:2px 6px;background:#e9f0df;color:#294d37;font-size:12px;font-weight:650}.trial-preference #paidTrialPreference{margin:12px 0 0 14px;border-top:1px solid var(--line)}

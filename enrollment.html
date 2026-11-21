@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#244b3c"><meta name="robots" content="noindex,nofollow">
 <title>柚子樂器｜課程報名</title><meta name="description" content="選擇課程、希望上課的時間，填寫資料並確認報名。">
-<link rel="icon" href="enrollment-assets/assets/logo.png"><link rel="stylesheet" href="enrollment-assets/style.css?v=20261121-trial">
+<link rel="icon" href="enrollment-assets/assets/logo.png"><link rel="stylesheet" href="enrollment-assets/style.css?v=20261121-trial-options">
 </head>
 <body>
 <header class="site-header"><span class="brand"><img src="enrollment-assets/assets/logo.png" alt="" width="42" height="48"><span>柚子樂器</span></span><h1>課程報名</h1></header>
@@ -34,8 +34,13 @@
 <p id="timeError" class="error" role="alert"></p>
 <button type="button" class="secondary full" id="addDate" hidden>＋ 新增其他日期</button>
 <div class="trial-preference" id="trialPreference" hidden>
-<label class="consent-check" for="preferFreeTrial"><input type="checkbox" id="preferFreeTrial" aria-describedby="trialHelp" disabled><span>優先安排免費試上（選填）</span></label>
-<p id="trialHelp">不是每位老師或每個時段都提供免費試上。我們會先從你選的時段協助詢問；若無合適安排，教室會先聯絡你，確認是否改選時段或接受付費試上。上方金額是正式課程參考學費。雙方確認前不會排課或收費，未勾選也不代表同意付費。</p>
+<label class="consent-check" for="preferFreeTrial"><input type="checkbox" id="preferFreeTrial" aria-describedby="trialHelp trialScope" disabled><span>我想洽詢免費試上（選填）</span></label>
+<p id="trialScope" hidden></p>
+<p id="trialHelp">免費試上視老師與時段而定。上方是正式課程參考學費，雙方確認前不會安排試上或收費。</p>
+<div id="paidTrialPreference" hidden>
+<label class="consent-check" for="willingToDiscussPaidTrial"><input type="checkbox" id="willingToDiscussPaidTrial" aria-describedby="paidTrialHelp" disabled><span>免費試上不是必要，我也可以接受付費試上一堂課</span></label>
+<p id="paidTrialHelp">若無法安排免費試上，教室會先告知單堂費用，確認後再安排。這裡只表示可先討論，不會直接排課或扣款。</p>
+</div>
 </div>
 </section>
 <section id="contactFields" class="contact-step" hidden aria-labelledby="detailsHeading">
@@ -76,6 +81,6 @@
 <button type="button" class="primary full" id="chooseCourse">下一步：選時間 <span aria-hidden="true">→</span></button></div>
 </dialog>
 <dialog id="dateLimitDialog" class="info-dialog" aria-labelledby="dateLimitTitle"><h2 id="dateLimitTitle">這個日期還太遠囉</h2><p id="dateLimitMessage"></p><button type="button" class="primary full" data-close="dateLimitDialog">重新選擇日期</button></dialog>
-<dialog id="privacyDialog" class="info-dialog" aria-labelledby="privacyTitle"><button type="button" class="close-dialog icon-button" data-close="privacyDialog" aria-label="關閉資料使用說明">×</button><h2 id="privacyTitle">資料使用說明</h2><p>姓名、行動電話、Email、課程、希望上課的時間、免費試上偏好與其他需求，以及授權取得的 LINE 帳號識別資料，會提供柚子樂器處理報名、聯絡與排課。</p><p>勾選同意後，系統會暫存這份資料並帶你前往 LINE。成功授權並返回此頁後，才會正式送至教室後台；取消授權時，報名尚未完成。</p><p>授權期間，這個瀏覽器分頁會暫存填寫內容，方便取消後返回修改。完成後清除暫存內容；需要修改已送出的資料時，請聯絡教室。</p><button type="button" class="primary full" data-close="privacyDialog">我知道了</button></dialog>
-<script src="enrollment-assets/app.js?v=20261121-trial"></script>
+<dialog id="privacyDialog" class="info-dialog" aria-labelledby="privacyTitle"><button type="button" class="close-dialog icon-button" data-close="privacyDialog" aria-label="關閉資料使用說明">×</button><h2 id="privacyTitle">資料使用說明</h2><p>姓名、行動電話、Email、課程、希望上課的時間、免費試上及付費試上偏好與其他需求，以及授權取得的 LINE 帳號識別資料，會提供柚子樂器處理報名、聯絡與排課。</p><p>勾選同意後，系統會暫存這份資料並帶你前往 LINE。成功授權並返回此頁後，才會正式送至教室後台；取消授權時，報名尚未完成。</p><p>授權期間，這個瀏覽器分頁會暫存填寫內容，方便取消後返回修改。完成後清除暫存內容；需要修改已送出的資料時，請聯絡教室。</p><button type="button" class="primary full" data-close="privacyDialog">我知道了</button></dialog>
+<script src="enrollment-assets/app.js?v=20261121-trial-options"></script>
 </body></html>
