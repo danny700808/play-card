@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <title>柚</title>
+  <rect width="32" height="32" rx="6" fill="#006c37"/>
+  <g fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M8.5 5.5v21M3.5 12h9.8M8.3 13c-.7 3.6-2.7 7.2-5.2 10M9.6 16l3.3 4.2"/>
+    <path d="M16.2 11.2h11.5v14.5H16.2zM22 5.5v20M16.5 18.5h10.8"/>
+  </g>
+</svg>
