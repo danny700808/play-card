@@ -39,7 +39,7 @@ if(!catalogLoaded){$('courseCount').textContent='課程資料讀取中…';$('co
  $('courseCount').textContent=`${found.length} 門課程`;
  $('courseGrid').innerHTML=found.length?found.map(c=>{
   const first=c.options[0],selected=state.course?.id===c.id,trial=trialEligibility(c);
-  const badge=trial?'可洽詢免費試上'+(trial.scope?'（'+trial.scope+'）':''):'';
+  const badge=trial?'可洽詢免費試上':'';
   return `<button type="button" class="course-card ${selected?'selected':''}" data-course="${c.id}" aria-pressed="${selected}" aria-label="選擇${esc(c.name)}，${esc(first.name)} ${money(first.price)} 元／${first.lessons} 堂${badge?'，'+esc(badge):''}"><div class="photo"><img src="${c.image}" alt="${esc(c.name)}" loading="lazy" width="260" height="166">${selected?'<span class="selected-mark" aria-hidden="true">✓</span>':''}</div><h3>${esc(c.name)}</h3><p class="course-price">NT$ ${money(first.price)} <small>／${first.lessons} 堂</small></p>${badge?`<span class="trial-badge">${esc(badge)}</span>`:''}<div class="course-type"><span>${c.options.map(p=>esc(p.name)).join(' · ')}</span><b aria-hidden="true">↗</b></div></button>`;
  }).join(''):'<p class="empty-results">找不到這個樂器，試試其他名稱。</p>';
  $('courseGrid').querySelectorAll('[data-course]').forEach(b=>b.onclick=()=>openCourse(Number(b.dataset.course)));
@@ -191,14 +191,14 @@ function resetTrialPreferences(){$('preferFreeTrial').checked=false;$('willingTo
 function renderTrialPreferences(valid=state.times.length>0){
  const trial=trialEligibility(state.course),visible=Boolean(valid&&trial),paidVisible=visible&&freeTrialRequested();
  $('trialPreference').hidden=!visible;$('preferFreeTrial').disabled=!visible;
- $('trialScope').hidden=!trial?.scope;$('trialScope').textContent=trial?.scope?'此課程的免費試上洽詢限'+trial.scope+'。':'';
+
  $('paidTrialPreference').hidden=!paidVisible;$('willingToDiscussPaidTrial').disabled=!paidVisible;
 }
 $('preferFreeTrial').onchange=()=>{if(!$('preferFreeTrial').checked)$('willingToDiscussPaidTrial').checked=false;renderTrialPreferences();resetConsent();};
 $('willingToDiscussPaidTrial').onchange=resetConsent;
 function renderLineSummary(){
- const preferred=freeTrialRequested(),scope=trialEligibility(state.course)?.scope;
- $('lineSummary').innerHTML=`<h3>${esc(state.course.name)}</h3><p>${esc(state.plan.name)} · ${preferred?'正式課程參考學費：':''}NT$ ${money(state.plan.price)}／${state.plan.lessons} 堂</p><p>${esc(describeTimes(state.times))}</p>${preferred?`<p>${trialStatus(true)}${scope?'：'+esc(scope):''}。${trialPendingNote}</p><p>${paidTrialStatus(paidTrialRequested())}</p>`:''}`;
+ const preferred=freeTrialRequested();
+ $('lineSummary').innerHTML=`<h3>${esc(state.course.name)}</h3><p>${esc(state.plan.name)} · ${preferred?'正式課程參考學費：':''}NT$ ${money(state.plan.price)}／${state.plan.lessons} 堂</p><p>${esc(describeTimes(state.times))}</p>${preferred?`<p>${trialStatus(true)}。${trialPendingNote}</p><p>${paidTrialStatus(paidTrialRequested())}</p>`:''}`;
 }
 function validateDetails(){
  $('detailsError').textContent='';$('timeError').textContent='';
