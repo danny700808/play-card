@@ -3,12 +3,12 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const runtime=fs.readFileSync('operations-course-inline-runtime.js','utf8');
 const ops=fs.readFileSync('operations-phase1.js','utf8');
 function section(source,start,end){return source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));}
-test('mobile salary navigation requests a month without waiting for the complete ledger; desktop keeps its existing gate',()=>{
+test('salary navigation opens the month selector on phone and desktop without fetching payroll',()=>{
   for(const mobile of [true,false]){
     const calls=[],node={classList:{toggle(){}},textContent:''};
     const ctx={mobileAdmin:()=>mobile,studentHistoryMode:false,afterWorkspaceReady:()=>{calls.push('ledger');return true;},currentView:'calendar',$$:()=>[],$:()=>node,renderTeachers:()=>calls.push('render'),refreshTeacherPayrollMonth:month=>calls.push(month),teacherListMonthKey:()=> '2026-09',embeddedMode:false,window:{scrollTo(){}}};
     vm.runInNewContext(section(runtime,'  function switchView(view){','  function slotPolicy('),ctx);ctx.switchView('teachers');
-    assert.deepEqual(calls,mobile?['render','2026-09']:['ledger']);
+    assert.deepEqual(calls,['render']);
   }
 });
 test('mobile room filtering removes holding/video columns without deleting any rooms or changing desktop',()=>{
@@ -51,6 +51,8 @@ test('calendar bootstrap preserves salary month results and selected mobile sala
 test('fresh mobile state is normalized before calendar rendering can access recurrence rows',()=>{
   let normalized=false;
   const ctx={window:{},loadFormalCache:()=>null,defaultState:()=>({currentDate:'2026-09-21'}),normalizeState:value=>{normalized=true;value.recurringRules=[];return value;}};
+  ctx.clean=value=>String(value||'').trim();ctx.URLSearchParams=URLSearchParams;ctx.window.location={search:''};
+  vm.runInNewContext(section(runtime,'  function urlOption(', '  function requestPersistentStorage('),ctx);
   vm.runInNewContext(section(runtime,'  function loadInitialState(){','  function isReadOnly()'),ctx);
   const state=ctx.loadInitialState();assert(normalized);assert.deepEqual(state.recurringRules,[]);assert.equal(state.dataMode,'empty');assert.equal(state.teachers.length,0);
 });

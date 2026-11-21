@@ -17,10 +17,11 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /href="#course-teachers" data-view="course-teachers"/);
   assert.match(portal, /href="#course-settings" data-view="course-settings"/);
   assert.match(portal, /href="#expenses" data-view="expenses"/);
-  assert.match(portal, /operations-expenses\.js\?v=20260801-operating-expenses-v6/);
-  assert.match(portal, /operations-phase1\.js\?v=20260916-native-school-v1/);
-  assert.match(portal, /operations-mobile-home-v1\.js\?v=20260803-mobile-overview-day-v1/);
-  assert.match(portal, /operations-mobile-home-v1\.css\?v=20260809-mobile-quick-nav-v1/);
+  for (const asset of ['operations-expenses.js','operations-phase1.js','operations-mobile-home-v1.js','operations-mobile-home-v1.css']) {
+    const attr = asset.endsWith('.css') ? 'href' : 'src';
+    assert.ok(portal.includes(attr + '="' + asset + '?v='), asset + ' must be loaded');
+    assert.ok(fs.existsSync(path.join(root, asset)));
+  }
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
 });
 
@@ -105,7 +106,12 @@ test('course management stays in the operations shell and POS price is editable 
   assert.match(source, /ops-course-inline-placeholder/);
   assert.match(source, /global\.YouziOperationsCourseInline\.mount\(content,courseView\)/);
   assert.match(source, /global\.YouziOperationsCourseInline\.show\(view\)/);
-  assert.match(source, /if\(isCourseWorkspaceView\(view\)\)return false/);
+  const routes = source.slice(source.indexOf('  const COURSE_WORKSPACE_VIEWS'), source.indexOf('  function clean('));
+  const guard = source.slice(source.indexOf('  function ensureDataForCurrentView('), source.indexOf('  function withReadTimeout('));
+  for (const view of ['course-calendar', 'course-students', 'course-teachers', 'course-settings']) {
+    const context = {location:{hash:'#'+view}};
+    assert.equal(require('node:vm').runInNewContext(routes + guard + 'ensureDataForCurrentView()', context), false);
+  }
   assert.doesNotMatch(source, /location\.href='course-scheduler\.html'/);
   assert.doesNotMatch(source, /global\.location\.replace\('course-scheduler\.html'\)/);
   assert.doesNotMatch(source, /開啟舊版音教雲/);
