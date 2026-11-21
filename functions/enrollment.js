@@ -8,11 +8,22 @@ const CALLBACK='https://asia-east1-youzi-c1b74.cloudfunctions.net/coursePortalLi
 const CONSENT_VERSION='enrollment-line-2026-11-15-v1';
 const OFFICIAL_LINE='https://lin.ee/Fx5Y2mL';
 const C={invites:'onlineEnrollmentInvites',oauth:'onlineEnrollmentOAuth',grants:'onlineEnrollmentGrants',records:'onlineEnrollmentSubmissions',limits:'onlineEnrollmentLimits'};
+// Verified public offering IDs with their authoritative subject IDs. Do not infer eligibility from display names or the generic catalog trial flag.
+const FREE_TRIAL_COURSES=Object.freeze([
+ {courseId:1,subjectId:'631813def9b3a600b1fcb07a'}, // 古典鋼琴
+ {courseId:5,subjectId:'631813caf0ea0e00b13acdef'}, // 民謠吉他彈唱, not Fingerstyle
+ {courseId:7,subjectId:'631813f0f0ea0e00b13acdf0'}, // 電吉他
+ {courseId:8,subjectId:'648823805bce9600b204d45c',scope:'爵士鼓'}, // Combined 爵士鼓／電子鼓 listing
+ {courseId:9,subjectId:'64ad1a8919d06000b27286c6'}, // 木箱鼓
+ {courseId:10,subjectId:'64b3957b95ae1700b1aa46e4'}, // 貝斯
+ {courseId:11,subjectId:'6482daaeb3d73400b1f2c180'}, // 烏克麗麗
+ {courseId:12,subjectId:'648823898e9b2800b28d339e'}  // 小提琴
+]);
 const clean=v=>String(v==null?'':v).trim(),hash=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
 const random=()=>crypto.randomBytes(32).toString('base64url');
 const formKey=v=>JSON.stringify(Object.keys(v).sort().map(k=>[k,v[k]]));
 // Only for submission deduplication: an old form with no preference is equivalent to unchecked.
-const submissionFormKey=v=>formKey({...v,preferFreeTrial:v.preferFreeTrial??false});
+const submissionFormKey=v=>formKey({...v,preferFreeTrial:v.preferFreeTrial??false,willingToDiscussPaidTrial:v.willingToDiscussPaidTrial??false});
 const token=v=>/^[\w-]{43}$/.test(clean(v)),id=v=>/^[a-zA-Z0-9_-]{1,130}$/.test(clean(v));
 const fail=(message,code='failed-precondition')=>{throw new HttpsError(code,message);};
 const dayKey=t=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(t));
@@ -53,6 +64,14 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
   if(Object.hasOwn(f,'preferFreeTrial')){
    if(typeof f.preferFreeTrial!=='boolean')fail('請確認免費試上偏好。','invalid-argument');
    out.preferFreeTrial=f.preferFreeTrial;
+  }
+  const hasPaidTrialAnswer=Object.hasOwn(f,'willingToDiscussPaidTrial');
+  const eligible=FREE_TRIAL_COURSES.some(c=>c.courseId===Number(course.id)&&c.subjectId===course.subjectId);
+  // Grants issued before this restriction did not have a paid trial answer. Preserve their original meaning and allow them to finish.
+  if(out.preferFreeTrial===true&&!eligible&&(!issuedGrant||hasPaidTrialAnswer))fail('這門課目前未開放免費試上洽詢，請返回表單重新確認。','invalid-argument');
+  if(hasPaidTrialAnswer){
+   if(typeof f.willingToDiscussPaidTrial!=='boolean'||out.preferFreeTrial!==true)fail('請先勾選洽詢免費試上，再選擇付費試上偏好。','invalid-argument');
+   out.willingToDiscussPaidTrial=f.willingToDiscussPaidTrial;
   }
   return out;
  }
@@ -96,7 +115,7 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
    return res.redirect(302,target+'#enrollmentError=expired');
   }
  }
- function receipt(r,key){return {receiptId:key,courseName:r.form.courseName,optionName:r.form.optionName,price:r.form.price,lessons:r.form.lessons,date:r.form.date,time:r.form.time,...(r.form.times?{times:r.form.times}:{}),...(typeof r.form.preferFreeTrial==='boolean'?{preferFreeTrial:r.form.preferFreeTrial}:{}),name:r.form.name,secondName:r.form.secondName,lineDisplayName:r.line.lineDisplayName,lineFriendFlag:r.line.lineFriendFlag,officialLineUrl:OFFICIAL_LINE};}
+ function receipt(r,key){return {receiptId:key,courseName:r.form.courseName,optionName:r.form.optionName,price:r.form.price,lessons:r.form.lessons,date:r.form.date,time:r.form.time,...(r.form.times?{times:r.form.times}:{}),...(typeof r.form.preferFreeTrial==='boolean'?{preferFreeTrial:r.form.preferFreeTrial}:{}),...(typeof r.form.willingToDiscussPaidTrial==='boolean'?{willingToDiscussPaidTrial:r.form.willingToDiscussPaidTrial}:{}),name:r.form.name,secondName:r.form.secondName,lineDisplayName:r.line.lineDisplayName,lineFriendFlag:r.line.lineFriendFlag,officialLineUrl:OFFICIAL_LINE};}
  async function redeem(d){
   if(!token(d.ticket)||!token(d.verifier))fail('請回原本填寫的瀏覽器完成 LINE 綁定。');
   const ref=col('grants').doc(hash(d.ticket)),t=(await ref.get()).data();
@@ -123,7 +142,7 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
   });
  }
  async function publicApi(d,req){
-  if(d.action==='status')return {consentVersion:CONSENT_VERSION,officialLineUrl:OFFICIAL_LINE,supportsFreeTrialPreference:true};
+  if(d.action==='status')return {consentVersion:CONSENT_VERSION,officialLineUrl:OFFICIAL_LINE,supportsFreeTrialPreference:true,freeTrialEligibleCourses:FREE_TRIAL_COURSES};
   if(d.action==='inviteStatus'){const i=await invite(d.invite);return {label:i.row.label||'課程報名',consentVersion:CONSENT_VERSION,officialLineUrl:OFFICIAL_LINE};}
   if(d.action==='start')return start(d,req);
   if(d.action==='redeem')return redeem(d);
