@@ -155,6 +155,8 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
   for(const doc of profiles.docs)values.set(doc.id,{...(values.get(doc.id)||{}),...doc.data()});
   return [...values].filter(([key,v])=>v.active!==false&&([r.form.phone,r.form.secondPhone].filter(Boolean).includes(clean(v.phone).replace(/[\s()-]/g,''))||[r.form.name,r.form.secondName].includes(clean(v.name)))).map(([key,v])=>({id:key,name:clean(v.name),phone:clean(v.phone)})).slice(0,25);
  }
+ const pendingStatuses=['received','contacted','admitted'];
+ const assertActive=r=>{if(r.status==='ignored')fail('這筆報名已忽略，請先恢復處理。');};
  async function adminApi(request){
   const actor=assertManager(request),d=request.data||{};
   if(d.action==='invites'){
@@ -174,6 +176,20 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
   }
   if(!id(d.id))fail('報名編號無效。','invalid-argument');
   const ref=col('records').doc(d.id),r=(await ref.get()).data();if(!r)fail('找不到這份報名。','not-found');
+  if(d.action==='ignore'||d.action==='restore'){
+   const ignore=d.action==='ignore';
+   await db.runTransaction(async tx=>{
+    const current=(await tx.get(ref)).data();
+    if(!current)fail('找不到這份報名。','not-found');
+    if(current.version!==d.version)fail('資料已更新，請重新開啟。','aborted');
+    if(current.schedule||!(ignore?pendingStatuses.includes(current.status):current.status==='ignored'))fail('只有待處理且尚未排課的報名可忽略，已忽略的報名可恢復。');
+    const previous=ignore?current.status:current.statusBeforeIgnore;
+    const status=ignore?'ignored':(pendingStatuses.includes(previous)?previous:(current.studentIds?.length?'admitted':'received'));
+    tx.update(ref,{status,statusBeforeIgnore:ignore?previous:'',...(ignore?{ignoredAt:now(),ignoredBy:actor}:{restoredAt:now(),restoredBy:actor}),version:current.version+1,updatedAt:now(),updatedBy:actor});
+   });
+   return {ok:true};
+  }
+  if(d.action!=='detail')assertActive(r);
   if(['scheduleOptions','saveScheduleDraft','confirmSchedule'].includes(d.action))return require('./enrollmentScheduling').createEnrollmentScheduling({db,scheduler,matches,now,stamp}).run(d,r,actor);
   if(d.action==='detail'){
    const messages=await Promise.all((r.messages||[]).slice(-30).map(async m=>{const q=(await db.collection('notificationQueue').doc(m.queueId).get()).data()||{};return {...m,status:q.status||'待發送',error:q.lastError||''};}));
@@ -196,7 +212,7 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
    if(new Set(ids).size!==ids.length)fail('兩位學生不可選擇同一份資料。');
    const bindings=ids.map(sid=>db.collection('coursePortalStudentBindings').doc(hash('enrollment|'+sid+'|'+r.line.lineUserId)));
    const savedIds=await db.runTransaction(async tx=>{
-    const v=(await tx.get(ref)).data();if(v.studentIds?.length)return v.studentIds;
+    const v=(await tx.get(ref)).data();assertActive(v);if(v.studentIds?.length)return v.studentIds;
     if(v.version!==d.version)fail('資料已更新，請重新開啟。','aborted');
     const refs=ids.map(sid=>db.collection('coursePortalStudentProfiles').doc(sid)),snapshots=await Promise.all(refs.map(x=>tx.get(x)));
     const oldBindings=await Promise.all(bindings.map(x=>tx.get(x)));
@@ -218,6 +234,7 @@ function createEnrollmentService({db,catalog,scheduler,now=Date.now,stamp=()=>Da
    const qid='enrollment-'+hash(d.id+'|'+d.operationId),qr=db.collection('notificationQueue').doc(qid);
    await db.runTransaction(async tx=>{
     const fresh=(await tx.get(ref)).data(),q=(await tx.get(qr)).data();if(q){if(q.body!==text)fail('訊息編號已使用。');return;}
+    assertActive(fresh);
     if((fresh.messages||[]).length>=100)fail('此筆報名已達訊息上限，請改由官方 LINE 後台聯絡。');
     tx.create(qr,{queueId:qid,channel:'line',status:'待發送',source:'online-enrollment-admin',eventCode:'online_enrollment_contact',targetLineUserId:fresh.line.lineUserId,targetName:fresh.form.name,title:'柚子樂器｜課程報名',body:text,emailFallbackEnabled:false,enrollmentId:d.id,createdAt:stamp(),createdBy:actor});
     tx.update(ref,{messages:[...(fresh.messages||[]),{queueId:qid,text,createdAt:now(),createdBy:actor}],status:fresh.status==='received'?'contacted':fresh.status,version:fresh.version+1,updatedAt:now()});

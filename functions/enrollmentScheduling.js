@@ -24,7 +24,7 @@ function createEnrollmentScheduling({db,scheduler,matches,now=Date.now,stamp=()=
   if(!row.consent?.verifiedAt||!/^U[a-f0-9]{32}$/i.test(row.line?.lineUserId||''))fail('學生尚未完成 LINE 同意與驗證。');
   const draft=normalizeDraft(data.draft),names=[row.form.name,...(row.form.secondName?[row.form.secondName]:[])];
   if(data.action==='saveScheduleDraft'){
-   await db.runTransaction(async tx=>{const current=(await tx.get(ref)).data();if(current?.version!==data.version||current.schedule)fail('資料已更新，請重新開啟這筆報名。','aborted');tx.update(ref,{scheduleDraft:draft,version:current.version+1,updatedAt:now(),updatedBy:actor});});
+   await db.runTransaction(async tx=>{const current=(await tx.get(ref)).data();if(current?.version!==data.version||current.schedule||current.status==='ignored')fail('資料已更新，請重新開啟這筆報名。','aborted');tx.update(ref,{scheduleDraft:draft,version:current.version+1,updatedAt:now(),updatedBy:actor});});
    return {ok:true};
   }
   if(data.action!=='confirmSchedule')fail('不支援的排課操作。');
@@ -57,7 +57,7 @@ function createEnrollmentScheduling({db,scheduler,matches,now=Date.now,stamp=()=
   const request={operationId,event:{date:draft.date,start:draft.time,duration:draft.duration,frequency:draft.frequency,type:'fixed',roomId:draft.roomId,teacherId:draft.teacherId,subjectId:draft.subjectId,studentIds:[scheduleStudentId],note:draft.note,halfHourAcknowledged:draft.halfHourAcknowledged},enrollment:{planId:draft.planId}};
   await scheduler.commit(request,{virtualStudents,conflictStudentIds:ids,requireTeacherSubject:true,prepare:async(tx,result)=>{
    const current=(await tx.get(ref)).data();
-   if(current?.version!==data.version||current.schedule||current.status==='closed')fail('報名資料已更新，請重新開啟後再排課。','aborted');
+   if(current?.version!==data.version||current.schedule||['closed','ignored'].includes(current.status))fail('報名資料已更新，請重新開啟後再排課。','aborted');
    if(!samePlan(result.tuitionPeriod?.planSnapshot,plan))fail('收費方案剛剛有變更，請重新確認後再排課。');
    const studentRefs=ids.map(sid=>db.collection('coursePortalStudentProfiles').doc(sid)),studentSnapshots=await Promise.all(studentRefs.map(r=>tx.get(r)));
    const bindingRefs=ids.map(sid=>db.collection('coursePortalStudentBindings').doc(hash('enrollment|'+sid+'|'+row.line.lineUserId))),bindingSnapshots=await Promise.all(bindingRefs.map(r=>tx.get(r)));

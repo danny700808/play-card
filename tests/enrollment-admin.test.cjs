@@ -147,3 +147,36 @@ test('inbox distinguishes unchecked and legacy trial preferences even on closed 
  }
  w.close();
 });
+
+test('ignore and restore remove and return the draft in the pending inbox',async()=>{
+ const dom=new JSDOM(fs.readFileSync('enrollment-admin.html','utf8'),{url:'https://example.test/enrollment-admin.html?filter=pending',runScripts:'outside-only'});
+ const w=dom.window,$=id=>w.document.getElementById(id);
+ const row={id:'enr-fixture',version:1,status:'received',createdAt:Date.now(),form:{name:'測試',courseName:'鋼琴',optionName:'單人班'},line:{lineDisplayName:'測試',lineFriendFlag:true}};
+ const calls=[];
+ w.YZManagerAuth={requireManager:async()=>{}};
+ w.firebase={app:()=>({functions:()=>({httpsCallable:()=>async data=>{
+  calls.push(data);
+  if(data.action==='list')return {data:{records:[row],nextCursor:''}};
+  if(data.action==='detail')return {data:{record:{...row},matches:[]}};
+  if(data.action==='scheduleOptions')return {data:{catalog:{}}};
+  assert.equal(data.version,row.version++);
+  assert.equal(data.id,row.id);
+  row.status=data.action==='ignore'?'ignored':'received';
+  return {data:{ok:true}};
+ }})})};
+ w.EnrollmentSchedulingUI={mount:()=>({sync(){}})};
+ w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+ w.HTMLDialogElement.prototype.close=function(){this.open=false;};
+ const settle=()=>new Promise(resolve=>setImmediate(resolve));
+ w.eval(fs.readFileSync('management-pending-records.js','utf8'));
+ w.eval(fs.readFileSync('enrollment-admin.js','utf8'));await settle();
+ $('records').querySelector('[data-open]').click();await settle();
+ $('ignoreRecord').click();await settle();
+ assert(!$('detailDialog').open);assert.equal($('records').querySelector('[data-open]'),null);
+ $('statusFilter').value='ignored';$('statusFilter').dispatchEvent(new w.Event('change'));await settle();
+ $('records').querySelector('[data-open]').click();await settle();
+ assert.equal($('sendMessage'),null);assert.equal($('scheduleHost'),null);
+ $('restoreRecord').click();await settle();
+ $('statusFilter').value='pending';$('statusFilter').dispatchEvent(new w.Event('change'));await settle();
+ assert($('records').querySelector('[data-open]'));assert(!calls.some(c=>['message','confirmSchedule'].includes(c.action)));w.close();
+});

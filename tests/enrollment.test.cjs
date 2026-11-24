@@ -243,3 +243,20 @@ test('legacy pending free-trial inquiries can redeem on previously unrestricted 
  assert(!Object.hasOwn(record.record.form,'willingToDiscussPaidTrial'));
  assert.match(h.rows.get('notificationQueue/'+record.record.managerNotification.queueId).body,/舊版報名未記錄付費試上偏好.*不可視為同意/);
 });
+
+test('ignoring an unscheduled registration preserves its draft and never queues a message',async()=>{
+ const h=harness(),id='enr-ignore-fixture',ref=C.records+'/'+id;
+ const row={status:'contacted',version:1,createdAt:h.now(),form:h.form,scheduleDraft:{time:'13:00'},managerNote:'已聯絡'};
+ h.rows.set(ref,row);
+ await h.manager({action:'ignore',id,version:1});
+ const ignored=h.rows.get(ref);
+ assert.equal(ignored.status,'ignored');assert.equal(ignored.ignoredBy,'manager');
+ assert.deepEqual(ignored.form,row.form);assert.deepEqual(ignored.scheduleDraft,row.scheduleDraft);assert.equal(ignored.managerNote,row.managerNote);
+ for(const action of ['message','admit','confirmSchedule','saveScheduleDraft','update'])await assert.rejects(h.manager({action,id,version:2}),/已忽略/);
+ assert.equal(h.count('notificationQueue'),0);
+ await assert.rejects(h.manager({action:'restore',id,version:1}),/資料已更新/);
+ await h.manager({action:'restore',id,version:2});
+ assert.equal(h.rows.get(ref).status,'contacted');assert.equal(h.rows.get(ref).version,3);
+ h.rows.set(ref,{...row,status:'scheduled',schedule:{date:'2026-11-26'}});
+ await assert.rejects(h.manager({action:'ignore',id,version:1}),/尚未排課/);
+});
