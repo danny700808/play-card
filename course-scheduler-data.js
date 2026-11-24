@@ -324,7 +324,7 @@
   }
   function isIrregularPlaceholder(event,modes){
     if(['attended','absent','cancelled'].indexOf(event.status)>=0||['single_move','extra_lesson','teacher_gift'].indexOf(event.portalAction)>=0||event.type!=='fixed')return false;
-    return array(modes).some(function(mode){return mode.enabled!==false&&event.teacherId===mode.teacherId&&event.subjectId===mode.subjectId&&array(event.studentIds).slice().sort().join('|')===array(mode.studentIds).slice().sort().join('|')&&array(mode.intervals).concat([mode]).some(function(interval){return event.date>=interval.effectiveDate&&(!interval.resumedFrom||event.date<interval.resumedFrom);});});
+    return array(modes).some(function(mode){return mode.enabled!==false&&event.teacherId===mode.teacherId&&event.subjectId===mode.subjectId&&(!mode.pausedSourceCourseId||[event.sourceCourseId,event.seriesId,event.sourceId,event.ruleId].indexOf(mode.pausedSourceCourseId)>=0)&&array(event.studentIds).slice().sort().join('|')===array(mode.studentIds).slice().sort().join('|')&&array(mode.intervals).concat([mode]).some(function(interval){return event.date>=interval.effectiveDate&&(!interval.resumedFrom||event.date<interval.resumedFrom);});});
   }
   async function loadCalendarFollowupState(){await ensureTeacherPayrollManagerAuth();return call(AUTO_LOAD_FUNCTION_NAME,{scope:'calendar-irregular'});}
   async function loadIrregularCourses(){await ensureTeacherPayrollManagerAuth();var payload=await call(AUTO_LOAD_FUNCTION_NAME,{scope:'calendar-irregular'});return array(payload.irregularCourses);}

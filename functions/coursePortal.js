@@ -4806,6 +4806,7 @@ function irregularPlaceholder(row, modes) {
   const ids = eventStudentIds(row).slice().sort().join('|');
   return modes.some(mode => mode.enabled !== false && eventTeacherId(row) === mode.teacherId &&
     eventSubjectId(row) === mode.subjectId && ids === mode.studentIds.slice().sort().join('|') &&
+    (!mode.pausedSourceCourseId || courseSourceIds(row).includes(mode.pausedSourceCourseId)) &&
     [...(mode.intervals || []), mode].some(interval => eventDate(row) >= interval.effectiveDate && (!interval.resumedFrom || eventDate(row) < interval.resumedFrom)));
 }
 function applyIrregularStudentModes(row, modes) {
@@ -5795,6 +5796,9 @@ async function teacherAvailability(data) {
   let permanentMinimumDate = '';
   let permanentMaximumDate = '';
   if (source && clean(data.action) === 'permanent_move') permanentMinimumDate = currentTaipeiDay();
+  const lastScheduledDate = clean((restoreMode || followup)?.lastScheduledDate);
+  const afterConfirmedDates = lastScheduledDate ? addDays(lastScheduledDate,1) : '';
+  if (afterConfirmedDates > permanentMinimumDate) permanentMinimumDate = afterConfirmedDates;
   const dates = (exactTarget
     ? [exactDate]
     : Array.from(
@@ -9424,6 +9428,7 @@ async function teacherActionAttempt(data, recheckContext = {}, managerSession = 
   await require('./classDateAccess').assertOpen(db,date);
   const stoppedAddMode = clean(data.suspensionId) && clean(data.action) === 'extra_lesson' ? await stoppedRestoreMode(data, session) : null;
   const restoreMode = stoppedAddMode || clean(data.action) === 'extra_lesson' ? null : await irregularRestoreMode(data, session);
+  if (restoreMode?.lastScheduledDate && date <= restoreMode.lastScheduledDate) throw new HttpsError('failed-precondition','請選擇已排課程之後的日期。');
   const [policy, bundle, roomSettingsSnapshot] = await Promise.all([
     rentalPolicySettings(),
     scheduleBundle(date, date, session.teacherId, {teacherHome:true}),
@@ -9497,6 +9502,7 @@ async function teacherActionAttempt(data, recheckContext = {}, managerSession = 
     ? source.studentIds
     : [...new Set(firstArray(data, ['studentIds']).concat(clean(data.studentId) ? [clean(data.studentId)] : []))];
   const followup = followupLessonSource(data, bundle, session.teacherId, stoppedAddMode);
+  if (followup?.lastScheduledDate && date <= followup.lastScheduledDate) throw new HttpsError('failed-precondition','請選擇已排課程之後的日期。');
   const subjectId = moving ? source.subjectId : followup ? followup.subjectId : clean(data.subjectId);
   if (!studentIds.length || !subjectId) {
     throw new HttpsError('invalid-argument', '請完整選擇學生與課程科目。');
@@ -10612,7 +10618,7 @@ async function adminSaveSchedule(data, integration = {}) {
   const previous = await target.get();
   if (previous.exists) {
     if (previous.data().requestHash !== requestHash) throw new HttpsError('already-exists', '操作編號已使用，請重新開啟排課視窗。');
-    return { ok: true, duplicate: true, id, event: previous.data().event || previous.data() };
+    return { ok: true, duplicate: true, id, event: previous.data().event || previous.data(), irregularFrom: clean(previous.data().irregularFrom) };
   }
   let enrollmentPeriod = null;
   let enrollmentPeriods = [];
@@ -10678,9 +10684,19 @@ async function adminSaveSchedule(data, integration = {}) {
   if(integration.requireTeacherSubject&&!teacherSubjects.includes(subjectId))throw new HttpsError('failed-precondition','老師授課科目剛剛有變更，請重新選擇。');
   if (type !== 'rental' && !roomSupportsSubject(selectedRoom, subjectId, bundle, setting)) throw new HttpsError('failed-precondition', '教室不適合所選科目。');
   const resourceIds = requestedSubjectResourceIds(subjectId, bundle);
-  const closureCheckDates=[];
-  if (mode !== 'delete') for (let day = date; day <= through; day = addDays(day, recurring ? (raw.frequency === 'biweekly' ? 14 : 7) : 10000)) {
-    closureCheckDates.push(day);
+  const canDeferFollowup = recurring && enrollment?.planId === 'intro-gift-' + subjectId;
+  const classDateAccess = require('./classDateAccess');
+  const requestedDates = [];
+  if (mode !== 'delete') {
+    const stepDays = recurring ? (raw.frequency === 'biweekly' ? 14 : 7) : 10000;
+    for (let day = date; day <= through; day = addDays(day,stepDays)) requestedDates.push(day);
+  }
+  const closedDates = canDeferFollowup ? await classDateAccess.read(db,requestedDates) : [];
+  const closureCheckDates = [];
+  let irregularFrom = '';
+  for (const day of requestedDates) {
+    const closedDate = closedDates.find(closed => closed.date === day);
+    let failure = closedDate ? new HttpsError('failed-precondition', `${day} 因${closedDate.reason}暫停開放，請選擇其他日期。`) : null;
     const window = businessWindow(policy, day);
     if (window.closed || timeMinutes(startTime) < window.startMinutes || endMinutes > window.endMinutes) {
       // Classroom scheduling can explicitly open a slot outside public rental hours.
@@ -10691,11 +10707,17 @@ async function adminSaveSchedule(data, integration = {}) {
         const slot = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
         explicitlyOpen = roomPolicyForSlot(selectedRoom, setting, day, slot).blockSchedule === false;
       }
-      if (!explicitlyOpen) throw new HttpsError('failed-precondition', `${day} 不在開放排課時段內，請在教室設定開放完整上課時段。`);
+      if (!explicitlyOpen && !failure) failure = new HttpsError('failed-precondition', `${day} 不在開放排課時段內，請在教室設定開放完整上課時段。`);
     }
-    if (!roomAllowsInterval(selectedRoom, setting, day, startTime, endTime, subjectId, type === 'rental' ? 'rental' : 'schedule')) throw new HttpsError('failed-precondition', `${day} 教室時段規則不允許此安排。`);
+    if (!failure && !roomAllowsInterval(selectedRoom, setting, day, startTime, endTime, subjectId, type === 'rental' ? 'rental' : 'schedule')) failure = new HttpsError('failed-precondition', `${day} 教室時段規則不允許此安排。`);
     const conflict = bundle.resourceEvents.find(row => row.date === day && eventBlocksResource(row) && (!original || row.id !== original.id) && overlaps(startTime,endTime,row.startTime,row.endTime) && (row.roomId === roomId || teacherId && row.teacherId === teacherId || (row.studentIds || []).some(id => conflictStudentIds.includes(id)) || sharedResourceConflict([row],resourceIds)));
-    if (conflict) throw new HttpsError('already-exists', `${day} 的教室、老師、學生或共用樂器已被占用。`);
+    if (conflict && !failure) failure = new HttpsError('already-exists', `${day} 的教室、老師、學生或共用樂器已被占用。`);
+    if (failure) {
+      if (!canDeferFollowup || day === date) throw failure;
+      irregularFrom = day;
+      break;
+    }
+    closureCheckDates.push(day);
   }
   if (mode !== 'delete' && ['fixed','single'].includes(type) && duration === 30 && (!original || eventLessonUnits(original) !== 0.5) && raw.halfHourAcknowledged !== true) throw new HttpsError('failed-precondition', '請先確認30分鐘增課提醒，並於接下來四堂課內再安排30分鐘。');
   const event = { id, date, startTime, endTime, durationMinutes: duration, roomId, teacherId, subjectId, studentIds,
@@ -10713,9 +10735,15 @@ async function adminSaveSchedule(data, integration = {}) {
     : { id, operationId, action: mode === 'delete' ? 'cancel' : original ? 'single_move' : 'extra_lesson', active: true,
       sourceEventId: original ? clean(original.sourceId || original.id) : '', sourceCourseId: lineage, sourceDate: original?.date || '',
       event: { ...event, fixedCourseId: lineage }, createdByTeacherId: teacherId, approvedByManager: true, createdAtText: nowText() };
-  await require('./classDateAccess').assertOpen(db,closureCheckDates);
+  const irregular = irregularFrom ? {
+    id, teacherId, subjectId, studentIds,
+    source:{...event, sourceId:id, fixedCourseId:id, recurring:true},
+    pausedSourceCourseId:id, lastScheduledDate:closureCheckDates.at(-1),
+    effectiveDate:irregularFrom, resumedFrom:'', enabled:true, intervals:[]
+  } : null;
+  await classDateAccess.assertOpen(db,closureCheckDates);
   const duplicate = await db.runTransaction(async tx => {
-    await require('./classDateAccess').assertOpen(db,closureCheckDates,tx);
+    await classDateAccess.assertOpen(db,closureCheckDates,tx);
     const version = await tx.get(scheduleVersionRef()), existing = await tx.get(target);
     assertScheduleWritable(version);
     if (existing.exists) {
@@ -10745,11 +10773,12 @@ async function adminSaveSchedule(data, integration = {}) {
     }
     for (const doc of superseded) tx.set(doc.ref,{active:false,supersededBy:id,updatedAt:FieldValue.serverTimestamp()},{merge:true});
     if(applyIntegration)applyIntegration(tx);
-    tx.create(target,{...payload,requestHash,createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
+    if (irregular) tx.create(db.collection('coursePortalIrregularCourses').doc(id),{...irregular,updatedAt:FieldValue.serverTimestamp()});
+    tx.create(target,{...payload,...(irregular ? {irregularFrom} : {}),requestHash,createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
     tx.set(scheduleVersionRef(),{version:expectedVersion+1,updatedAt:FieldValue.serverTimestamp(),updatedBy:'manager-schedule'},{merge:true});
   });
-  if(duplicate)return {ok:true,duplicate:true,id,event:duplicate};
-  return { ok:true,id,event,course:recurring?payload:event,recurring,student:newStudent,tuitionPeriod:enrollmentPeriod,tuitionPeriods:enrollmentPeriods };
+  if(duplicate)return {ok:true,duplicate:true,id,event:duplicate,irregularFrom:clean(duplicate.irregularFrom)};
+  return { ok:true,id,event,course:recurring?payload:event,recurring,student:newStudent,tuitionPeriod:enrollmentPeriod,tuitionPeriods:enrollmentPeriods,irregularFrom,irregular };
 }
 
 async function adminAttendanceDetail(data) {

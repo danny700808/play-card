@@ -180,6 +180,32 @@ test('intro offer preserves existing periods, continues numbering, and conflicts
  await assert.rejects(conflict.c.adminSaveSchedule(data),/占用/);assert.equal(conflict.docs.size,1);
 });
 
+test('intro offer keeps valid dates and all three unused periods when a later date is blocked',async()=>{
+ for(const closed of [false,true]){
+  const date='2026-09-21';
+  const f=fixture(closed?[]:[{id:'busy',date,startTime:'18:00',endTime:'19:00',roomId:'room',studentIds:[]}]),data=enroll();
+  if(closed)f.docs.set('courseClassClosures/'+date,{active:true,reason:'停課'});
+  data.enrollment.planId='intro-gift-guitar';
+  const saved=await f.c.adminSaveSchedule(data);
+  assert.equal(saved.irregularFrom,date);
+  assert.equal(saved.irregular.source.fixedCourseId,saved.id);
+  assert.equal(saved.irregular.source.tuitionPeriodId,saved.tuitionPeriod.id);
+  assert.equal(f.docs.get('coursePortalIrregularCourses/'+saved.id).pausedSourceCourseId,saved.id);
+  assert.deepEqual(Array.from(saved.tuitionPeriods,p=>[p.expectedAmount,p.planSnapshot.splitValue,p.usedCount]),[[0,0,0],[2800,.7,0],[2800,.6,0]]);
+  const size=f.docs.size, retry=await f.c.adminSaveSchedule(data);
+  assert.equal(retry.irregularFrom,date);
+  assert.equal(retry.duplicate,true);
+  assert.equal(f.docs.size,size);
+  const code=source.slice(source.indexOf('function irregularPlaceholder('),source.indexOf('function applyIrregularStudentModes('));
+  f.c.eventSubjectId=r=>r.subjectId;f.c.eventTeacherId=r=>r.teacherId;f.c.eventStudentIds=r=>r.studentIds;f.c.eventDate=r=>r.date;
+  f.c.courseSourceIds=require('../functions/coursePortalUtils').courseSourceIds;
+  vm.runInContext(code,f.c);
+  for(const [day,id,status,paused] of [['2026-09-07',saved.id,'scheduled',false],['2026-09-14',saved.id,'scheduled',false],[date,saved.id,'scheduled',true],[date,'other-course','scheduled',false],[date,saved.id,'attended',false]]){
+   assert.equal(f.c.irregularPlaceholder({...saved.event,date:day,id,status},[saved.irregular]),paused);
+  }
+ }
+});
+
 test('manager fixed-course selector puts the gift first, then 60% and 70% by descending price',()=>{
  const ui=fs.readFileSync(require('path').join(__dirname,'../operations-course-inline-runtime.js'),'utf8');
  const start=ui.indexOf('  function schedulePlans('),end=ui.indexOf('  function updateScheduleEnrollment(',start);

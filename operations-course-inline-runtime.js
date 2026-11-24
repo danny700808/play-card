@@ -950,8 +950,8 @@
     if(original&&!permanentScheduleSource){row.date=original.date;row.start=original.start;row.roomId=original.roomId;}
     var operationId=$('scheduleForm').dataset.operationId||($('scheduleForm').dataset.operationId=uid('schedule'));
     runUiOperation(row.type==='rental'?'正在儲存租用資料…':'正在保存雲端排課…',$('scheduleSubmitBtn'),async function(){
-      await persistScheduleChange(row,{operationId:operationId,source:original,enrollment:enrollment,mode:permanentScheduleSource?'permanent_move':'save',repeatUntil:$('eventRepeatUntil').value});
-      closeModal('scheduleModal');if(row.type==='rental')toast('租用資料已儲存',row.rentalPaymentStatus==='paid'?'已收款，租用簽到完成。':'未收款，維持未簽到。');else toast('排課已保存至雲端','老師手機與管理者會讀取同一份課表。');
+      var saved=await persistScheduleChange(row,{operationId:operationId,source:original,enrollment:enrollment,mode:permanentScheduleSource?'permanent_move':'save',repeatUntil:$('eventRepeatUntil').value});
+      closeModal('scheduleModal');if(row.type==='rental')toast('租用資料已儲存',row.rentalPaymentStatus==='paid'?'已收款，租用簽到完成。':'未收款，維持未簽到。');else if(saved&&saved.irregularFrom)toast('已保留前段課程',saved.irregularFrom+' 起轉入老師的「不定時」，可由老師另排。');else toast('排課已保存至雲端','老師手機與管理者會讀取同一份課表。');
     });
   }
   function showSavedRefreshRetry(options){
@@ -975,8 +975,8 @@
     else var result=await window.YouziCoursePreviewData.saveSchedule({manualSyncPin:storedMigrationPin(),operationId:options.operationId||uid('schedule'),mode:options.mode||'save',event:row,enrollment:options.enrollment||null,sourceEventId:options.source&&(options.source.portalBookingId||options.source.sourceId||options.source.id)||'',sourceCourseId:options.source&&options.source.sourceCourseId||'',sourceDate:options.source&&options.source.date||'',repeatUntil:options.repeatUntil||''});
     if(!options.source&&(!options.mode||options.mode==='save')&&result&&result.course){
       var students=state.students.slice();if(result.student){var student=Object.assign({},result.student,{active:result.student.studentActive!==false});upsert(students,student);upsert(state.students,student);}
-      var delta=window.YouziCoursePreviewData.buildState({rooms:state.rooms,subjects:state.subjects,teachers:state.teachers,students:students,feePlans:state.feePlans,tuitionPeriods:result.tuitionPeriods||(result.tuitionPeriod?[result.tuitionPeriod]:[]),fixedCourses:result.recurring?[result.course]:[],events:result.recurring?[]:[result.course]},state.currentDate||todayKey());
-      delta.events.forEach(function(event){upsert(state.events,event);});delta.tuitionPeriods.forEach(function(period){upsert(state.tuitionPeriods,period);});renderCalendar();scheduleWorkspaceSave();return;
+      var delta=window.YouziCoursePreviewData.buildState({rooms:state.rooms,subjects:state.subjects,teachers:state.teachers,students:students,feePlans:state.feePlans,tuitionPeriods:result.tuitionPeriods||(result.tuitionPeriod?[result.tuitionPeriod]:[]),irregularCourses:result.irregular?[result.irregular]:[],fixedCourses:result.recurring?[result.course]:[],events:result.recurring?[]:[result.course]},state.currentDate||todayKey());
+      if(result.irregular)upsert(state.irregularCourses,result.irregular);delta.events.forEach(function(event){upsert(state.events,event);});delta.tuitionPeriods.forEach(function(period){upsert(state.tuitionPeriods,period);});renderCalendar();scheduleWorkspaceSave();return result;
     }
     var source=options.source||row,ids=Array.from(new Set([].concat(source.studentIds||[],row.studentIds||[])));
     var dates=Array.from(new Set([source.date,row.date].filter(Boolean))),scopes=dates.map(function(date){return {startDate:date,endDate:date};});
@@ -986,6 +986,7 @@
     }
     await refreshSavedWorkspace({calendarScopes:scopes});$('calendarReauthPanel').classList.add('hidden');
     renderCalendar();
+    return result;
   }
 
   function nextPeriodNumber(studentId){return state.tuitionPeriods.filter(function(period){return period.studentId===studentId;}).reduce(function(max,period){return Math.max(max,numberOf(period.periodNo));},0)+1;}
