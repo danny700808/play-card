@@ -346,10 +346,15 @@
   }
 
   function insuranceActive(status){ return ['在保','已投保','投保','有效'].includes(clean(status)); }
+  function allowsDeferredParttimeIdentity(app,draft){
+    return app.parttimeIdentityDeferred===true && draft.identityType==='parttime';
+  }
   function onboardingMissing(app,draft){
     const r=[];
-    if(!clean(app.identityDocumentUrl)) r.push('缺少證件正面');
-    if(draft.identityVerificationStatus!=='verified') r.push('主管尚未確認證件與申請資料相符');
+    if(!allowsDeferredParttimeIdentity(app,draft)){
+      if(!clean(app.identityDocumentUrl)) r.push('缺少證件正面');
+      if(draft.identityVerificationStatus!=='verified') r.push('主管尚未確認證件與申請資料相符');
+    }
     if(!['staff','parttime','external'].includes(draft.identityType)) r.push('尚未選擇專職或工讀');
     const pref=notificationPreference(app.notificationPreference||app.notificationMethod, !!clean(app.email));
     if(!verificationSatisfied(app)) r.push(pref==='both'?'申請人尚未完成 LINE 綁定或 Email 驗證':'申請人尚未完成 '+(pref==='line'?'LINE 綁定':'Email 驗證'));
@@ -464,6 +469,7 @@
   function employeeBase(app,draft,employeeId,password){
     const isPart=draft.identityType==='parttime';
     const isExternal=draft.identityType==='external';
+    const deferred=allowsDeferredParttimeIdentity(app,draft);
     return {
       employeeId, name:clean(app.name), email:lower(app.email), password, role:'staff',
       identityType:draft.identityType, identityLabel:identityLabel(draft.identityType), isPartTime:isPart, isExternalTeacher:isExternal,
@@ -474,8 +480,10 @@
       emergencyContact:clean(app.emergencyContact), emergencyPhone:clean(app.emergencyPhone),
       hireDate:isExternal?'':draft.startDate, cooperationStartDate:isExternal?draft.startDate:'',
       identityDocumentType:clean(app.identityDocumentType), identityDocumentTypeLabel:identityDocumentTypeLabel(app.identityDocumentType),
-      identityDocumentUrl:clean(app.identityDocumentUrl), identityDocumentPublicId:clean(app.identityDocumentPublicId), identityDocumentVerified:true,
-      identityVerificationStatus:'verified', identityVerifiedAt:serverTs(), identityVerifiedAtText:nowText(), identityVerifiedBy:clean(currentUser().id||currentUser().employeeId),
+      identityDocumentUrl:clean(app.identityDocumentUrl), identityDocumentPublicId:clean(app.identityDocumentPublicId), identityDocumentVerified:!deferred,
+      parttimeIdentityDeferred:deferred,
+      identityVerificationStatus:deferred?'missing':'verified', identityVerifiedAt:deferred?null:serverTs(),
+      identityVerifiedAtText:deferred?'':nowText(), identityVerifiedBy:deferred?'':clean(currentUser().id||currentUser().employeeId),
       identityDocumentUseNotice:'僅供柚子樂器人事身分核對、建檔、契約及投保作業使用',
       registrationApplicationId:clean(app.applicationId||app.__id), onboardingCompleted:true, onboardingCompletedAt:serverTs(), onboardingCompletedAtText:nowText(),
       externalContractStatus:isExternal?draft.externalContractStatus:'', externalAccessEnabled:isExternal?draft.externalAccessEnabled:'',
@@ -546,7 +554,8 @@
       `初始密碼：${initialPassword}`,
       '',
       `登入網址：${loginUrl()}`,
-      '第一次登入後請立即修改密碼。'
+      '第一次登入後請立即修改密碼。',
+      ...(employee.parttimeIdentityDeferred?['登入工作台後，請依提示補填證件號碼並上傳證件正面。']:[])
     ].join('\n');
     const createdQueueIds=[];
     if(wantsEmail(pref) && lower(app.email)){
@@ -587,6 +596,7 @@
   async function requestResubmission(payload){
     const ensured=await ensureApplication(payload.applicationId);
     const app=ensured.data; const reason=clean(payload.reason||payload.resubmissionReason);
+    if(app.parttimeIdentityDeferred===true) return {ok:false,message:'此工讀生可先建檔，帳號開通後會自動提醒補件。'};
     if(!reason) return {ok:false,message:'請填寫需要補件的原因。'};
     const token=randomToken(20);
     let url='register.html';

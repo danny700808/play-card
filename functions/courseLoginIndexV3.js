@@ -19,3 +19,4 @@ require('./nativeEducationProjection').registerNativeEducationProjection(exports
 require('./privateCalendar').register(exports);
 require('./shippingDesk').register(exports);
 require('./enrollment').register(exports);
+require('./parttimeOnboarding').register(exports);

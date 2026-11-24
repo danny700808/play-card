@@ -6,6 +6,23 @@
  const params=new URLSearchParams(location.search);let preview=false,realPreview=false,state=null,tab='attendance',generation=0,previewLoad=0,attendanceMonth=today().slice(0,7),salaryMonth=today().slice(0,7);
  const icons={schedule:'▦',attendance:'◷',salary:'＄',rental:'⌂',more:'☰'};
  const features={clock:['打卡','clock.html'],history:['打卡紀錄','clock.html?view=history'],hours:['填寫工時','parttime.html'],leave:['請假','leave.html'],temporary:['補登／臨時出勤','temporary-attendance.html'],announcement:['公告','announcements.html'],task:['待辦','task.html'],routine:['定期事項','routine.html'],training:['教育訓練','training.html'],forms:['表單與證明','forms-hub.html'],notification:['通知設定','profile.html']};
+ async function showParttimeIdentityNotice(){
+  if(state.user.identityType!=='parttime')return;
+  try{
+   const result=await ParttimeOnboarding.call('status');
+   await verifyIdentity(state.user.id);
+   if(!['missing','submitted'].includes(result.status)){
+    $('parttimeIdentityNotice').hidden=true;
+    return;
+   }
+   const submitted=result.status==='submitted';
+   $('parttimeIdentityTitle').textContent=submitted?'證件已送出，等待主管核對':'請補交身分證明文件';
+   $('parttimeIdentityNote').textContent=submitted?'':'請補填證件號碼並上傳證件正面。'+(result.note?' 主管退回原因：'+result.note:'');
+   $('parttimeIdentityNote').hidden=submitted;
+   $('parttimeIdentityLink').hidden=submitted;
+   $('parttimeIdentityNotice').hidden=false;
+  }catch(error){console.warn('工讀生補件狀態暫時無法讀取',error.message);}
+ }
  function status(text,error=false){$('personalStatus').textContent=text||'';$('personalStatus').classList.toggle('personal-error',error);}
  async function restoredAuth(){
   const auth=firebase.auth();
@@ -167,8 +184,9 @@
     document.body.classList.add('is-preview');$('previewBar').hidden=false;$('previewLabel').hidden=false;status('讀取人員名單中…');loadPreviewRoster();return;
    }
    if(user.portalSessionBridge){throw Error('請從老師手機版的「出勤」進入，或使用原員工帳號登入。');}
-   status('正在載入您的工作台…');state=await call('overview');saveUser(state.user);status('');selectTab(state.capabilities.attendance?'attendance':state.capabilities.teacher?'schedule':'more');
+   status('正在載入您的工作台…');state=await call('overview');saveUser(state.user);status('');showParttimeIdentityNotice();selectTab(state.capabilities.attendance?'attendance':state.capabilities.teacher?'schedule':'more');
   }catch(e){status(e.message||'載入失敗，請重新登入。',true);body('<a class="personal-btn full" href="login.html?next=dashboard.html">重新登入</a>');}
  }
+ window.addEventListener('pageshow',event=>{if(event.persisted&&state&&!preview)showParttimeIdentityNotice();});
  init();
 })();

@@ -43,6 +43,10 @@
       <div id="resubmitInfo" class="resubmit-card"></div>
 
       <form id="registerForm" novalidate>
+        <div class="consent-row" id="parttimeIdentityChoice" style="display:none">
+          <input id="deferIdentity" type="checkbox" checked>
+          <label for="deferIdentity">證件稍後補交，先送出基本資料</label>
+        </div>
         <div id="basicFields">
           <div class="field" id="field-name">
             <label for="name">姓名<span class="required-mark">*</span></label>
@@ -117,7 +121,7 @@
           </div>
         </div>
 
-        <div class="purpose-box">
+        <div class="purpose-box" id="identityPurpose">
           <h2>證件使用說明</h2>
           <p>此證件影像僅供柚子樂器辦理人員身分核對、人事建檔、契約及投保相關作業使用，不作其他用途。請只上傳本人證件正面，並確認姓名及證件號碼清楚可辨識。</p>
         </div>
@@ -165,7 +169,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=20260919-taiwan-v2"></script>
   <script src="app.js?v=20260802-security-phase1"></script>
-  <script src="onboarding-workflow.js?v=20260624v1"></script>
+  <script src="onboarding-workflow.js?v=20261124-parttime1"></script>
+  <script src="parttime-onboarding.js?v=20261124-1"></script>
   <script>
     const form=qs('#registerForm');
     const msg=qs('#msg');
@@ -173,10 +178,12 @@
     const registerResult=qs('#registerResult');
     const params=new URLSearchParams(location.search||'');
     const resubmitMode=params.get('mode')==='resubmit';
-    const emailVerifyMode=params.get('mode')==='emailVerify';
+    const parttimeEmailVerify=params.get('mode')==='parttimeEmailVerify';
+    const emailVerifyMode=parttimeEmailVerify||params.get('mode')==='emailVerify';
+    const supplementMode=params.get('mode')==='parttimeIdentity';
     const registrationType=(params.get('type')||'').trim().toLowerCase();
     const registrationTypeLabels={staff:'專職員工',parttime:'工讀生'};
-    const registrationTypeHelp={staff:'專職員工需填寫人事基本資料與證件資料，送出後由主管完成薪資、投保與班表建檔。',parttime:'工讀生需填寫人事基本資料與證件資料，送出後由主管完成時薪、投保與班表設定。'};
+    const registrationTypeHelp={staff:'專職員工需填寫人事基本資料與證件資料，送出後由主管完成薪資、投保與班表建檔。',parttime:'先填寫基本資料，送出後完成 LINE 或 Email 驗證。證件可以等帳號開通後登入補交。'};
     const resubmitApplicationId=params.get('applicationId')||'';
     const resubmitToken=params.get('token')||'';
     let processedIdentityFile=null;
@@ -204,7 +211,7 @@
     function revokePreview(){if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=''}}
     function resetIdentity(){processedIdentityFile=null;revokePreview();qs('#identityDocumentFile').value='';qs('#identityPreview').removeAttribute('src');qs('#identityPreviewWrap').style.display='none';clearError('identityDocument')}
     function loadImage(file){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(file);const img=new Image();img.onload=()=>{URL.revokeObjectURL(url);resolve(img)};img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('無法讀取圖片，請重新拍攝或改用 JPG / PNG 圖片。'))};img.src=url})}
-    function canvasBlob(canvas){return new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('圖片處理失敗。')),'image/jpeg',0.84))}
+    function canvasBlob(canvas,quality=0.84){return new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('圖片處理失敗。')),'image/jpeg',quality))}
     async function processIdentityFile(file){
       if(!file) return;
       if(file.type && !String(file.type||'').toLowerCase().startsWith('image/')) throw new Error('證件請上傳圖片檔。');
@@ -215,7 +222,10 @@
       const fontSize=Math.max(18,Math.round(width/24));ctx.save();ctx.translate(width/2,height/2);ctx.rotate(-Math.PI/7);ctx.font=`900 ${fontSize}px sans-serif`;ctx.textAlign='center';ctx.fillStyle='rgba(160,0,0,.20)';
       for(let y=-height;y<=height;y+=fontSize*3.3){ctx.fillText(watermarkText,0,y)}ctx.restore();
       const bar=Math.max(48,Math.round(fontSize*2.4));ctx.fillStyle='rgba(255,255,255,.88)';ctx.fillRect(0,height-bar,width,bar);ctx.fillStyle='#7f1d1d';ctx.font=`900 ${Math.max(15,Math.round(fontSize*.72))}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(`${watermarkText}｜${new Date().toISOString().slice(0,10)}`,width/2,height-bar/2);
-      const blob=await canvasBlob(canvas);processedIdentityFile=new File([blob],`identity-front-${Date.now()}.jpg`,{type:'image/jpeg'});revokePreview();previewUrl=URL.createObjectURL(processedIdentityFile);qs('#identityPreview').src=previewUrl;qs('#identityPreviewWrap').style.display='block';clearError('identityDocument');
+      let blob=await canvasBlob(canvas);
+      if(supplementMode&&blob.size>630000)blob=await canvasBlob(canvas,0.62);
+      if(supplementMode&&blob.size>630000)throw new Error('證件照片仍太大，請裁切至證件範圍後重新選擇。');
+      processedIdentityFile=new File([blob],`identity-front-${Date.now()}.jpg`,{type:'image/jpeg'});revokePreview();previewUrl=URL.createObjectURL(processedIdentityFile);qs('#identityPreview').src=previewUrl;qs('#identityPreviewWrap').style.display='block';clearError('identityDocument');
     }
     async function uploadIdentity(progress){
       if(!processedIdentityFile) throw new Error('請先選擇證件正面。');
@@ -229,10 +239,51 @@
     function wantsLinePreference(v){return v==='line'||v==='both'}
     function wantsEmailPreference(v){return v==='email'||v==='both'}
     async function copyResultText(text){try{await navigator.clipboard.writeText(text);alert('已複製');}catch(e){const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();alert('已複製');}}
+    function deferringIdentity(){
+      return !resubmitMode&&!supplementMode&&registrationType==='parttime'&&qs('#deferIdentity').checked;
+    }
+    function refreshIdentityChoice(){
+      const show=!deferringIdentity();
+      for(const id of ['field-idNumber','identityPurpose','field-identityDocumentType','field-identityDocument','field-identityDocumentConsent']){
+        qs('#'+id).style.display=show?'':'none';
+      }
+      registerBtn.textContent=show?'送出註冊申請':'先送出基本資料';
+      clearErrors();
+      setMsg(msg,'');
+    }
+    async function initSupplement(){
+      qs('#pageTitle').textContent='補交身分證明文件';
+      qs('#pageSubtitle').textContent='請填寫證件號碼並上傳本人證件正面。';
+      qs('#basicFields').before(qs('#field-idNumber'));
+      qs('#basicFields').style.display='none';
+      registerBtn.textContent='送出證件';
+      const result=await ParttimeOnboarding.call('status');
+      if(result.status!=='missing'){
+        form.style.display='none';
+        const text=result.status==='submitted'?'證件已送出，等待主管核對。':result.status==='verified'?'證件已由主管核對。':'目前沒有待補交的證件。';
+        registerResult.style.display='block';
+        registerResult.innerHTML='<p>'+escapeHtml(text)+'</p><a class="btn" href="dashboard.html">回工作台</a>';
+        return;
+      }
+      if(result.note)setMsg(msg,'主管退回原因：'+result.note,true);
+      registerBtn.disabled=false;
+    }
+    function fileAsBase64(file){
+      return new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(String(reader.result).split(',')[1]);
+        reader.onerror=()=>reject(new Error('無法讀取證件照片。'));
+        reader.readAsDataURL(file);
+      });
+    }
+    function registrationBasics(){
+      const fields=['name','email','mobilePhone','householdAddress','contactAddress','emergencyContact','emergencyPhone'];
+      return {...Object.fromEntries(fields.map(key=>[key,qs('#'+key).value.trim()])),birthDate:birthDateValue(),notificationPreference:selectedNotificationPreference()};
+    }
     function validateInitial(){
       if(!registrationTypeLabels[registrationType])return['notificationPreference','請先回到註冊類型選擇頁，選擇專職員工或工讀生。'];
       const p={name:qs('#name').value.trim(),email:qs('#email').value.trim(),idNumber:qs('#idNumber').value.trim(),birthDate:birthDateValue(),mobilePhone:qs('#mobilePhone').value.trim(),householdAddress:qs('#householdAddress').value.trim(),contactAddress:qs('#contactAddress').value.trim(),emergencyContact:qs('#emergencyContact').value.trim(),emergencyPhone:qs('#emergencyPhone').value.trim()};
-      for(const [k,t] of [['name','請填寫姓名'],['email','請填寫 Email'],['idNumber','請填寫身分證字號／證件號碼'],['birthDate','請選擇出生年月日'],['mobilePhone','請填寫行動電話'],['householdAddress','請填寫戶籍地址'],['contactAddress','請填寫聯絡地址'],['emergencyContact','請填寫緊急聯絡人'],['emergencyPhone','請填寫緊急聯絡人電話']]){if(!p[k])return[k,t]}
+      for(const [k,t] of [['name','請填寫姓名'],['email','請填寫 Email'],['idNumber','請填寫身分證字號／證件號碼'],['birthDate','請選擇出生年月日'],['mobilePhone','請填寫行動電話'],['householdAddress','請填寫戶籍地址'],['contactAddress','請填寫聯絡地址'],['emergencyContact','請填寫緊急聯絡人'],['emergencyPhone','請填寫緊急聯絡人電話']]){if(!p[k]&&(k!=='idNumber'||!deferringIdentity()))return[k,t]}
       if(!/^\S+@\S+\.\S+$/.test(p.email))return['email','Email 格式不正確'];
       return null;
     }
@@ -251,18 +302,35 @@
     }
     async function initEmailVerify(){
       qs('#pageTitle').textContent='Email 驗證';qs('#pageSubtitle').textContent='正在確認您的 Email 驗證連結。';form.style.display='none';qs('#resubmitInfo').style.display='none';registerResult.style.display='block';
-      try{const r=await api('verifyRegistrationEmail',{applicationId:params.get('applicationId')||params.get('id')||'',token:params.get('token')||''});if(!r||r.ok===false)throw new Error((r&&r.message)||'Email 驗證失敗');registerResult.innerHTML=`<div class="card" style="margin-top:8px;background:#f7fffb;border:1px solid #c9ead8"><div class="header"><h2 class="title" style="font-size:27px">Email 驗證完成</h2><p class="subtitle" style="font-size:16px;line-height:1.9">${escapeHtml(r.message||'已完成 Email 驗證。')}</p></div><div class="btn-row"><a class="btn" href="index.html">回登入頁</a></div></div>`;}catch(err){registerResult.innerHTML=`<div class="card" style="margin-top:8px;background:#fff7f7;border:1px solid #fecaca"><div class="header"><h2 class="title" style="font-size:27px">Email 驗證失敗</h2><p class="subtitle" style="font-size:16px;line-height:1.9">${escapeHtml(err.message||String(err))}</p></div><div class="btn-row"><a class="btn" href="register-type.html">重新申請</a><a class="btn secondary center" href="index.html">回登入頁</a></div></div>`;}
+      try{const data={applicationId:params.get('applicationId')||params.get('id')||'',token:params.get('token')||''};
+      const r=parttimeEmailVerify?await ParttimeOnboarding.call('verifyEmail',data):await api('verifyRegistrationEmail',data);if(!r||r.ok===false)throw new Error((r&&r.message)||'Email 驗證失敗');registerResult.innerHTML=`<div class="card" style="margin-top:8px;background:#f7fffb;border:1px solid #c9ead8"><div class="header"><h2 class="title" style="font-size:27px">Email 驗證完成</h2><p class="subtitle" style="font-size:16px;line-height:1.9">${escapeHtml(r.message||'已完成 Email 驗證。')}</p></div><div class="btn-row"><a class="btn" href="index.html">回登入頁</a></div></div>`;}catch(err){registerResult.innerHTML=`<div class="card" style="margin-top:8px;background:#fff7f7;border:1px solid #fecaca"><div class="header"><h2 class="title" style="font-size:27px">Email 驗證失敗</h2><p class="subtitle" style="font-size:16px;line-height:1.9">${escapeHtml(err.message||String(err))}</p></div><div class="btn-row"><a class="btn" href="register-type.html">重新申請</a><a class="btn secondary center" href="index.html">回登入頁</a></div></div>`;}
     }
     async function submitForm(e){
       e.preventDefault();clearErrors();setMsg(msg,'');
-      if(!resubmitMode){const invalid=validateInitial();if(invalid){fieldError(invalid[0],invalid[1]);return}}
-      if(!processedIdentityFile){fieldError('identityDocument','請上傳證件正面');return}
-      if(!qs('#identityDocumentConsent').checked){fieldError('identityDocumentConsent','請先閱讀並勾選證件使用說明');return}
+      const deferred=deferringIdentity();
+      if(supplementMode&&!qs('#idNumber').value.trim()){fieldError('idNumber','請填寫證件號碼');return}
+      if(!resubmitMode&&!supplementMode){const invalid=validateInitial();if(invalid){fieldError(invalid[0],invalid[1]);return}}
+      if(!deferred&&!processedIdentityFile){fieldError('identityDocument','請上傳證件正面');return}
+      if(!deferred&&!qs('#identityDocumentConsent').checked){fieldError('identityDocumentConsent','請先閱讀並勾選證件使用說明');return}
       const progress=startActionButtonProgress(registerBtn,{label:resubmitMode?'重新送出中':'送出中'});progress.set(8,'準備資料');
       try{
-        const upload=await uploadIdentity(progress);progress.set(72,'建立申請資料');
+        if(supplementMode){
+          const image=await fileAsBase64(processedIdentityFile);
+          await ParttimeOnboarding.call('submit',{
+            idNumber:qs('#idNumber').value.trim(),identityDocumentType:qs('#identityDocumentType').value,consent:true,image
+          });
+          progress.done('已送出',800,true);
+          resetIdentity();
+          qs('#idNumber').value='';
+          form.style.display='none';
+          registerResult.style.display='block';
+          registerResult.innerHTML='<p>證件已送出，等待主管核對。</p><a class="btn" href="dashboard.html">回工作台</a>';
+          return;
+        }
+        const upload=deferred?{}:await uploadIdentity(progress);progress.set(72,'建立申請資料');
         let r;
-        if(resubmitMode){r=await api('resubmitRegistrationIdentity',Object.assign({applicationId:resubmitApplicationId,token:resubmitToken,identityDocumentType:qs('#identityDocumentType').value},upload));}
+        if(deferred){r=await ParttimeOnboarding.call('register',registrationBasics());}
+        else if(resubmitMode){r=await api('resubmitRegistrationIdentity',Object.assign({applicationId:resubmitApplicationId,token:resubmitToken,identityDocumentType:qs('#identityDocumentType').value},upload));}
         else{
           r=await api('register',Object.assign({registrationType:registrationType,requestedIdentityType:registrationType,identityType:registrationType,notificationPreference:selectedNotificationPreference(),name:qs('#name').value.trim(),email:qs('#email').value.trim(),idNumber:qs('#idNumber').value.trim().toUpperCase(),birthDate:birthDateValue(),mobilePhone:qs('#mobilePhone').value.trim(),householdAddress:qs('#householdAddress').value.trim(),contactAddress:qs('#contactAddress').value.trim(),emergencyContact:qs('#emergencyContact').value.trim(),emergencyPhone:qs('#emergencyPhone').value.trim(),identityDocumentType:qs('#identityDocumentType').value,identityDocumentConsent:true},upload));
         }
@@ -280,7 +348,16 @@
     qs('#identityDocumentFile').addEventListener('change',async e=>{try{setMsg(msg,'圖片處理中…');await processIdentityFile(e.target.files&&e.target.files[0]);setMsg(msg,'')}catch(err){resetIdentity();fieldError('identityDocument',err.message||String(err))}});
     qs('#replaceIdentityBtn').addEventListener('click',()=>qs('#identityDocumentFile').click());qs('#removeIdentityBtn').addEventListener('click',resetIdentity);form.addEventListener('submit',submitForm);
     if(emailVerifyMode){initEmailVerify().catch(err=>{form.style.display='none';setMsg(msg,err.message||String(err),true)});}
+    else if(supplementMode){
+      registerBtn.disabled=true;
+      initSupplement().catch(err=>{form.style.display='none';setMsg(msg,err.message||String(err),true)});
+    }
     else if(!resubmitMode){if(!registrationTypeLabels[registrationType]){location.href='register-type.html';}else{qs('#pageTitle').textContent=registrationTypeLabels[registrationType]+'註冊';qs('#pageSubtitle').textContent='請填寫本人資料；主管會依此完成入職建檔。';qs('#registrationTypeBox').style.display='block';qs('#registrationTypeBox').innerHTML='<h2>目前申請類型：'+escapeHtml(registrationTypeLabels[registrationType])+'</h2><p>'+escapeHtml(registrationTypeHelp[registrationType]||'')+'</p>';}}
+    if(!resubmitMode&&!emailVerifyMode&&!supplementMode&&registrationType==='parttime'){
+      qs('#parttimeIdentityChoice').style.display='';
+      qs('#deferIdentity').addEventListener('change',refreshIdentityChoice);
+      refreshIdentityChoice();
+    }
     if(resubmitMode)initResubmit().catch(err=>{form.style.display='none';setMsg(msg,err.message||String(err),true)});
   </script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>

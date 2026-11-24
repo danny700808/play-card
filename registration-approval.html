@@ -74,6 +74,21 @@
 
     <div id="approvalResult" class="approval-result"></div>
 
+    <details class="card" id="parttimeReview">
+      <summary>工讀生補交證件</summary>
+      <p id="parttimeReviewStatus" class="muted" role="status"></p>
+      <label for="parttimeReviewSelect">待核對的工讀生</label>
+      <select id="parttimeReviewSelect"></select>
+      <div id="parttimeReviewDetail" hidden>
+        <p id="parttimeReviewNumber"></p>
+        <img id="parttimeReviewImage" alt="待核對證件正面" style="display:block;max-width:100%;max-height:420px;object-fit:contain">
+        <div class="btn-row">
+          <button type="button" class="btn" id="parttimeReviewApprove">證件核對相符</button>
+          <button type="button" class="btn secondary" id="parttimeReviewReturn">退回補件</button>
+        </div>
+      </div>
+    </details>
+
     <div class="onboarding-grid">
       <div class="card" id="registrationListCard">
         <div class="approval-toolbar">
@@ -190,7 +205,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=20260919-taiwan-v2"></script>
   <script src="app.js?v=20260802-security-phase1"></script>
-  <script src="onboarding-workflow.js?v=20260624v1"></script>
+  <script src="onboarding-workflow.js?v=20261124-parttime1"></script>
+  <script src="parttime-onboarding.js?v=20261124-1"></script>
   <script>
     let rows=[];let historyRows=[];let selected=null;let scheduleTemplates=[];let activeTab='pending';
     const $=id=>document.getElementById(id);
@@ -243,6 +259,15 @@
       renderIdentity();fillDraft(selected.onboardingDraft||{});updateVisibility();renderChecklist();window.scrollTo({top:0,behavior:'smooth'});
     }
     function renderIdentity(){
+      const deferred=selected?.parttimeIdentityDeferred===true;
+      $('identityVerificationStatus').disabled=deferred;
+      $('identityVerificationNote').disabled=deferred;
+      $('resubmitBtn').disabled=deferred;
+      if(deferred){
+        $('identityImageBox').innerHTML='<div class="identity-missing">證件待補<br>工讀生帳號開通後，系統會提醒本人登入補交。</div>';
+        $('openIdentityBtn').disabled=true;
+        return;
+      }
       const box=$('identityImageBox');if(selected&&selected.identityDocumentUrl){box.innerHTML=`<img src="${esc(selected.identityDocumentUrl)}" alt="證件正面">`;$('openIdentityBtn').disabled=false}else{box.innerHTML='<div class="identity-missing">尚未上傳證件正面<br>請退回申請人補件</div>';$('openIdentityBtn').disabled=true}
     }
     function fillDraft(d){
@@ -278,7 +303,63 @@
     function showApprovalResult(r){const box=$('approvalResult');box.style.display='block';box.innerHTML=`<h2>入職建檔完成</h2><div>${esc(r.message||'員工資料已建立。')}</div><div class="credential-box"><div><div class="muted">員工編號</div><code>${esc(r.employeeId||'')}</code></div><button class="btn secondary" type="button" data-copy="${esc(r.employeeId||'')}">複製</button></div><div class="credential-box"><div><div class="muted">初始密碼</div><code>${esc(r.initialPassword||'')}</code></div><button class="btn secondary" type="button" data-copy="${esc(r.initialPassword||'')}">複製</button></div><div class="muted" style="margin-top:8px">系統已依通知方式建立通知佇列；若寄送服務尚未設定，請由主管安全提供初始密碼。</div>`;box.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{await navigator.clipboard.writeText(b.dataset.copy||'');b.textContent='已複製'});box.scrollIntoView({behavior:'smooth',block:'start'})}
     async function reject(){if(!selected)return;const reason=prompt('請輸入駁回理由：','資料不完整，請重新申請');if(reason===null)return;if(!reason.trim()){alert('請填寫駁回理由。');return}if(!confirm('確定駁回這筆申請嗎？'))return;const user=requireLogin();const btn=$('rejectBtn'),progress=startActionButtonProgress(btn,{label:'處理中'});try{const r=await api('rejectRegistrationApi',{userId:user.id,applicationId:selected.applicationId,rejectReason:reason.trim()});if(!r||r.ok===false)throw new Error((r&&r.message)||'駁回失敗');progress.done('已駁回',500,true);selected=null;await loadRows();setMsg($('pageMsg'),r.message||'已駁回申請')}catch(err){progress.fail('駁回失敗');setMsg($('pageMsg'),err.message||String(err),true)}}
     async function requestResubmission(){if(!selected)return;const defaultReason=$('identityVerificationNote').value.trim()||'證件影像不清楚，請重新拍攝正面。';const reason=prompt('請輸入補件原因：',defaultReason);if(reason===null)return;if(!reason.trim()){alert('請填寫補件原因。');return}const user=requireLogin();const btn=$('resubmitBtn'),progress=startActionButtonProgress(btn,{label:'處理中'});try{const r=await api('requestRegistrationResubmission',{userId:user.id,applicationId:selected.applicationId,reason:reason.trim()});if(!r||r.ok===false)throw new Error((r&&r.message)||'退回補件失敗');progress.done('已退回',500,true);await loadRows(selected.applicationId);setMsg($('pageMsg'),r.message||'已退回補件')}catch(err){progress.fail('處理失敗');setMsg($('pageMsg'),err.message||String(err),true)}}
-    function init(){fillHeader();const user=requireLogin();if(!user)return;if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return}setPortalMode('settings');$('keyword').addEventListener('input',renderList);$('pendingTab').onclick=()=>setRegistrationTab('pending');$('historyTab').onclick=()=>setRegistrationTab('history');$('refreshBtn').onclick=()=>{if(activeTab==='history')loadRegistrationHistory();loadRows()};['identityVerificationStatus','identityType','laborStatus','healthStatus','selfRetirementEnabled','scheduleMode'].forEach(id=>$(id).addEventListener('change',updateVisibility));document.querySelectorAll('#editor input,#editor select,#editor textarea').forEach(el=>{el.addEventListener('input',renderChecklist);el.addEventListener('change',renderChecklist)});$('openIdentityBtn').onclick=()=>{if(selected&&selected.identityDocumentUrl)window.open(selected.identityDocumentUrl,'_blank','noopener')};$('saveDraftBtn').onclick=saveDraft;$('approveBtn').onclick=approve;$('rejectBtn').onclick=reject;$('resubmitBtn').onclick=requestResubmission;$('addJobAllowanceBtn').onclick=()=>addLineItem('jobAllowanceList','職務加給');$('addAllowanceBtn').onclick=()=>addLineItem('allowanceList','其他津貼');loadRows()}
+    function setupParttimeReview(){
+      const panel=$('parttimeReview'),select=$('parttimeReviewSelect'),detail=$('parttimeReviewDetail');
+      const status=$('parttimeReviewStatus'),image=$('parttimeReviewImage');
+      const approve=$('parttimeReviewApprove'),sendBack=$('parttimeReviewReturn');
+      const labels={national_id:'國民身分證',resident_certificate:'居留證',passport:'護照'};
+      let generation=0;
+      function clearDetail(){
+        generation++;
+        detail.hidden=true;
+        image.removeAttribute('src');
+        $('parttimeReviewNumber').textContent='';
+      }
+      async function load(){
+        clearDetail();
+        select.replaceChildren(new Option('請選擇工讀生',''));
+        const attempt=generation;
+        status.textContent='讀取待核對資料…';
+        try{
+          const result=await ParttimeOnboarding.call('list');
+          if(attempt!==generation)return;
+          result.rows.forEach(row=>select.add(new Option(row.name,row.id)));
+          status.textContent=result.rows.length?result.rows.length+' 筆證件待核對':'目前沒有待核對的補件。';
+        }catch(error){if(attempt===generation)status.textContent=error.message;}
+      }
+      panel.addEventListener('toggle',()=>{if(panel.open)load();else clearDetail();});
+      select.addEventListener('change',async()=>{
+        const id=select.value;
+        clearDetail();
+        if(!id)return;
+        const attempt=generation;
+        status.textContent='讀取證件…';
+        try{
+          const result=await ParttimeOnboarding.call('detail',{id});
+          if(attempt!==generation)return;
+          $('parttimeReviewNumber').textContent=result.name+'｜'+labels[result.identityDocumentType]+'｜'+result.idNumber;
+          image.src='data:image/jpeg;base64,'+result.image;
+          detail.hidden=false;
+          status.textContent='請核對姓名和證件號碼。';
+        }catch(error){if(attempt===generation)status.textContent=error.message;}
+      });
+      async function review(action){
+        const id=select.value;
+        if(!id)return;
+        let note='';
+        if(action==='return'){
+          note=prompt('請填寫退回原因：','證件影像不清楚，請重新上傳。')?.trim();
+          if(!note)return;
+        }else if(!confirm('已核對證件與申請人資料相符？'))return;
+        approve.disabled=sendBack.disabled=select.disabled=true;
+        try{await ParttimeOnboarding.call(action,{id,note});await load();}
+        catch(error){status.textContent=error.message;}
+        finally{approve.disabled=sendBack.disabled=select.disabled=false;}
+      }
+      approve.onclick=()=>review('approve');
+      sendBack.onclick=()=>review('return');
+    }
+    function init(){fillHeader();const user=requireLogin();if(!user)return;if(!hasSettingsZoneAccess(user)){location.href='dashboard.html';return}setPortalMode('settings');setupParttimeReview();$('keyword').addEventListener('input',renderList);$('pendingTab').onclick=()=>setRegistrationTab('pending');$('historyTab').onclick=()=>setRegistrationTab('history');$('refreshBtn').onclick=()=>{if(activeTab==='history')loadRegistrationHistory();loadRows()};['identityVerificationStatus','identityType','laborStatus','healthStatus','selfRetirementEnabled','scheduleMode'].forEach(id=>$(id).addEventListener('change',updateVisibility));document.querySelectorAll('#editor input,#editor select,#editor textarea').forEach(el=>{el.addEventListener('input',renderChecklist);el.addEventListener('change',renderChecklist)});$('openIdentityBtn').onclick=()=>{if(selected&&selected.identityDocumentUrl)window.open(selected.identityDocumentUrl,'_blank','noopener')};$('saveDraftBtn').onclick=saveDraft;$('approveBtn').onclick=approve;$('rejectBtn').onclick=reject;$('resubmitBtn').onclick=requestResubmission;$('addJobAllowanceBtn').onclick=()=>addLineItem('jobAllowanceList','職務加給');$('addAllowanceBtn').onclick=()=>addLineItem('allowanceList','其他津貼');loadRows()}
   </script>
   <script src="global-nav.js?v=20260603unified1"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
