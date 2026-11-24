@@ -3,7 +3,7 @@
  'use strict';
  const routes=window.InternalWorkspaceRoutes,host=document.querySelector('[data-management-tree]');
  if(!routes||!host)return;
- const counts={},start=host.getAttribute('data-management-tree')||'root';let previous='';
+ const counts={},expanded=new Set(),start=host.getAttribute('data-management-tree')||'root';let previous='';
  function element(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text)n.textContent=text;return n;}
  function hashNode(){const n=routes.treeNode(location.hash.slice(1)||start);return n&&n.children?n:routes.treeNode(start);}
  function localLink(n){return n.children?'#'+n.id:routes.treeLink(n);}
@@ -23,8 +23,30 @@
   const list=element('ul','management-children');
   [...nodes.filter(n=>!n.children),...nodes.filter(n=>n.children)].forEach(n=>{
    const item=element('li',n.children?'management-row':'management-leaf');
-   item.append(nodeLink(n,'management-node '+(n.children?'is-branch':'is-leaf')));
-   if(n.children){const body=element('div','management-descendants');body.append(children(n.children));if(n.common?.length)body.append(common(n.common));item.append(body);}
+   const link=nodeLink(n,'management-node '+(n.children?'is-branch':'is-leaf'));
+   if(n.children){
+    const heading=element('div','management-branch-heading');
+    const body=element('div','management-descendants');
+    body.id='management-children-'+n.id;
+    const toggle=element('button','management-branch-toggle');
+    toggle.type='button';
+    toggle.setAttribute('aria-controls',body.id);
+    const sync=()=>{
+     const open=expanded.has(n.id);
+     toggle.setAttribute('aria-expanded',String(open));
+     toggle.setAttribute('aria-label',(open?'收合':'展開')+n.label+'的子項目');
+     item.classList.toggle('is-expanded',open);
+    };
+    toggle.addEventListener('click',()=>{
+     if(expanded.has(n.id))expanded.delete(n.id);else expanded.add(n.id);
+     sync();
+    });
+    sync();
+    heading.append(link,toggle);
+    body.append(children(n.children));
+    if(n.common?.length)body.append(common(n.common));
+    item.append(heading,body);
+   }else{item.append(link);}
    list.append(item);
   });return list;
  }
@@ -34,7 +56,7 @@
   if(path.length>1){const back=element('a','management-up','← 上一層');back.href=localLink(path[path.length-2]);toolbar.append(back);}host.append(toolbar);
   const crumbs=element('nav','management-ancestors');crumbs.setAttribute('aria-label','樹狀位置');
   path.forEach((n,i)=>{if(i){const sep=element('span','management-ancestor-line','›');sep.setAttribute('aria-hidden','true');crumbs.append(sep);}const a=element('a','management-ancestor'+(i===path.length-1?' is-current':''),n.label);a.href=localLink(n);if(i===path.length-1){a.setAttribute('aria-current','page');a.id='managementCurrentNode';a.tabIndex=-1;}crumbs.append(a);});host.append(crumbs);
-  const viewport=element('div','management-map-viewport');viewport.tabIndex=0;viewport.setAttribute('aria-label','左右樹狀導覽');
+  const viewport=element('div','management-map-viewport');viewport.tabIndex=0;viewport.setAttribute('aria-label','管理功能導覽');
   const map=element('div','management-map'+(current.id==='root'?' is-root':''));
   map.append(nodeLink(current,'management-node management-origin'));
   const descendants=element('div','management-descendants');descendants.append(children(current.children));if(current.common?.length)descendants.append(common(current.common));map.append(descendants);viewport.append(map);host.append(viewport);

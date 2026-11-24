@@ -25,23 +25,37 @@ function fixture(hash=''){
 test('tree exposes deep links in one map, supports focus, history and safe invalid hashes',async()=>{
  const dom=fixture(),w=dom.window,doc=w.document;
  assert.ok(doc.querySelector('[data-node-id=staff-salary]'));assert.ok(doc.querySelector('[data-node-id=parttime-leave-review]'));assert.ok(doc.querySelector('[data-node-id=external-contract-review]'));
- w.location.hash='people';w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+ const changeHash=async hash=>{
+  const changed=new Promise(resolve=>w.addEventListener('hashchange',resolve,{once:true}));
+  w.location.hash=hash;
+  await changed;
+ };
+ const peopleToggle=()=>doc.querySelector('[aria-controls=management-children-people]');
+ assert.equal(peopleToggle().getAttribute('aria-expanded'),'false');
+ peopleToggle().click();
+ assert.equal(peopleToggle().getAttribute('aria-expanded'),'true');
+ assert(doc.getElementById(peopleToggle().getAttribute('aria-controls')).contains(doc.querySelector('[data-node-id=staff-salary]')));
+ await changeHash('people');
  assert.ok(doc.querySelector('[data-node-id=staff-salary]'));assert.ok(doc.querySelector('[data-node-id=parttime-salary]'));assert.ok(!doc.querySelector('[data-node-id=rental-applications]'));
  assert.equal(doc.querySelector('.management-up').getAttribute('href'),'#root');
- w.location.hash='parttime';w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+ await changeHash('parttime');
  assert.equal(doc.querySelector('.management-ancestor.is-current').textContent,'工讀生');
  const salary=[...doc.querySelectorAll('.management-node')].find(n=>n.textContent.includes('薪資與投保'));
  assert.equal(salary.getAttribute('href'),'salary-admin.html?type=parttime&nav=parttime-salary&ui=20261031-mobile1');
  assert.equal(doc.querySelector('.management-up').getAttribute('href'),'#people');
  await new Promise((resolve,reject)=>{const timeout=w.setTimeout(()=>reject(Error('history did not return to people')),1000);const listener=()=>{if(w.location.hash!=='#people')return;w.clearTimeout(timeout);w.removeEventListener('hashchange',listener);resolve();};w.addEventListener('hashchange',listener);w.history.back();});
  assert.equal(doc.querySelector('.management-ancestor.is-current').textContent,'人事');
- w.location.hash='<script>';w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+ await changeHash('<script>');
  assert.equal(doc.querySelector('.management-ancestor.is-current').textContent,'管理工作區');
+ assert.equal(peopleToggle().getAttribute('aria-expanded'),'true');
+ peopleToggle().click();
+ assert.equal(peopleToggle().getAttribute('aria-expanded'),'false');
  dom.window.close();
 });
 test('changing personnel type updates breadcrumbs without touching inputs or making requests',()=>{
  const dom=new JSDOM('<nav data-yz-global-nav></nav><main><input value="preserved"></main>',{url:'https://example.test/salary-admin.html?type=staff&employeeId=sample',runScripts:'outside-only'});
  const w=dom.window;w.InternalWorkspaceRoutes=routes;w.localStorage.setItem('employeeUser',JSON.stringify({id:'admin',role:'admin'}));
+ w.MutationObserver=undefined;
  w.eval(read('internal-workspace.js'));w.document.dispatchEvent(new w.Event('DOMContentLoaded'));
  w.InternalWorkspaceNavigation.setPersonnelType('parttime');
  assert.equal(new URL(w.location.href).searchParams.get('employeeId'),'sample');
