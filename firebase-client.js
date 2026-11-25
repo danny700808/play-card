@@ -8360,6 +8360,14 @@
   function wrap(db){if(wrapped.has(db))return wrapped.get(db);const proxy=new Proxy(db,{get(target,key){if(key==='collection')return name=>wrapQuery(db,target.collection(name),name);const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});wrapped.set(db,proxy);return proxy;}
   const previousHandle=global.YZFirebase.handleApi;
   global.YZFirebase.handleApi=async(action,payload)=>{
+    const person=typeof global.getUser==='function'?global.getUser():null;
+    const pt=person && (person.identityType==='parttime'||person.isPartTime===true);
+    if(pt && action==='parttime')return call('employeeSelfService',{action:'shift-hours-normal',payload});
+    if(pt && action==='submitClockCorrection' && !payload.relatedLeaveRequestId && !payload.caseId &&
+      ['recordCorrection','missingClock'].includes(payload.requestKind) && (payload.correctionType||'標準打卡')==='標準打卡'){
+      const result=await call('employeeSelfService',{action:'shift-clock-correction',payload:{...payload,workDate:payload.correctDate}});
+      if(!result.useExistingFlow)return result;
+    }
     if(action==='clock'){
       const p=payload||{};
       if(p.isSupplement)throw Error('補打卡請從當天紀錄送出申請，由主管核准。');

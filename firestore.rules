@@ -39,11 +39,6 @@ service cloud.firestore {
         && data.get('reviewStatus', 'pending') in ['', 'pending','待審核','rejected','已駁回']
         && data.get('審核狀態', '待審核') in ['', 'pending','待審核','rejected','已駁回'];
     }
-    function ordinaryParttime(data) {
-      return data.get('status','正常') in ['正常','少於有效班段','已登記','已記錄','待審核','pending','已送出']
-        && data.get('狀態','正常') in ['正常','少於有效班段','已登記','已記錄','待審核','pending','已送出']
-        && data.get('approvalStatus','pending') in ['','pending','待審核'];
-    }
     function ownReadCollection(collectionId) {
       return collectionId in ['employees','employeeSalaryConfigs','employeeSalaryConfigHistory','employeeSalarySettings','salaryProfiles','parttimeRecords','parttimeHourRequests','clockRecords','clockCorrections','leaveRecords','leaveRequests','temporaryAttendanceRequests','employeeSchedules','singleDaySchedules','profileChangeRequests','certificateApplications','formSubmissions'];
     }
@@ -201,12 +196,8 @@ service cloud.firestore {
       // Approved corrections retain the existing manager-only write rule above.
       allow create: if false;
     }
-    match /parttimeRecords/{documentId} {
-      allow create: if consistentOwner(request.resource.data) && noReviewFields(request.resource.data) && ordinaryParttime(request.resource.data);
-      allow update: if ownData(resource.data) && unchangedOwner() && ordinaryParttime(resource.data)
-        && ordinaryParttime(request.resource.data) && noReviewFields(request.resource.data);
-      allow delete: if ownData(resource.data) && pendingData(resource.data);
-    }
+    // Regular employee hours are validated against punches by employeeSelfService.
+    // Managers retain the existing audited adjustment route.
     match /formSubmissions/{documentId} {
       allow create: if consistentOwner(request.resource.data) && noReviewFields(request.resource.data);
       allow update: if ownData(resource.data) && unchangedOwner() && noReviewFields(request.resource.data);

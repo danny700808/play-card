@@ -83,7 +83,7 @@ jobs:
         if: inputs.shift_hours_only
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-internal-workspace.json
-        run: firebase deploy --project youzi-c1b74 --non-interactive --only functions:employeeSelfService,functions:refreshConfirmedShiftHours
+        run: firebase deploy --project youzi-c1b74 --non-interactive --force --only functions:employeeSelfService,functions:refreshConfirmedShiftHours
       - name: Deploy attendance services and delivery guards
         if: ${{ !inputs.shift_hours_only }}
         env:

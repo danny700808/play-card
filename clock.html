@@ -156,6 +156,7 @@
       </div>
 
       <div id="mainMsg" class="message local-message"></div>
+      <div id="clockShiftConfirmation"></div>
       <div id="clockActionPanel" class="clock-mode-screen hidden">
         <div class="mode-title" id="clockActionTitle">請選擇打卡方式</div>
         <div class="mode-note" id="clockActionNote"></div>
@@ -222,8 +223,10 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20261101-simple-attendance-v1"></script>
-  <script src="app.js?v=20261101-attendance-revision-v1"></script>
+  <script src="firebase-client.js?v=20261125-shift-hours"></script>
+  <link rel="stylesheet" href="parttime-shift-form.css?v=1">
+  <script src="parttime-shift-form.js?v=1"></script>
+  <script src="app.js?v=20261125-shift-hours"></script>
   <script>
 
     function goLeaveForRetro(issue){
@@ -1077,13 +1080,21 @@
         progress.set(58, '寫入打卡資料中');
         const r = await api('clock', payload);
         let successMessage = r.message || '';
-        if(r && r.ok && Number(r.lateMinutes || 0) > 0){
+        if(r && r.ok && Number(r.lateMinutes || 0) > 0 && !isPartTimeUser(user)){
           successMessage += '\n本次遲到 ' + Number(r.lateMinutes || 0) + ' 分鐘，扣款依月結計算。如需更正，請點選「修正打卡時間」。';
         }
         setMsg(msg, friendlyClockMessage(successMessage), !r.ok);
         if(r.ok){
           progress.done(r.specialClockPending ? '已送出' : '打卡完成');
           refreshClockPageInBackground();
+          if(actionName==='上班打卡' && r.lateMinutes>0 && mode==='標準打卡' && isPartTimeUser(user)){
+            const shift=r.usedSchedule||selected;
+            if(shift)ParttimeShiftForm.afterLateClockIn(shift.date,shift.scheduleKey,r.recordId,r.clockTime,r.lateMinutes);
+          }
+          if(actionName==='下班打卡' && mode==='標準打卡' && isPartTimeUser(user)){
+            const shift=r.usedSchedule||selected;
+            if(shift) void ParttimeShiftForm.afterClock(shift.date,shift.scheduleKey);
+          }
         } else {
           progress.fail('打卡失敗');
         }

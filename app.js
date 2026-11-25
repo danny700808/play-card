@@ -81,6 +81,7 @@ async function api(action, payload={}){
     'createTask','getTasks','getUnifiedWorkItems','completeUnifiedWorkItem','completeTask','markUnifiedWorkItemRedo','markTaskRedo','deleteTask'
   ]);
   const apiUser = getUser() || {};
+  if(isPartTimeUser(apiUser) && ['parttime','clock','submitClockCorrection'].includes(action)) firebaseOnlyActions[action]=true;
   const externalTeacherWorkScope = payload && payload.workScope === 'external-teacher-v2' ||
     apiUser.portalSessionBridge === true || isExternalTeacher(apiUser);
   if(externalTeacherWorkScope && externalTeacherWorkActions.has(action)) firebaseOnlyActions[action] = true;

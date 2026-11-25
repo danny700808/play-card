@@ -267,6 +267,7 @@
         </div>
       </div>
 
+      <div id="shiftHoursPanel" aria-live="polite"></div>
       <div class="field" id="fieldHours">
         <label for="hoursSelect">時數</label>
         <select id="hoursSelect">
@@ -352,9 +353,11 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20261101-simple-attendance-v1"></script>
+  <script src="firebase-client.js?v=20261125-shift-hours"></script>
 
-  <script src="app.js?v=20261101-attendance-revision-v1"></script>
+  <link rel="stylesheet" href="parttime-shift-form.css?v=1">
+  <script src="parttime-shift-form.js?v=1"></script>
+  <script src="app.js?v=20261125-shift-hours"></script>
   <script>
     function localDateInputValue(){
       const now = new Date();
@@ -479,21 +482,40 @@
       if(doubleBtn){doubleBtn.hidden=!ctx.canRegister;if(!ctx.canRegister){doubleBtn.setAttribute('aria-pressed','false');doubleBtn.classList.remove('active');doubleBtn.textContent='☐ 雙倍計薪';}}
       if(btn) btn.disabled = !!(ctx && !ctx.canRegister);
     }
+    let contextVersion=0;
     async function loadDateContext(){
+      const version=++contextVersion;
       const user = requireLogin();
       if(!user) return;
       const oldParttimeHomeLink = qs('#parttimeHomeLink');
       if(oldParttimeHomeLink){ oldParttimeHomeLink.href = userHomeHref(user); oldParttimeHomeLink.textContent = userHomeLabel(user); }
       const workDate = qs('#workDate').value;
+      const panel=qs('#shiftHoursPanel');
+      panel.replaceChildren();
+      renderDateContext(null);
+      qs('#submitBtn').disabled=true;
       if(!workDate){
-        renderDateContext(null);
         return;
       }
       try{
-        const r = await api('getParttimeDateContext',{ userId:user.id, workDate });
-        renderDateContext(r.context || null);
+        const day=await ParttimeShiftForm.context(workDate);
+        if(version!==contextVersion)return;
+        const special=day.shifts.some(s=>s.exception||s.submitted||s.separate)||day.managed;
+        const regular=day.shifts.filter(s=>!s.separate);
+        const hours=regular.reduce((sum,s)=>{
+          const mins=t=>Number(t.slice(0,2))*60+Number(t.slice(3,5));
+          return sum+mins(s.end)-mins(s.start);
+        },0)/60;
+        renderDateContext({workDate,canRegister:hours>0 && !special,scheduledHours:hours,scheduleLabel:day.scheduleLabel});
+        if(special){
+          qs('#dateStatusBox').style.display='none';
+          for(const s of day.shifts)ParttimeShiftForm.form(panel,day,s,()=>{loadDateContext();loadPendingItems();});
+        }
       }catch(e){
+        if(version!==contextVersion)return;
         renderDateContext(null);
+        panel.textContent='無法讀取打卡紀錄。'+(e.message||'請重新整理後再試。');
+        const retry=document.createElement('button');retry.type='button';retry.textContent='重新讀取';retry.onclick=loadDateContext;panel.append(retry);
       }
     }
     function validateForm(){
@@ -659,7 +681,8 @@
     let parttimeMonthControl;
     function init(){
       fillHeader();
-      qs('#workDate').value = localDateInputValue();
+      const requested=new URLSearchParams(location.search).get('date');
+      qs('#workDate').value = /^\d{4}-\d{2}-\d{2}$/.test(requested||'')?requested:localDateInputValue();
       qs('#submitBtn').onclick = submitParttime;
       qs('#workDate').addEventListener('input', async ()=>{ clearValidation(); await loadDateContext(); });
       qs('#workDate').addEventListener('change', async ()=>{ clearValidation(); await loadDateContext(); });

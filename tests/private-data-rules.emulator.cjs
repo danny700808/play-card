@@ -57,11 +57,11 @@ test('the actual browser compatibility wrapper preserves SDK transactions and pr
   await assertFails(wrapped.runTransaction(async tx=>{const old=await tx.get(target);assert.equal(old.exists,false);tx.set(target,{employeeId:'e1',status:'正常',clockType:'標準打卡'});}));
   const rows=await wrapped.collection('clockRecords').where('employeeId','==','e1').orderBy('createdAt','desc').limit(1).get();assert.equal(rows.docs[0].id,'later');assert.equal(rows.docs[0].data().createdAt.toMillis(),20000);assert.equal(calls.length,1);
 });
-test('ordinary parttime submissions can be corrected without acquiring approval powers',async()=>{
+test('regular hours require the attendance service; manager corrections remain available',async()=>{
   const target=doc(staff.firestore(),'parttimeRecords/PT_e1_20260914');
-  await assertSucceeds(setDoc(target,{employeeId:'e1','員工ID':'e1',status:'少於有效班段','狀態':'少於有效班段',hours:3}));
-  await assertSucceeds(updateDoc(target,{status:'正常','狀態':'正常',hours:4}));
-  await assertFails(updateDoc(target,{approvalStatus:'approved'}));await assertFails(updateDoc(target,{reviewedBy:'manager'}));
+  await assertFails(setDoc(target,{employeeId:'e1',status:'正常',hours:3}));
+  await assertSucceeds(setDoc(doc(manager.firestore(),'parttimeRecords/PT_e1_20260914'),{employeeId:'e1',status:'正常',hours:4}));
+  await assertFails(updateDoc(target,{hours:2}));
 });
 test('a rejected correction can be resubmitted without keeping the previous review stamp',async()=>{
   await env.withSecurityRulesDisabled(context=>setDoc(doc(context.firestore(),'clockCorrections/rejected'),{employeeId:'e1',status:'已駁回',reviewedAt:'old',reviewedBy:'manager'}));
