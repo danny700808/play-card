@@ -2442,6 +2442,13 @@ exports.privateContractAssetHttp=onRequest({region:['us-central1', 'asia-east1']
 });
 const employeeAttendance=require('./employeeAttendance').createEmployeeAttendance({db,FieldValue:admin.firestore.FieldValue});
 exports.employeeAttendanceReminders=onSchedule({schedule:'every 1 minutes',timeZone:'Asia/Taipei',region:'asia-east1',timeoutSeconds:120,memory:'512MiB',maxInstances:1},async()=>{const result=await employeeAttendance.run();console.log('employee-attendance-reminders',JSON.stringify(result));if(!result.ok)throw Error('部分員工提醒讀取失敗');return result;});
+exports.refreshConfirmedShiftHours=require('firebase-functions/v2/firestore').onDocumentUpdated({
+  document:'clockCorrections/{requestId}',region:'us-central1',retry:true
+}, async event=>{
+  const before=event.data.before.data(),after=event.data.after.data();
+  if((after.status||after['狀態'])!=='已核准'||(before.status||before['狀態'])==='已核准')return;
+  await require('./parttimeShiftConfirmation').createShiftConfirmation({db,FieldValue:admin.firestore.FieldValue,attendance:employeeAttendance}).refresh(after);
+});
 const employeeDataGateway=require('./employeeDataGateway').createEmployeeDataGateway({db,FieldValue:admin.firestore.FieldValue,Filter:admin.firestore.Filter,attendance:employeeAttendance,queueManager:queueManagerNotification,queueEmail:createNotificationQueue,getManager:getPrimaryManagerLineRecipient,resolveTeacher:async data=>{const portal=require('./coursePortal');return portal.resolveTeacherUtilityEmployee(await portal.requireSession(data,['teacher']));}});
 exports.employeeSelfService=onCall({region:['us-central1', 'asia-east1'],timeoutSeconds:60},request=>employeeDataGateway.selfService(request.data||{},request));
 exports.employeePrivateDataRead=onCall({region:['us-central1', 'asia-east1'],timeoutSeconds:60},request=>employeeDataGateway.read(request.data||{},request));

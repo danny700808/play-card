@@ -71,6 +71,13 @@ function createEmployeeDataGateway({db,FieldValue,Filter,queueManager,queueEmail
     }
     const {account,user}=await identity(request,data),action=clean(data.action),input=data.payload||{};
     if(JSON.stringify(input).length>40000)throw new HttpsError('invalid-argument','資料過大。');
+    if(['shift-hours-context','shift-hours-submit','shift-hours-normal','shift-clock-correction'].includes(action)){
+      const modes={'shift-hours-context':'context','shift-hours-submit':'submit','shift-hours-normal':'normal','shift-clock-correction':'correction'};
+      const service=require('./parttimeShiftConfirmation').createShiftConfirmation({db,FieldValue,attendance});
+      const result=await service.process({...account.data,...user},input,modes[action]);
+      if(result?.newRequests) await notify({featureCode:'clock',direction:'manager',message:(input.workDate||'')+' 打卡更正申請，請至打卡簽核查看。'},request).catch(err=>console.warn('shift-hours notification',err.code||'failed'));
+      return result;
+    }
     if(action==='clock')return attendance.clock(input,request,{...account.data,...user});
     if(action==='goods-inquiry'){
       const id=clean(data.id);if(!/^[A-Za-z0-9_-]{1,150}$/.test(id))throw Error('詢價編號不正確。');

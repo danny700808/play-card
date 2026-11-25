@@ -37,11 +37,12 @@ function reminderPlans(info,now){
   return rows;
 }
 function createEmployeeAttendance({db,FieldValue,now=()=>new Date()}){
-  async function snapshot(employeeId,templates){
+  async function snapshot(employeeId,templates,tx){
+    const read=query=>tx?tx.get(query):query.get();
     const result={};
     await Promise.all(collections.map(async col=>{
-      if(col==='scheduleTemplates'){result[col]=templates||(await db.collection(col).get()).docs.map(d=>({__id:d.id,...d.data()}));return;}
-      const chunks=await Promise.all(['employeeId','員工ID','userId'].map(key=>db.collection(col).where(key,'==',employeeId).get()));
+      if(col==='scheduleTemplates'){result[col]=templates||(await read(db.collection(col))).docs.map(d=>({__id:d.id,...d.data()}));return;}
+      const chunks=await Promise.all(['employeeId','員工ID','userId'].map(key=>read(db.collection(col).where(key,'==',employeeId))));
       result[col]=[...new Map(chunks.flatMap(s=>s.docs).map(d=>[d.id,{__id:d.id,...d.data()}])).values()];
     }));
     return result;
