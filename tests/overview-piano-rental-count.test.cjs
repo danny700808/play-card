@@ -86,3 +86,15 @@ test('today, month, year and custom ranges count only piano entries within their
 test('mobile report template uses the same corrected count', () => {
   expectRental(render({ mobile: true, incomes: [piano('a', '2026-10-13'), piano('b', '2026-10-13')] }), 2, '7,200');
 });
+
+test('lighting and sound counts once as store income, alongside both rental category names', () => {
+  const html = render({ incomes: [
+    piano('old', '2026-10-13', 6500),
+    { ...piano('new', '2026-10-13', 2000), category: '樂器租用收入' },
+    { ...piano('sound', '2026-10-13', 12000), category: '燈光音響收入' },
+    { ...piano('misc', '2026-10-13', 500), category: '其他收入' }
+  ] });
+  expectRental(html, 2, '8,500');
+  assert.match(html, /燈光音響收入<\/span><b>\$12,000<\/b>/);
+  assert.match(html, /門市成交／收入<\/span><b>\$12,500<\/b>/);
+});

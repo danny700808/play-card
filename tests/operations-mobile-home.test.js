@@ -208,11 +208,11 @@ test('product inventory header exposes newest unlisted products without internal
   assert.doesNotMatch(renderProducts, /同步圖片|更新商品資料|低於安全庫存|全通路狀態/);
 });
 
-test('POS electric piano rental income rolls into rental operations without helper clutter', () => {
+test('POS instrument rental income rolls into rental operations without helper clutter', () => {
   const source = read('operations-phase1.js');
-  assert.match(source, /data-mode="pianoRental"[^>]*>電鋼琴租用收入/);
-  assert.match(source, /const rentalRevenue=contractRentalRevenue\+pianoRentalRevenue/);
-  assert.match(source, /metricRow\('電鋼琴租用收入',money\(pianoRentalRevenue\)\)/);
+  assert.match(source, /data-mode="instrumentRental"[^>]*>樂器租用收入/);
+  assert.match(source, /const rentalRevenue=contractRentalRevenue\+instrumentRentalRevenue/);
+  assert.match(source, /metricRow\('樂器租用收入',money\(instrumentRentalRevenue\)\)/);
   assert.doesNotMatch(source, /輸入商品編號或名稱，再點選/);
   assert.doesNotMatch(source, /也可以使用左側數字鍵盤快速輸入 SKU/);
   assert.doesNotMatch(source, /商品、價格與收款集中在同一區/);
