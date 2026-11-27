@@ -78,3 +78,21 @@ test('old active snapshot after cancellation cannot deduct again',async()=>{
 test('pending unshipped claim holds already deducted inventory',async()=>{
  const x=setup();await apply(x);await apply(x,line({orderStatus:'取消申請',confirmedUnshipped:true}));assert.equal(stock(x),9);assert.equal(order(x).processingStatus,'cancellation-review');
 });
+
+test('a two-set SKU shares store stock and reverses exactly two sets per pack', async () => {
+ const x=setup(), product=x.map.get('SKU')[0];
+ const raw={currentStock:7, reservedStock:1, internalSku:'SKU', onlinePackSku:'SKU-2P', onlinePackUnits:2, averageCost:30};
+ x.db.rows.set(product.ref.path,raw);
+ x.map=api.buildProductMap([{...product,sku:'SKU',raw}]);
+ assert.equal(api.productTargetStock({raw}),3);
+ const pack=line({sku:'SKU-2P',quantity:2,unitPrice:150,grossAmount:300});
+ await apply(x,pack);await apply(x,pack);
+ assert.equal(stock(x),3);
+ assert.equal(order(x).quantity,2);
+ assert.equal(order(x).inventoryDeductedQuantity,4);
+ assert.equal(order(x).costTotal,120);
+ const c=cancel({sku:'SKU-2P',quantity:2,cancellationQuantity:1,cancellationEventId:'a'});
+ await apply(x,c);await apply(x,c);assert.equal(stock(x),5);
+ await apply(x,{...c,cancellationEventId:'b'});assert.equal(stock(x),7);
+ await apply(x,line({externalLineId:'original-single'}));assert.equal(stock(x),6);
+});

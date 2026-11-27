@@ -534,6 +534,13 @@ def get_pending_queue(fs: FirestoreRest) -> List[Dict[str, Any]]:
         # 佇列可能早於新訂單建立，所以以 Firestore 商品目前庫存為最終準則。
         sku = clean(product.get("internalSku") or product.get("sku") or product.get("code") or data.get("sku"))
         target = product.get("currentStock") if clean(product.get("currentStock")) != "" else data.get("targetStock")
+        pack_sku = clean(product.get("onlinePackSku"))
+        pack_units = integer(product.get("onlinePackUnits") or 0, 0)
+        if pack_sku and pack_sku.upper() != sku.upper() and pack_units > 1:
+            if product.get("currentStock") is None:
+                raise ValueError(f"組合商品缺少中央庫存：{sku}")
+            target = max(0, integer(target, 0) - integer(product.get("reservedStock") or 0, 0)) // pack_units
+            sku = pack_sku
         output.append({
             "queueId": doc_id,
             "productId": product_id,

@@ -523,10 +523,13 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
     );
     if (!sku) return;
 
-    const rows = grouped.get(sku) || [];
+    const packSku = normalizeSku(existing.onlinePackSku);
+    const packUnits = Number(existing.onlinePackUnits);
+    const catalogSku = packSku && Number.isSafeInteger(packUnits) && packUnits > 1 ? packSku : sku;
+    const rows = grouped.get(catalogSku) || [];
     let update;
 
-    if (rows.length === 1 && !duplicateSkus.has(sku)) {
+    if (rows.length === 1 && !duplicateSkus.has(catalogSku)) {
       const row = rows[0];
       matchedCount += 1;
       if (row.imageUrls.length) imageMatchedCount += 1;
@@ -582,7 +585,7 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
             status: row.listingStatus || 'mapped',
             listingId: row.productId,
             url: row.productUrl || clean(previousEasyStoreStatus.url),
-            note: `EasyStore API 已以完全相同 SKU ${sku} 核對正式商品。`,
+            note: `EasyStore API 已以完全相同 SKU ${catalogSku} 核對正式商品。`,
             lastCheckedAt: admin.firestore.FieldValue.serverTimestamp(),
             lastCheckedBy: 'EasyStore API 同步'
           }
@@ -598,7 +601,7 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
         update.coupangPrice = numberOrNull(existing.coupangPrice) ?? row.price;
         update.platformPricesInitialized = true;
       }
-    } else if (rows.length > 1 || duplicateSkus.has(sku)) {
+    } else if (rows.length > 1 || duplicateSkus.has(catalogSku)) {
       duplicateMatchCount += 1;
       update = {
         easyStoreMatched: false,
