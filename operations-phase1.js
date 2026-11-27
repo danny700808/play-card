@@ -4153,17 +4153,18 @@ async function savePlatformReturn(form){
       if(existing.inventoryApplied!==true||existing.reversalApplied===true||existing.inventoryReversed===true||existing.processingStatus==='cancellation-review')throw new Error('未確認原扣庫或取消狀態，不能手動重複補庫存');
       if(quantity>Math.max(0,Number(existing.quantity||0)-Number(existing.cancellationRestockedQuantity||0)))throw new Error('退貨數量超過尚未回補數量');
       if(!productSnap.exists)throw new Error('找不到中央商品主檔');
-      const raw=productSnap.data()||{},before=Number(raw.currentStock||0),after=disposition==='restock'?before+quantity:before,unitCost=Number(row.quantity||0)>0&&Number(row.costTotal||0)>0?Number(row.costTotal||0)/Number(row.quantity||1):numberOrNull(firstValue(raw,['averageCost','latestPurchaseCost','purchasePrice']));
+      const returnedUnits = quantity * (existing.inventoryUnitsPerSale || 1);
+      const raw=productSnap.data()||{},before=Number(raw.currentStock||0),after=disposition==='restock'?before+returnedUnits:before,unitCost=Number(row.quantity||0)>0&&Number(row.costTotal||0)>0?Number(row.costTotal||0)/Number(row.quantity||1):numberOrNull(firstValue(raw,['averageCost','latestPurchaseCost','purchasePrice']));
       if(disposition==='restock'){
         const stats=global.YouziInventoryAverageCost.snapshot(raw,after);
         tx.set(productRef,{currentStock:after,costLayers:stats.layers,averageCost:stats.averageCost,inventoryValue:stats.inventoryValue,costIncomplete:stats.costIncomplete,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});
         queueInventorySyncInTransaction(tx,row.productId,row.sku,after,'platformReturn');
       }else{
         const fieldMap={defective:'defectiveStock',inspect:'inspectionStock',scrap:'scrapStock',supplier:'supplierReturnStock'},field=fieldMap[disposition],fv=fieldValue(),patch={updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
-        if(field)patch[field]=fv&&fv.increment?fv.increment(quantity):Number(raw[field]||0)+quantity;
+        if(field)patch[field]=fv&&fv.increment?fv.increment(returnedUnits):Number(raw[field]||0)+returnedUnits;
         tx.set(productRef,patch,{merge:true});
       }
-      tx.set(inventoryRef,{type:disposition==='restock'?'platformReturnRestock':'platformReturnDisposition',platform:row.platform,productId:row.productId,productName:row.productName,sku:row.sku,qtyChange:disposition==='restock'?quantity:0,beforeStock:before,afterStock:after,secondaryQtyChange:disposition==='restock'?0:quantity,secondaryStockType:disposition,referenceType:'platformOrderReturn',referenceId:row.externalOrderNo||id,orderLineId:id,note:platformReturnDispositionLabel(disposition)+(note?'｜'+note:''),occurredAt:serverTimestamp(),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
+      tx.set(inventoryRef,{type:disposition==='restock'?'platformReturnRestock':'platformReturnDisposition',platform:row.platform,productId:row.productId,productName:row.productName,sku:row.sku,qtyChange:disposition==='restock'?returnedUnits:0,beforeStock:before,afterStock:after,secondaryQtyChange:disposition==='restock'?0:returnedUnits,secondaryStockType:disposition,referenceType:'platformOrderReturn',referenceId:row.externalOrderNo||id,orderLineId:id,note:platformReturnDispositionLabel(disposition)+(note?'｜'+note:''),occurredAt:serverTimestamp(),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
       tx.set(orderRef,{returnHandlingStatus:'completed',returnDisposition:disposition,returnQuantity:quantity,returnNote:note,returnedReceivedAt:serverTimestamp(),returnProcessedAt:serverTimestamp(),returnInventoryApplied:disposition==='restock',processingStatus:'return-processed',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});
     });
   }
