@@ -7537,7 +7537,7 @@
     if(!employee)return{ok:true,employeeId,date:dateKey,hasSchedule:false,okToClock:false,originalSchedules:[],schedules:[],schedule:null,scheduleText:'',allowedClockTypes:[],message:'這個人員主檔不存在或未啟用，不會讀取舊班表。',clockRecords:[],temporaryAttendanceBlocks:[],attendanceFlowVersion:VERSION};
     const base=options.base||await baseScheduleInfo(employeeId,dateKey); const rawSchedules=(base.schedules||[]).filter(s=>Number.isFinite(minutes(s.startTime))&&Number.isFinite(minutes(s.endTime))&&minutes(s.endTime)>minutes(s.startTime));
     let leaveRows=options.leaveRows||await rowsByEmployee('leaveRequests',employeeId).catch(()=>[]);
-    const leaves=leaveRows.map(normalizeLeave);
+    const leaves=leaveRows.map(normalizeLeave).filter(l=>!options.excludeLeaveId || l.requestId!==options.excludeLeaveId);
     const requested=leaveIntervalsForDate(leaves.filter(l=>isActiveRow(l.raw)),dateKey);
     if(Array.isArray(options.additionalApprovedLeaves)) options.additionalApprovedLeaves.forEach(l=>leaves.push(Object.assign({},l&&l.segments?l:normalizeLeave(l),{status:APPROVED})));
     const approved=leaveIntervalsForDate(leaves,dateKey,APPROVED),pending=leaveIntervalsForDate(leaves,dateKey,PENDING);
@@ -7656,8 +7656,8 @@
     rows.forEach(r=>{ const t=minutes(r.time); if(!Number.isFinite(t))return; if(r.actionName.includes('上班'))open.push(t); else if(r.actionName.includes('下班')){ const st=open.length?open.shift():null; if(Number.isFinite(st)&&t>st)out.push([st,t]); } });
     open.forEach(st=>out.push([st,localDateKey(new Date())===((records[0]&&records[0].date)||'')?nowMinutes():1440])); return out;
   }
-  async function validateNewLeave(employeeId,segments,requestId,isRetro){
-    const existing=(await rowsByEmployee('leaveRequests',employeeId).catch(()=>[])).map(normalizeLeave).filter(l=>l.requestId!==clean(requestId)&&[PENDING,APPROVED].includes(l.status));
+  async function validateNewLeave(employeeId,segments,requestId,isRetro,originalId){
+    const existing=(await rowsByEmployee('leaveRequests',employeeId).catch(()=>[])).map(normalizeLeave).filter(l=>l.requestId!==clean(requestId)&&l.requestId!==originalId&&[PENDING,APPROVED].includes(l.status));
     for(const s of segments){
       for(const l of existing){ for(const e of l.segments.filter(x=>x.date===s.date)){ if(s.allDay||e.allDay||rangesOverlap(s.startMinute,s.endMinute,e.startMinute,e.endMinute))throw new Error(`${s.date} 已有${l.status}請假（${l.reason}），請勿重複申請重疊時段。`); } }
       if(!isRetro){ const recs=await clockRows(employeeId,s.date); if(recs.length){ if(s.allDay)throw new Error(`${s.date} 已有打卡紀錄，整天請假請改用事後補假流程。`); const worked=workedIntervals(recs); if(worked.some(x=>rangesOverlap(s.startMinute,s.endMinute,x[0],x[1])))throw new Error(`${s.date} ${s.startTime}-${s.endTime} 與已完成的出勤時間重疊；已發生的時段請改用事後補假。`); } }
@@ -7676,20 +7676,61 @@
       attendanceFlowVersion:VERSION,source:VERSION,updatedAt:serverTs()
     });
   }
+  function leaveVersion(row){ return Number(row?.modifyCount || row?.['修改次數'] || 0); }
+  function assertLeaveVersion(row, expected, status){
+    if(!row || statusOf(row)!==status || leaveVersion(row)!==Number(expected ?? 0))
+      throw Error('這張請假單剛剛已變更，請重新查詢並確認最新時段。');
+  }
+  function amendmentId(parent){
+    return 'LV_CHANGE_'+stableHash(parent.__id)+'_'+stableHash([...parent.__id].reverse().join(''))+'_'+leaveVersion(parent);
+  }
   async function submitLeaveFlow(action,payload){
     payload=payload||{}; const employeeId=employeeIdFrom(payload),id=clean(payload.requestId||payload.leaveId); if(!employeeId)return{ok:false,message:'缺少員工資料，請重新登入。'};
     if(action==='deleteLeaveRequest'){
-      if(!id)return{ok:false,message:'缺少請假ID。'}; const found=await findDirectOrQuery('leaveRequests',id,'requestId'); if(!found)return{ok:false,message:'找不到請假申請。'}; const ref=db().collection('leaveRequests').doc(found.__id||id); return db().runTransaction(async tx=>{ const s=await tx.get(ref); if(!s.exists)return{ok:false,message:'找不到請假申請。'}; if(statusOf(s.data())!==PENDING)return{ok:false,message:'只有待審核請假可以刪除。'}; tx.set(ref,{status:'已刪除','狀態':'已刪除',deletedAt:serverTs(),updatedAt:serverTs(),source:VERSION},{merge:true}); return{ok:true,message:'請假申請已刪除。'}; });
+      if(!id)return{ok:false,message:'缺少請假ID。'}; const found=await findDirectOrQuery('leaveRequests',id,'requestId'); if(!found)return{ok:false,message:'找不到請假申請。'}; const ref=db().collection('leaveRequests').doc(found.__id||id); return db().runTransaction(async tx=>{ const s=await tx.get(ref); if(!s.exists)return{ok:false,message:'找不到請假申請。'}; if(normalizeLeave(s.data()).employeeId!==employeeIdFrom({}) || statusOf(s.data())!==PENDING || s.data().amendsRequestId)return{ok:false,message:'只有自己的待審原申請可以刪除。'}; assertLeaveVersion(s.data(),payload.expectedVersion,PENDING); tx.set(ref,{status:'已刪除','狀態':'已刪除',deletedAt:serverTs(),updatedAt:serverTs(),source:VERSION},{merge:true}); return{ok:true,message:'請假申請已刪除。'}; });
     }
-    const existingRaw=id?await findDirectOrQuery('leaveRequests',id,'requestId'):null; const existing=existingRaw?normalizeLeave(existingRaw):null; if(id&&!existing)return{ok:false,message:'找不到要修改的請假申請。'}; if(existing&&existing.status!==PENDING)return{ok:false,message:'已完成簽核的請假不能再修改。'};
+    const editing=action==='modifyLeaveRequest';
+    const existingRaw=editing&&id?await findDirectOrQuery('leaveRequests',id,'requestId'):null;
+    const existing=existingRaw?normalizeLeave(existingRaw):null;
+    if(editing && (!existing || existing.employeeId!==employeeId || employeeId!==employeeIdFrom({})))
+      return {ok:false,message:'只能修改自己的請假紀錄。'};
+    if(!editing && id)return {ok:false,message:'新增請假請使用新申請單。'};
     try{
-      const segments=await enrichRequestedSegments(employeeId,payload); const isRetro=segments.some(s=>s.mode==='retro')||payload.singleDayFlow===true; await validateNewLeave(employeeId,segments,id,isRetro);
+      if(editing)assertLeaveVersion(existingRaw,payload.expectedVersion,payload.expectedStatus||PENDING);
+      const amendment=existing?.status===APPROVED;
+      if(editing && !amendment && existing.status!==PENDING)throw Error('這筆申請已結案，請重新查詢。');
+      const originalId=amendment?id:existingRaw?.amendsRequestId;
+      const segments=await enrichRequestedSegments(employeeId,payload);
+      const isRetro=segments.some(s=>s.mode==='retro')||payload.singleDayFlow===true;
+      await validateNewLeave(employeeId,segments,id,isRetro,originalId);
       if(isRetro&&payload.leaveReplacementAcknowledged!==true){const impact=await getLeaveReplacementImpact(payload);if(impact.requiresConfirmation)return{ok:false,requiresConfirmation:true,message:'請先確認補假對既有打卡與工時的影響。',impact};}
       const mode=await getPayMode(payload.reason||payload.leaveName||(existing&&existing.reason)); payload.payMode=mode; payload.payFactor=payFactor(mode);
-      const doc=leaveDocFromPayload(payload,segments,existingRaw||null); delete doc.__id; delete doc.raw; const ref=db().collection('leaveRequests').doc(doc.requestId);
-      const result=await db().runTransaction(async tx=>{ const snap=await tx.get(ref); if(action==='modifyLeaveRequest'&&snap.exists&&statusOf(snap.data())!==PENDING)return{ok:false,message:'這張請假單已經完成簽核，不能修改。'}; tx.set(ref,Object.assign({},doc,{createdAt:snap.exists?(snap.data().createdAt||serverTs()):serverTs(),modifyCount:snap.exists?(Number(snap.data().modifyCount||0)+1):0}),{merge:true}); return{ok:true}; });
+      const doc=leaveDocFromPayload(payload,segments,amendment?null:existingRaw);
+      delete doc.__id; delete doc.raw; delete doc.expectedVersion; delete doc.expectedStatus;
+      if(amendment){
+        doc.requestId=doc.leaveId=doc['請假ID']=amendmentId(existingRaw);
+        doc.amendsRequestId=id;
+        doc.amendsDocumentId=existingRaw.__id;
+        doc.amendsVersion=leaveVersion(existingRaw);
+        doc.originalSummary=existing.segmentSummaryText;
+        for(const key of ['attachment','attachmentUrl','附件連結','caseId','attendanceCaseId'])
+          if(!doc[key] && existingRaw[key])doc[key]=existingRaw[key];
+      }
+      const collection=db().collection('leaveRequests');
+      const ref=collection.doc(editing&&!amendment?existingRaw.__id:doc.requestId);
+      const result=await db().runTransaction(async tx=>{
+        if(editing){
+          const source=await tx.get(collection.doc(existingRaw.__id));
+          assertLeaveVersion(source.exists&&source.data(),payload.expectedVersion,existing.status);
+        }
+        const snap=await tx.get(ref);
+        if((amendment||!editing)&&snap.exists)throw Error('已有一筆更正送審，請重新查詢歷史請假紀錄。');
+        doc.modifyCount=editing&&!amendment?leaveVersion(existingRaw)+1:0;
+        tx.set(ref,{...doc,createdAt:snap.exists?(snap.data().createdAt||serverTs()):serverTs()},{merge:true});
+        return {ok:true};
+      });
       if(!result.ok)return result;
-      await queueNotification('leave','manager',{employeeId,name:doc.name,email:doc.email,requestId:doc.requestId,notificationMessage:`請假申請：${doc.name}\n${doc.segmentSummaryText}\n請至後台審核`});
+      await queueNotification('leave','manager',{employeeId,name:doc.name,email:doc.email,requestId:doc.requestId,notificationMessage:`${doc.amendsRequestId?'請假更正':'請假申請'}：${doc.name}\n${doc.segmentSummaryText}\n請至後台審核`});
       return{ok:true,message:action==='modifyLeaveRequest'?'請假申請已更新並重新送審。':'請假申請已送出。',requestId:doc.requestId,row:normalizeLeave(doc),caseId:doc.caseId};
     }catch(e){ return{ok:false,message:e&&e.message?e.message:String(e)}; }
   }
@@ -7708,14 +7749,59 @@
     payload=payload||{}; const requestId=clean(payload.requestId||payload.leaveId); if(!requestId)return{ok:false,message:'缺少請假ID。'};
     const raw=await findDirectOrQuery('leaveRequests',requestId,'requestId'); if(!raw)return{ok:false,message:'找不到請假申請。'}; const leave=normalizeLeave(raw); if(leave.status!==PENDING)return{ok:false,message:'這張請假單已經處理過。'};
     const approve=!/reject|駁回/i.test(clean(payload.decision||payload.action)); const status=approve?APPROVED:REJECTED; const corrections=await linkedCorrections(leave); const reviewer=currentUser();
-    const planned={}; if(approve){ for(const d of Array.from(new Set(leave.segments.map(s=>s.date)))) planned[d]=await effectiveScheduleInfo(leave.employeeId,d,{includeClockState:true,additionalApprovedLeaves:[leave]}); }
-    const impactParts=approve?await rowsByEmployee('parttimeRecords',leave.employeeId):[];
-    const replacementPatches=approve?Object.values(planned).flatMap(info=>leaveReplacementPlan(info,impactParts)):[];
+    const originalId=clean(raw.amendsRequestId);
+    const original=originalId?await findDirectOrQuery('leaveRequests',originalId,'requestId'):null;
+    if(originalId && (!original || normalizeLeave(original).employeeId!==leave.employeeId ||
+        statusOf(original)!==APPROVED || original.__id!==raw.amendsDocumentId || amendmentId(original)!==requestId || leaveVersion(original)!==raw.amendsVersion))
+      return {ok:false,message:'原核准單已變更，請重新查詢後再審核。'};
+    if(leaveVersion(raw)!==Number(payload.expectedVersion??0))return {ok:false,message:'申請已修改，請重新整理並確認最新時段。'};
+    const originalDates=original?normalizeLeave(original).segments.map(s=>s.date):[];
+    const dates=[...new Set([...leave.segments.map(s=>s.date),...originalDates])];
+    const planned={}, impactParts=approve?await rowsByEmployee('parttimeRecords',leave.employeeId):[];
+    const rawClocks=approve&&original?await rowsByEmployee('clockRecords',leave.employeeId):[];
+    const restoredParts=impactParts.map(r=>({...r,...restoreLeaveEffect(r,originalId,'parttimeRecords')}));
+    const restoredClocks=rawClocks.map(r=>({...r,...restoreLeaveEffect(r,originalId,'clockRecords')})).filter(isActiveRow).map(normalizeClock);
+    const patches=new Map();
+    function addPatch(collection,id,data,previous){
+      if(!Object.keys(data).length)return;
+      const key=collection+'/'+id,old=patches.get(key);
+      patches.set(key,{collection,id,data:{...old?.data,...data},previous:old?.previous||previous});
+    }
+    if(approve){
+      if(original){
+        await validateNewLeave(leave.employeeId,leave.segments,requestId,true,originalId);
+        for(const [collection,rows] of [['clockRecords',rawClocks],['parttimeRecords',impactParts]]){
+          for(const r of rows){
+            const reset=restoreLeaveEffect(r,originalId,collection);
+            if(collection==='parttimeRecords' && r.isPaidLeave && r.leaveRequestId===originalId)
+              Object.assign(reset,{status:'已被取代','狀態':'已被取代',isPaidLeave:false,payable:'否','是否計薪':'否',paidLeaveHours:0,totalHours:0,'總時數':0,grossPay:0,'當日工資':0,supersededBy:requestId});
+            addPatch(collection,r.__id,reset,r);
+          }
+        }
+      }
+      for(const d of dates){
+        const info=await effectiveScheduleInfo(leave.employeeId,d,{includeClockState:true,additionalApprovedLeaves:[leave],
+          excludeLeaveId:originalId,...(original?{clockRecords:restoredClocks}:{})});
+        planned[d]=info;
+        for(const patch of leaveReplacementPlan(info,restoredParts)){
+          const previous=patch.collection==='parttimeRecords'?impactParts.find(r=>r.__id===patch.id)
+            :(rawClocks.find(r=>r.__id===patch.id)||info.clockRecords.find(r=>(r.__id||r.id)===patch.id)?.raw);
+          addPatch(patch.collection,patch.id,patch.data,previous);
+        }
+      }
+    }
+    const replacementPatches=[...patches.values()];
     const corrPlans=[]; for(const rawC of corrections){ const c=correctionNorm(rawC); const info=planned[c.correctDate]||await effectiveScheduleInfo(c.employeeId,c.correctDate,{includeClockState:false,additionalApprovedLeaves:approve?[leave]:[]}); const s=chooseEffectiveSchedule(info,c.scheduleKey||c.originalScheduleKey,c.correctAction,c.correctTime)||{scheduleKey:c.scheduleKey||c.originalScheduleKey,originalScheduleKey:c.originalScheduleKey||c.scheduleKey,startTime:c.scheduleStartTime,endTime:c.scheduleEndTime}; corrPlans.push({raw:rawC,c,s,recordId:`CLK_COR_${safeId(c.requestId)}`}); }
     const emp=await employeeRow(leave.employeeId).catch(()=>null),isPt=employeeType(emp)==='parttime',rate=hourlyRateOf(emp),factor=Number.isFinite(leave.payFactor)?leave.payFactor:payFactor(leave.payMode);
     try{
       await db().runTransaction(async tx=>{
         const leaveRef=db().collection('leaveRequests').doc(raw.__id||requestId); const leaveSnap=await tx.get(leaveRef); if(!leaveSnap.exists||statusOf(leaveSnap.data())!==PENDING)throw new Error('這張請假單已經被其他主管處理。');
+        assertLeaveVersion(leaveSnap.data(),payload.expectedVersion,PENDING);
+        const originalRef=original?db().collection('leaveRequests').doc(original.__id):null;
+        if(originalRef){
+          const originalSnap=await tx.get(originalRef);
+          assertLeaveVersion(originalSnap.exists&&originalSnap.data(),raw.amendsVersion,APPROVED);
+        }
         const reads=[]; for(const p of corrPlans){ const cRef=db().collection('clockCorrections').doc(p.raw.__id||p.c.requestId); const cSnap=await tx.get(cRef); let targetRef=null,targetSnap=null;
           if(approve&&p.c.requestKind==='recordCorrection'&&p.c.originalRecordId){ targetRef=db().collection('clockRecords').doc(p.c.originalRecordId); targetSnap=await tx.get(targetRef); }
           else if(approve){ targetRef=db().collection('clockRecords').doc(p.recordId); targetSnap=await tx.get(targetRef); }
@@ -7724,8 +7810,13 @@
         // Read every affected document before writing; concurrent attendance edits require a fresh review.
         for(const patch of replacementPatches){
           const ref=db().collection(patch.collection).doc(patch.id),snap=await tx.get(ref);
-          const original=patch.collection==='parttimeRecords'?impactParts.find(r=>(r.__id||r.recordId)===patch.id):Object.values(planned).flatMap(info=>info.clockRecords||[]).find(r=>(r.__id||r.id)===patch.id)?.raw;
-          if(!snap.exists||['status','clockTime','totalHours','grossPay','updatedAt'].some(k=>JSON.stringify(snap.data()[k]??null)!==JSON.stringify(original?.[k]??null)))throw Error('出勤資料剛剛有變更，請重新整理後再審核。');
+          const previous=patch.previous;
+          if(!snap.exists||!previous||['status','clockTime','totalHours','grossPay','updatedAt','leaveReplacementIds'].some(k=>JSON.stringify(snap.data()[k]??null)!==JSON.stringify(previous[k]??null)))throw Error('出勤資料剛剛有變更，請重新整理後再審核。');
+        }
+        if(originalRef){
+          const applied={status:'已被取代','狀態':'已被取代',supersededBy:requestId};
+          tx.set(originalRef,{modifyCount:leaveVersion(original)+1,updatedAt:serverTs(),...(approve?applied:{})},{merge:true});
+          if(approve)tx.set(db().collection('leaveRecords').doc(originalId),{...original,...applied,updatedAt:serverTs()},{merge:true});
         }
         tx.set(leaveRef,{status,'狀態':status,rejectReason:approve?'':clean(payload.rejectReason||payload.reason),reviewedAt:serverTs(),'審核時間':serverTs(),reviewedBy:clean(reviewer.id||reviewer.employeeId||reviewer.adminId),updatedAt:serverTs(),source:VERSION},{merge:true});
         const recordRef=db().collection('leaveRecords').doc(requestId); const snapshot=Object.assign({},leave.raw||{},{status,'狀態':status,segments:leave.segments,normalizedSegments:leave.segments,hours:leave.hours,leaveDate:leave.leaveDate,startDate:leave.startDate,endDate:leave.endDate,reviewedAt:serverTs(),reviewedBy:clean(reviewer.id||reviewer.employeeId||reviewer.adminId),attendanceFlowVersion:VERSION,source:VERSION}); delete snapshot.__id; delete snapshot.raw; tx.set(recordRef,snapshot,{merge:true});
@@ -7737,7 +7828,7 @@
         for(const patch of replacementPatches)tx.set(db().collection(patch.collection).doc(patch.id),{...patch.data,attendanceReconciledAt:serverTs(),updatedAt:serverTs(),source:VERSION},{merge:true});
         if(approve&&isPt&&factor>0&&rate>0){ const perDate={}; leave.segments.forEach(s=>{perDate[s.date]=(perDate[s.date]||0)+(Number(s.hours)||0);}); Object.keys(perDate).forEach(d=>{ const paid=Math.round(perDate[d]*factor*100)/100,id=`PT_LEAVE_${safeId(requestId)}_${d.replace(/-/g,'')}`; tx.set(db().collection('parttimeRecords').doc(id),{recordId:id,'紀錄ID':id,employeeId:leave.employeeId,'員工ID':leave.employeeId,name:leave.name,'姓名':leave.name,email:leave.email,date:d,workDate:d,'日期':d,hours:0,actualWorkHours:0,totalHours:paid,'時數':0,'總時數':paid,paidLeaveHours:paid,leaveHours:perDate[d],payMode:leave.payMode,payFactor:factor,hourlyRate:rate,'時薪':rate,grossPay:Math.round(paid*rate),'當日工資':Math.round(paid*rate),status:'核准支薪假','狀態':'核准支薪假',payable:'是','是否計薪':'是',note:`${leave.reason}（${leave.payMode}）`,'備註':`${leave.reason}（${leave.payMode}）`,isPaidLeave:true,leaveRequestId:requestId,sourceType:'approvedPaidLeave',source:VERSION,createdAt:serverTs(),updatedAt:serverTs()},{merge:true}); }); }
       });
-      if(approve)for(const d of Array.from(new Set(leave.segments.map(s=>s.date)))) await reconcileAttendance(leave.employeeId,d).catch(()=>null);
+      if(approve)for(const d of dates) await reconcileAttendance(leave.employeeId,d).catch(()=>null);
       await queueNotification('leave','employee',{employeeId:leave.employeeId,email:leave.email,requestId,notificationMessage:approve ? `請假已核准：${leave.segmentSummaryText}` : `請假已駁回：${leave.segmentSummaryText}${clean(payload.rejectReason||payload.reason)?'\n原因：'+clean(payload.rejectReason||payload.reason):''}`});
       return{ok:true,message:approve?(`請假已核准${corrections.length?'，相關補打卡也已一併處理':''}。`):(`請假已駁回${corrections.length?'，相關補打卡也已一併駁回':''}。`),status,linkedCorrectionCount:corrections.length};
     }catch(e){ return{ok:false,message:e&&e.message?e.message:String(e)}; }
@@ -7756,6 +7847,20 @@
       return candidates.length&&Number.isFinite(candidates[0].d)&&!(candidates[1]&&candidates[1].d===candidates[0].d)&&keys.has(scheduleRawKey(candidates[0].s));
     }).map(r=>r.id));
   }
+  function restoreLeaveEffect(row,originalId,collection){
+    if(!originalId || !row.leaveReplacementIds?.includes(originalId))return {};
+    const reset={leaveReplacementIds:[],attendanceSupersededByLeave:false};
+    if(collection==='clockRecords'){
+      const status=row.leaveOriginalStatus||'正常',late=row.leaveOriginalLateMinutes??0;
+      return {...reset,status,'狀態':status,lateMinutes:late,finalLateMinutes:late,'遲到分鐘':late};
+    }
+    if(row.leaveOriginalHours==null || row.leaveOriginalGrossPay==null)return {};
+    const hours=row.leaveOriginalHours,gross=row.leaveOriginalGrossPay;
+    const status=row.leaveOriginalPayStatus||(row.attendanceSupersededByLeave?'正常':statusOf(row));
+    const payable=row.leaveOriginalPayable??(row.attendanceSupersededByLeave?'是':(row.payable??row['是否計薪']??'是'));
+    return {...reset,status,'狀態':status,payable,'是否計薪':payable,hours,totalHours:hours,actualWorkHours:hours,
+      '時數':hours,'總時數':hours,grossPay:gross,'當日工資':gross,'當筆毛額':gross};
+  }
   function leaveReplacementPlan(info,parts){
     const clocks=leaveCoveredClockIds(info),patches=[];
     const leaveIds=Array.from(new Set((info.leaveBlocks||[]).map(b=>b.requestId).filter(Boolean)));
@@ -7771,6 +7876,7 @@
       if(hours>=oldHours||oldHours<=0)continue;
       const oldGross=Number(r.grossPay??r['當日工資']??r['當筆毛額']??0),gross=Math.round(oldGross*hours/oldHours);
       patches.push({collection:'parttimeRecords',id:r.__id||r.recordId,data:{hours,totalHours:hours,actualWorkHours:hours,'時數':hours,'總時數':hours,grossPay:gross,'當日工資':gross,'當筆毛額':gross,
+        leaveOriginalPayStatus:r.leaveOriginalPayStatus||statusOf(r),leaveOriginalPayable:r.leaveOriginalPayable??r.payable??r['是否計薪']??'是',
         leaveOriginalHours:r.leaveOriginalHours??oldHours,leaveOriginalGrossPay:r.leaveOriginalGrossPay??oldGross,leaveReplacementIds:leaveIds,
         ...(hours===0?{status:'已被取代','狀態':'已被取代',attendanceSupersededByLeave:true,payable:'否','是否計薪':'否'}:{})}});
     }
@@ -7779,8 +7885,10 @@
   async function getLeaveReplacementImpact(payload){
     const employeeId=employeeIdFrom(payload),segments=await enrichRequestedSegments(employeeId,payload),parts=await rowsByEmployee('parttimeRecords',employeeId),rows=[];
     const candidate={requestId:'preview-leave',status:APPROVED,segments};
+    const current=payload.requestId?await findDirectOrQuery('leaveRequests',payload.requestId,'requestId'):null;
+    const excludeLeaveId=current && (statusOf(current)===APPROVED?payload.requestId:current.amendsRequestId);
     for(const date of Array.from(new Set(segments.map(s=>s.date)))){
-      const info=await effectiveScheduleInfo(employeeId,date,{includeClockState:true,additionalApprovedLeaves:[candidate]});
+      const info=await effectiveScheduleInfo(employeeId,date,{includeClockState:true,additionalApprovedLeaves:[candidate],excludeLeaveId});
       const patches=leaveReplacementPlan(info,parts);
       const clocks=(info.clockRecords||[]).filter(r=>!isIndependentTemporaryClock(r)).map(r=>({id:r.id,action:r.actionName,time:r.time,replaced:patches.some(p=>p.collection==='clockRecords'&&p.id===(r.__id||r.id))}));
       const hoursRemoved=patches.filter(p=>p.collection==='parttimeRecords').reduce((sum,p)=>{const old=parts.find(r=>(r.__id||r.recordId)===p.id);return sum+Number(old?.totalHours??old?.hours??old?.['總時數']??0)-p.data.totalHours;},0);
@@ -7922,22 +8030,24 @@
     const action=mode==='pending'?'getPendingLeaveApprovals':(mode==='all'?'getAdminLeaveRecords':'getLeaveHistory');
     const base=typeof previousHandle==='function'?await previousHandle(action,payload||{}).catch(()=>null):null;
     const baseRows=Array.isArray(base&&base.rows)?base.rows:[]; const baseMap=new Map(baseRows.map(r=>[clean(r.requestId||r.leaveId||r.__id),r]));
-    const requestRows=(await (mode==='mine'?rowsByEmployee('leaveRequests',employeeIdFrom(payload)):all('leaveRequests').catch(()=>[]))).map(normalizeLeave).filter(l=>(l.requestId||l.employeeId)&&isActiveRow(l.raw));
+    const requestRows=(await (mode==='mine'?rowsByEmployee('leaveRequests',employeeIdFrom(payload)):all('leaveRequests').catch(()=>[]))).map(normalizeLeave);
     const mergedMap=new Map(); baseRows.map(normalizeLeave).filter(l=>(l.requestId||l.employeeId)&&isActiveRow(l.raw)).forEach(l=>mergedMap.set(l.requestId||`${l.employeeId}|${l.leaveDate}|${l.reason}`,l)); requestRows.forEach(l=>mergedMap.set(l.requestId||`${l.employeeId}|${l.leaveDate}|${l.reason}`,l));
-    let rows=Array.from(mergedMap.values()); if(mode==='pending')rows=rows.filter(l=>l.status===PENDING); if(mode==='mine'){ const id=employeeIdFrom(payload); rows=rows.filter(l=>l.employeeId===id); }
+    let rows=Array.from(mergedMap.values()).filter(l=>isActiveRow(l.raw)); if(mode==='pending')rows=rows.filter(l=>l.status===PENDING); if(mode==='mine'){ const id=employeeIdFrom(payload); rows=rows.filter(l=>l.employeeId===id); }
     if(mode==='mine' && payload && payload.month){
       if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(payload.month))throw Error('請選擇年、月。');
       const month=payload.month;
       rows=rows.filter(l=>l.segments.some(s=>s.date.slice(0,7)===month)||(!l.segments.length&&l.startDate.slice(0,7)<=month&&l.endDate.slice(0,7)>=month));
     }
     rows=rows.map(l=>Object.assign({},baseMap.get(l.requestId)||{},l));
-    for(const l of rows){ if(mode==='pending')l.reviewHints=await reviewHints(l); l.canEdit=l.status===PENDING;l.canDelete=l.status===PENDING; }
+    for(const l of rows){ if(mode==='pending')l.reviewHints=await reviewHints(l); l.modifyCount=leaveVersion(l.raw);l.originalSummary=clean(l.raw.originalSummary);
+      const awaiting=requestRows.some(r=>r.status===PENDING && r.raw.amendsRequestId===l.requestId);
+      l.awaitingChange=awaiting;l.canEdit=l.status===PENDING || (l.status===APPROVED && !awaiting && requestRows.some(r=>r.requestId===l.requestId));l.canDelete=l.status===PENDING&&!l.raw.amendsRequestId; }
     rows.sort((a,b)=>(mode==='pending'?clean(a.leaveDate).localeCompare(clean(b.leaveDate)):clean(b.leaveDate).localeCompare(clean(a.leaveDate))));
     return Object.assign({},base||{},{ok:true,year:(base&&base.year)||new Date().getFullYear(),rows,eventCandidates:Array.isArray(base&&base.eventCandidates)?base.eventCandidates:[],source:VERSION});
   }
   async function reviewHints(leave){
     const lines=[]; const byDate={}; leave.segments.forEach(s=>(byDate[s.date]||(byDate[s.date]=[])).push(s));
-    for(const d of Object.keys(byDate)){ const before=await baseScheduleInfo(leave.employeeId,d); const after=await effectiveScheduleInfo(leave.employeeId,d,{includeClockState:true,additionalApprovedLeaves:[leave]}); const original=(before.schedules||[]).map(s=>`${shortTime(s.startTime)}-${shortTime(s.endTime)}`).join('、')||'無班'; const remain=(after.schedules||[]).map(s=>`${s.startTime}-${s.endTime}`).join('、')||'無需出勤'; const expected=(after.schedules||[]).flatMap(s=>[`${s.startTime} 上班卡`,`${s.endTime} 下班卡`]).join('、')||'不需打卡'; const actual=(after.clockRecords||[]).map(r=>`${r.actionName} ${shortTime(r.time)}`).join('、')||'尚無打卡'; lines.push(`${d}｜原班表：${original}`); lines.push(`申請請假：${byDate[d].map(s=>s.allDay?'全天':`${s.startTime}-${s.endTime}`).join('、')}`); lines.push(`核准後剩餘：${remain}`); lines.push(`預期打卡：${expected}｜目前：${actual}`); }
+    for(const d of Object.keys(byDate)){ const before=await baseScheduleInfo(leave.employeeId,d); const after=await effectiveScheduleInfo(leave.employeeId,d,{includeClockState:true,additionalApprovedLeaves:[leave],excludeLeaveId:leave.raw.amendsRequestId}); const original=(before.schedules||[]).map(s=>`${shortTime(s.startTime)}-${shortTime(s.endTime)}`).join('、')||'無班'; const remain=(after.schedules||[]).map(s=>`${s.startTime}-${s.endTime}`).join('、')||'無需出勤'; const expected=(after.schedules||[]).flatMap(s=>[`${s.startTime} 上班卡`,`${s.endTime} 下班卡`]).join('、')||'不需打卡'; const actual=(after.clockRecords||[]).map(r=>`${r.actionName} ${shortTime(r.time)}`).join('、')||'尚無打卡'; lines.push(`${d}｜原班表：${original}`); lines.push(`申請請假：${byDate[d].map(s=>s.allDay?'全天':`${s.startTime}-${s.endTime}`).join('、')}`); lines.push(`核准後剩餘：${remain}`); lines.push(`預期打卡：${expected}｜目前：${actual}`); }
     if(leave.caseId)lines.push(`同案編號：${leave.caseId}（請假與補下班卡會一起處理）`); return lines;
   }
 
@@ -8044,8 +8154,8 @@
     if(a==='getMonthlySchedule'){ const employeeId=employeeIdFrom(payload); if(!await activeEmployeeMaster(employeeId))return{ok:true,rows:[]}; return previousHandle(a,payload); }
     if(a==='getTodaySchedule'||a==='getTodayClockSchedule')return await effectiveScheduleInfo(employeeIdFrom(payload),dateText(payload&&(payload.date||payload.clockDate))||localDateKey(new Date()),{includeClockState:true});
     if(a==='clock')return await clockFlow(payload||{});
-    if(['leaveRequest','modifyLeaveRequest','deleteLeaveRequest'].includes(a))return await submitLeaveFlow(a,payload||{});
-    if(a==='reviewLeaveRequest')return await reviewLeaveFlow(payload||{});
+    if(['leaveRequest','modifyLeaveRequest','deleteLeaveRequest'].includes(a))return await submitLeaveFlow(a,payload||{}).catch(e=>({ok:false,message:e.message||'請假送件失敗，請重新查詢。'}));
+    if(a==='reviewLeaveRequest')return await reviewLeaveFlow(payload||{}).catch(e=>({ok:false,message:e.message||'簽核失敗，請重新查詢。'}));
     if(a==='getLeaveDateContext')return await leaveDateContext(payload||{});
     if(a==='getPendingLeaveApprovals')return await leaveRowsForDisplay('pending',payload||{});
     if(a==='getAdminLeaveRecords')return await leaveRowsForDisplay('all',payload||{});

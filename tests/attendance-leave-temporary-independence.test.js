@@ -45,7 +45,7 @@ test('backend keeps leave, normal attendance, and temporary attendance independe
   assert.match(client, /leaveRequestBlocks:requested/);
   assert.match(client, /assignRecords\(schedules,records\.filter\(r=>!isIndependentTemporaryClock\(r\)&&!covered\.has\(r\.id\)\)\)/);
   assert.match(client, /if\(isIndependentTemporaryClock\(r\)\).*scheduleLinked:false/);
-  assert.match(client, /if\(approve\)for\(const d of Array\.from\(new Set\(leave\.segments\.map\(s=>s\.date\)\)\)\) await reconcileAttendance/);
+  assert.match(client, /if\(approve\)for\(const d of dates\) await reconcileAttendance/);
   assert.match(client, /uncoveredOverlap.*intervalCoveredByBlocks\(piece\[0\],piece\[1\],leaveBlocks\)/s);
   assert.match(client, /temporaryBlockCoversPunch/);
   assert.match(client, /automaticMissingSuppressed/);
@@ -57,6 +57,6 @@ test('manager and audit screens explain and display the independent records', ()
   assert.match(auditPage, /rejectedLeaves/);
   assert.match(auditPage, /獨立臨時出勤紀錄/);
   for (const page of [employeePage, adminPage, auditPage, fs.readFileSync('leave.html', 'utf8'), fs.readFileSync('clock.html', 'utf8')]) {
-    assert.match(page, /firebase-client\.js\?v=(?:20260919-taiwan-v2|20261101-month-view-v1|20261101-attendance-revision-v1|20261101-missing-clock-v1|20261101-protected-clock-v1|20261101-simple-attendance-v1)/);
+    assert.match(page, /firebase-client\.js\?v=(?:20260919-taiwan-v2|20261101-month-view-v1|20261101-attendance-revision-v1|20261101-missing-clock-v1|20261101-protected-clock-v1|20261101-simple-attendance-v1|20261125-shift-hours)/);
   }
 });

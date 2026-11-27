@@ -126,7 +126,7 @@
   <link rel="stylesheet" href="internal-workspace.css?v=20261031-mobile1">
 <link rel="stylesheet" href="employee-month-view.css?v=20261101-month-view-v2">
 <script src="employee-month-view.js?v=20261101-simple-attendance-v1"></script>
-<link rel="stylesheet" href="employee-attendance-view.css?v=20261101-simple-attendance-v2"><script src="employee-attendance-view.js?v=20261101-simple-attendance-v1"></script><script src="employee-single-day-leave.js?v=20261101-simple-attendance-v1"></script></head>
+<link rel="stylesheet" href="employee-attendance-view.css?v=20261101-simple-attendance-v2"><script src="employee-attendance-view.js?v=20261101-simple-attendance-v1"></script><script src="employee-single-day-leave.js?v=20261127-leave-change"></script></head>
 <body onload="init()">
   <div class="yz-global-nav" data-yz-global-nav>
     <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
@@ -142,7 +142,7 @@
         </div>
         
       </div>
-      <div id="pageHint" class="muted">請假原因會依假勤制度設定自動載入；送出後 7 天內可修改或刪除。</div>
+      <div id="pageHint" class="muted">請到「歷史請假紀錄」查詢並修改。已核准的請假可申請更正，主管再次核准後才會套用。</div>
       <div id="pageMsg" class="message"></div>
       <div id="pageProgress" class="page-progress" aria-live="polite"><div class="page-progress-bar" data-page-progress-bar></div><div class="page-progress-label" data-page-progress-label></div></div>
     </div>
@@ -198,11 +198,12 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20261101-simple-attendance-v1"></script>
+  <script src="firebase-client.js?v=20261101-simple-attendance-v1.20261127-change"></script>
 <script src="app.js?v=20261101-attendance-revision-v1"></script>
 
 <script>
 let historyRows = [];
+let editingSnapshot=null;
 let approvalRows = [];
 let approvalHistoryRows = [];
 let leaveAdminActiveTab = 'pending';
@@ -260,7 +261,7 @@ async function openSingleDayLeave(date,request){
     const monthly=await api('getMonthlySchedule',{userId:currentUser.id,month:date.slice(0,7)});
     if(!monthly.ok)throw Error(monthly.message||'班表讀取失敗');
     const shifts=(monthly.rows||[]).filter(r=>r.date===date);
-    const q=leaveQuery(),early=q.get('source')==='earlyLeave';
+    const q=leaveQuery(),early=!request && q.get('source')==='earlyLeave';
     EmployeeSingleDayLeave.open({date,shifts,request,userId:currentUser.id,api:(action,payload)=>api(action,payload),readonly:!!window.__previewLocation,reasons:availableLeaveTypes().map(r=>r.name||r['假別名稱']).filter(Boolean).filter(isAllowedParttimeLeaveTypeName),fileToDataUrl,
       ...(early?{startTime:q.get('startTime'),endTime:q.get('endTime'),extraPayload:{caseId:q.get('caseId')||'ATTCASE_'+currentUser.id+'_'+Date.now()}}:{}),
       onSaved:async(result)=>{if(early)await submitRetroClockCorrectionIfNeeded({requestId:result.requestId,caseId:result.caseId});setMsg(qs('#pageMsg'),'請假申請已送交主管。');await loadLeaveSchedule(leaveScheduleControl.get());if(leaveHistoryControl)await searchLeaveMonth(leaveHistoryControl.get());}});
@@ -1480,13 +1481,15 @@ function formatLeaveText(row){
   return row.simpleText || ((row.reason === '特休') ? '特休（整天）' : `${row.reason}｜${row.hours}`);
 }
 function renderHistory(rows){
-  historyRows = rows || [];
+  historyRows = (rows || []).map(row=>row.status==='已核准' && !isParttimeLeaveUser()?{...row,canEdit:false}:row);
   qs('#list').innerHTML = historyRows.map(x => `
     <div class="item">
       <div class="top"><strong>${escapeHtml(x.leaveDate)}｜${escapeHtml(formatLeaveText(x))}</strong><span class="tag ${leaveStatusTagClass(x.status)}">${escapeHtml(x.status)}</span></div>
       ${x.note ? `<div class="muted">備註：${escapeHtml(x.note)}</div>` : ''}
+      ${x.originalSummary ? `<div class="muted">原核准時段：${escapeHtml(x.originalSummary)}</div>` : ''}
+      ${x.awaitingChange ? '<div class="muted">更正審核中，目前仍依原核准時段。</div>' : ''}
       ${x.modifyCount ? `<div class="muted">已重新送審 ${escapeHtml(String(x.modifyCount))} 次</div>` : ''}
-      ${x.canEdit || x.canDelete ? `<div class="item-actions">${x.canEdit ? `<button class="btn secondary mini-btn" type="button" data-edit-id="${escapeHtml(x.requestId)}">修改</button>` : ''}${x.canDelete ? `<button class="btn secondary mini-btn" type="button" data-delete-id="${escapeHtml(x.requestId)}">刪除</button>` : ''}</div>` : ''}
+      ${x.canEdit || x.canDelete ? `<div class="item-actions">${x.canEdit ? `<button class="btn secondary mini-btn" type="button" data-edit-id="${escapeHtml(x.requestId)}">${x.status==='已核准'?'申請更正':'修改並重新送審'}</button>` : ''}${x.canDelete ? `<button class="btn secondary mini-btn" type="button" data-delete-id="${escapeHtml(x.requestId)}">刪除</button>` : ''}</div>` : ''}
     </div>
   `).join('') || '<div class="muted">尚無資料</div>';
   qsa('[data-edit-id]').forEach(btn => btn.onclick = () => startEdit(btn.dataset.editId));
@@ -1508,8 +1511,9 @@ function renderLeaveApprovalCard(x, history){
       ${x.hours ? `<div class="approval-field"><div class="approval-label">時數</div><div class="approval-value">${escapeHtml(String(x.hours))} 小時</div></div>` : ''}
     </div>
     ${x.note ? `<div class="approval-note">備註：${escapeHtml(x.note)}</div>` : ''}
+    ${x.originalSummary ? `<div class="approval-note">原核准：${escapeHtml(x.originalSummary)}<br>申請更正：${escapeHtml(x.segmentSummaryText)}</div>` : ''}
     ${x.rejectReason ? `<div class="approval-note">駁回原因：${escapeHtml(x.rejectReason)}</div>` : ''}
-    ${history ? '' : `<div class="approval-actions"><button class="btn mini-btn" type="button" data-approve-id="${escapeHtml(x.requestId)}">同意</button><button class="btn secondary mini-btn" type="button" data-reject-id="${escapeHtml(x.requestId)}">駁回</button></div>`}
+    ${history ? '' : `<div class="approval-actions"><button class="btn mini-btn" type="button" data-approve-id="${escapeHtml(x.requestId)}" data-version="${Number(x.modifyCount)||0}">同意</button><button class="btn secondary mini-btn" type="button" data-reject-id="${escapeHtml(x.requestId)}" data-version="${Number(x.modifyCount)||0}">駁回</button></div>`}
   </div>`;
 }
 function renderApprovalRows(rows){
@@ -1589,12 +1593,13 @@ async function handleApproval(requestId, decision, btn){
   setMsg(qs('#approvalMsg'), '');
   const progress = btn ? startActionButtonProgress(btn, { label:text === '同意' ? '簽核中' : '處理中', maxPct:82 }) : null;
   try{
-    const r = await api('reviewLeaveRequest', { userId:user.id, requestId, decision });
+    const r = await api('reviewLeaveRequest', { userId:user.id, requestId, decision,expectedVersion:Number(btn.dataset.version) });
     setMsg(qs('#approvalMsg'), r.message || '', !r.ok);
     if(r.ok){
       if(progress) progress.done(text === '同意' ? '已同意' : '已駁回', 500, true);
       await Promise.all([loadApprovalList(), loadApprovalRecords()]);
     }else if(progress){
+      await loadApprovalList();
       progress.fail(text === '同意' ? '簽核失敗' : '處理失敗');
     }
   }catch(err){
@@ -1821,10 +1826,11 @@ async function loadStaffData(){
 }
 function startEdit(requestId){
   const row = historyRows.find(item => item.requestId === requestId);
-  if(!row) return;
+  if(!row || !row.canEdit) return;
   const singleSegment = !row.segments?.length || (row.segments.length === 1 && (!row.segments[0].endDate || row.segments[0].endDate === (row.segments[0].date || row.segments[0].leaveDate || row.segments[0].startDate)));
   if(isParttimeLeaveUser() && singleSegment)return openSingleDayLeave(row.leaveDate||row.startDate,row);
   qs('#legacyLeaveForm').hidden=false;
+  editingSnapshot={expectedVersion:row.modifyCount||0,expectedStatus:row.status};
   qs('#editingRequestId').value = row.requestId;
   renderReasonOptions(row.reason || '');
   qs('#reason').value = row.reason || '';
@@ -1855,7 +1861,7 @@ async function handleDelete(requestId){
   if(!user) return;
   if(!confirm('確定要刪除這張請假申請嗎？')) return;
   setLocalMsg('');
-  const r = await api('deleteLeaveRequest', { userId:user.id, requestId });
+  const r = await api('deleteLeaveRequest', { userId:user.id, requestId,expectedVersion:historyRows.find(r=>r.requestId===requestId)?.modifyCount||0 });
   setLocalMsg(r.message, !r.ok);
   if(r.ok){
     if(qs('#editingRequestId').value === requestId) resetForm({ keepOptions:true, preserveLocalMsg:true });
@@ -1979,7 +1985,7 @@ async function submitLeave(){
     await sleep(100);
     progress.set(35, editingId ? '整理修改內容' : '整理請假內容');
     const action = editingId ? 'modifyLeaveRequest' : 'leaveRequest';
-    const request = api(action, Object.assign({}, payload, editingId ? { requestId:editingId } : {}));
+    const request = api(action, Object.assign({}, payload, editingId ? { requestId:editingId,...editingSnapshot } : {}));
     await sleep(120);
     progress.set(70, editingId ? '更新請假申請' : '送出請假申請');
     const r = await request;
