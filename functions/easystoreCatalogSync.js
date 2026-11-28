@@ -594,6 +594,17 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
         easyStoreSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
+      if (existing.onlineSingleEnabled === true && catalogSku !== sku) {
+        const singles = grouped.get(sku) || [];
+        const single = singles.length === 1 && !duplicateSkus.has(sku) ? singles[0] : null;
+        if (single && single.productId === row.productId && single.automaticVariantImageUrl && row.automaticVariantImageUrl) {
+          update.onlineSingleImageUrl = single.automaticVariantImageUrl;
+          update.onlinePackImageUrl = row.automaticVariantImageUrl;
+          update.imageUrl = single.automaticVariantImageUrl;
+          update.variantImageUrls = single.variantImageUrls;
+          update.imageUrls = [...new Set([single.automaticVariantImageUrl, row.automaticVariantImageUrl])];
+        }
+      }
       // 舊資料第一次只有 EasyStore／網路價時，以該價格補齊三平台；完成初始化後不再覆蓋個別平台價格。
       if (row.price != null && existing.platformPricesInitialized !== true) {
         update.easyStorePrice = numberOrNull(existing.easyStorePrice) ?? row.price;
