@@ -870,12 +870,24 @@ async function loadProducts(db) {
   return products;
 }
 
+// A separate online SKU identifies orders sold as packs, even when older single
+// orders arrive after the listing has switched. POS always uses the internal SKU.
+function onlinePack(raw) {
+  const sku = normalizeSku(raw.onlinePackSku);
+  const units = Number(raw.onlinePackUnits);
+  return sku && sku !== normalizeSku(raw.internalSku || raw.sku || raw.code) &&
+    Number.isSafeInteger(units) && units > 1 ? {sku, units} : null;
+}
+
 function buildProductMap(products) {
   const map = new Map();
   for (const product of products) {
     if (!product.sku) continue;
-    if (!map.has(product.sku)) map.set(product.sku, []);
-    map.get(product.sku).push(product);
+    const pack = onlinePack(product.raw);
+    for (const sku of pack ? [product.sku, pack.sku] : [product.sku]) {
+      if (!map.has(sku)) map.set(sku, []);
+      map.get(sku).push(product);
+    }
   }
   return map;
 }
@@ -1068,26 +1080,29 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
     if (!productSnap.exists) throw new Error(`取消訂單回補失敗，中央商品不存在：${productId}`);
     const raw = productSnap.data() || {};
     const originalQuantity = Math.max(0, Math.round(Number(existing.inventoryDeductedQuantity || existing.quantity || line.quantity || 0)));
+    const unitsPerSale = existing.inventoryUnitsPerSale || 1;
+    const originalSaleQuantity = originalQuantity / unitsPerSale;
     const alreadyReturned = Math.max(0, Number(existing.cancellationRestockedQuantity || 0));
     const eventId = clean(line.cancellationEventId) || 'full-order-cancellation';
     const eventKey = stableId(eventId);
     const events = {...(existing.cancellationRestockEvents || {})};
-    const requested = line.cancellationQuantity == null ? (line.cancellationEventId ? 0 : originalQuantity) : Math.round(Number(line.cancellationQuantity));
-    if (!(requested > 0) || requested > originalQuantity) {
+    const requested = line.cancellationQuantity == null ? (line.cancellationEventId ? 0 : originalSaleQuantity) : Math.round(Number(line.cancellationQuantity));
+    if (!(requested > 0) || requested > originalSaleQuantity) {
       transaction.set(orderRef,{processingStatus:'cancellation-review',processingError:'取消數量缺漏或大於原扣庫數量，未自動回補。',syncRunId:runId},{merge:true});
       return {status:'return-review',lineId:line.id,productId};
     }
-    const quantity = Math.min(originalQuantity-alreadyReturned,Math.max(0,requested-Number(events[eventKey]||0)));
+    const quantity = Math.min(originalSaleQuantity-alreadyReturned,Math.max(0,requested-Number(events[eventKey]||0)));
     if(quantity <= 0) return {status:'already-reversed',lineId:line.id,productId};
     events[eventKey]=requested;
     const totalReturned=alreadyReturned+quantity;
-    const fullyReversed=totalReturned>=originalQuantity;
+    const fullyReversed=totalReturned>=originalSaleQuantity;
     const before = Number(raw.currentStock || 0);
-    const after = before + quantity;
+    const returnedUnits = quantity * unitsPerSale;
+    const after = before + returnedUnits;
     const originalInventory = originalInventorySnap.exists ? originalInventorySnap.data() || {} : {};
     const originalCost = orderCostSnapshot(existing, originalInventory, raw, originalQuantity);
-    const cost = {...originalCost,costTotal:originalQuantity>0 ? originalCost.costTotal*quantity/originalQuantity : 0};
-    const unitCost = quantity > 0 && Number.isFinite(cost.costTotal) ? cost.costTotal / quantity : null;
+    const cost = {...originalCost,costTotal:originalQuantity>0 ? originalCost.costTotal*returnedUnits/originalQuantity : 0};
+    const unitCost = quantity > 0 && Number.isFinite(cost.costTotal) ? cost.costTotal / returnedUnits : null;
     const layerSummary = averageCostModel.snapshot(raw,after);
     transaction.set(productRef, {
       currentStock: after,
@@ -1102,7 +1117,7 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
     transaction.set(orderRef, {
       ...line,
       ...resolvedOrderDateFields(existing, line),
-      quantity: originalQuantity,
+      quantity: originalSaleQuantity,
       sku: clean(existing.sku || line.sku),
       productName: clean(existing.productName || line.productName),
       grossAmount: Number(existing.grossAmount || 0),
@@ -1135,7 +1150,7 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
       productId,
       productName: clean(raw.internalName || raw.originalName || line.productName || existing.productName),
       sku: normalizeSku(line.sku || existing.sku),
-      qtyChange: quantity,
+      qtyChange: returnedUnits,
       beforeStock: before,
       afterStock: after,
       unitCost,
@@ -1263,7 +1278,7 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
     // order document 的 inventoryApplied 是冪等鎖：同一筆訂單再次同步不會重複扣除。
     const applyInventoryNow = settings.applyInventory;
     if (existing.inventoryApplied === true && existing.reversalApplied !== true && existing.inventoryReversed !== true) {
-      const cost = orderCostSnapshot(existing, previousInventory, raw, line.quantity);
+      const cost = orderCostSnapshot(existing, previousInventory, raw, existing.inventoryDeductedQuantity || line.quantity);
       transaction.set(orderRef, {
         ...line,
         grossAmount,
@@ -1289,16 +1304,20 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
       return { status: 'already-applied', lineId: line.id, productId: product.id };
     }
     if (!productSnap.exists) throw new Error(`中央商品不存在：${line.sku}`);
-    const fifo = consumeFifoAllowNegative(raw, line.quantity);
+    const pack = onlinePack(raw);
+    const inventoryUnitsPerSale = pack && pack.sku === line.sku ? pack.units : 1;
+    const stockQuantity = line.quantity * inventoryUnitsPerSale;
+    const fifo = consumeFifoAllowNegative(raw, stockQuantity);
     const fallbackUnitCost = productFallbackUnitCost(raw);
     const estimatedQty = fallbackUnitCost != null ? Math.max(0, Number(fifo.unknownCostQty || 0)) : 0;
     const effectiveCostTotal = Number(fifo.costTotal || 0) + estimatedQty * Number(fallbackUnitCost || 0);
     const costEstimated = estimatedQty > 0;
     const remainingUnknownCostQty = Math.max(0, Number(fifo.unknownCostQty || 0) - estimatedQty);
-    const platformMappings = mergePlatformMappings(raw.platformMappings, platformMappingPatch(line));
+    const mappingField = pack && line.sku === product.sku ? 'onlineSingleMappings' : 'platformMappings';
+    const platformMappings = mergePlatformMappings(raw[mappingField], platformMappingPatch(line));
     const estimatedProfit = estimatedNetAmount - effectiveCostTotal;
     const productPatch = {
-      platformMappings,
+      [mappingField]: platformMappings,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedBy: 'platform-order-sync',
       version: VERSION
@@ -1320,7 +1339,8 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
       matchStatus: 'matched',
       processingStatus: applyInventoryNow ? 'inventory-applied' : 'dry-run',
       inventoryApplied: applyInventoryNow,
-      inventoryDeductedQuantity: applyInventoryNow ? line.quantity : 0,
+      inventoryUnitsPerSale,
+      inventoryDeductedQuantity: applyInventoryNow ? stockQuantity : 0,
       inventoryReversed: false,
       reversalApplied: false,
       reversalReason: '',
@@ -1348,10 +1368,10 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
         productId: product.id,
         productName: clean(raw.internalName || raw.originalName || line.productName),
         sku: line.sku,
-        qtyChange: -line.quantity,
+        qtyChange: -stockQuantity,
         beforeStock: fifo.before,
         afterStock: fifo.after,
-        unitCost: line.quantity > 0 ? effectiveCostTotal / line.quantity : null,
+        unitCost: stockQuantity > 0 ? effectiveCostTotal / stockQuantity : null,
         costTotal: effectiveCostTotal,
         unknownCostQty: remainingUnknownCostQty,
         costMethod: 'MANUAL_AVERAGE',
@@ -1415,8 +1435,26 @@ async function reconcileMissingPlatformOrders(db, lines, platformFetch, queryFro
   return output;
 }
 
+// Each sales SKU has its own remote variant and sync state, but the same physical stock.
+function singleOffer(product) {
+  const pack = onlinePack(product.raw);
+  if (!pack || product.raw.onlineSingleEnabled !== true) return null;
+  const mappings = product.raw.onlineSingleMappings || {};
+  return {
+    ...product, singleOffer: true,
+    raw: {
+      ...product.raw, onlinePackSku: '', onlinePackUnits: 0,
+      currentStock: Math.max(0, Number(product.raw.currentStock || 0) - Number(product.raw.reservedStock || 0)),
+      platformMappings: mappings, sourceVariantId: '', sourceProductId: '',
+      platformInventorySync: product.raw.onlineSingleInventorySync || {}
+    }
+  };
+}
+
 function productTargetStock(product) {
-  return Math.max(0, Math.round(Number(product.raw.currentStock || 0)));
+  const pack = onlinePack(product.raw);
+  const units = Math.max(0, Math.round(Number(product.raw.currentStock || 0)));
+  return pack ? Math.floor(Math.max(0, units - Number(product.raw.reservedStock || 0)) / pack.units) : units;
 }
 
 function inventorySyncState(product) {
@@ -1438,7 +1476,7 @@ async function updateProductPlatformState(product, platform, result, targetStock
   }
   next.lastTargetStock = targetStock;
   next.lastUpdatedAt = admin.firestore.FieldValue.serverTimestamp();
-  await product.ref.set({ platformInventorySync: next }, { merge: true });
+  await product.ref.set({ [product.singleOffer ? 'onlineSingleInventorySync' : 'platformInventorySync']: next }, { merge: true });
   product.raw.platformInventorySync = next;
 }
 
@@ -1656,7 +1694,7 @@ function resolveMomoProduct(product, maps) {
       quantity: null
     }];
   }
-  let candidates = maps.byEntp.get(product.sku) || [];
+  let candidates = maps.byEntp.get(onlinePack(product.raw)?.sku || product.sku) || [];
   if (!candidates.length) candidates = maps.byCombo.get(product.sku) || [];
   if (!candidates.length) candidates = maps.byGoods.get(product.sku) || [];
   const unique = [];
@@ -1748,20 +1786,21 @@ function collectCoupangItemMappings(object, output = []) {
 }
 
 async function resolveCoupangItems(product, config) {
+  const sellerSku = onlinePack(product.raw)?.sku || product.sku;
   const existing = product.raw.platformMappings && product.raw.platformMappings.coupang || {};
   const existingIds = [...new Set(asArray(existing.vendorItemIds).map(clean).filter(Boolean))];
   if (existingIds.length) return existingIds;
-  const path = `/v2/providers/seller_api/apis/api/v1/marketplace/seller-products/external-vendor-sku-codes/${encodeURIComponent(product.sku)}`;
+  const path = `/v2/providers/seller_api/apis/api/v1/marketplace/seller-products/external-vendor-sku-codes/${encodeURIComponent(sellerSku)}`;
   const summary = await coupangRequest(config, 'GET', path, {}, null, 'Coupang SKU 查詢');
   const summaryMappings = collectCoupangItemMappings(summary);
-  let vendorIds = [...new Set(summaryMappings.filter((row) => !row.externalVendorSku || row.externalVendorSku === product.sku).map((row) => row.vendorItemId))];
+  let vendorIds = [...new Set(summaryMappings.filter((row) => !row.externalVendorSku || row.externalVendorSku === sellerSku).map((row) => row.vendorItemId))];
   if (vendorIds.length) return vendorIds;
   const sellerIds = [...new Set(recursiveValues(summary, 'sellerProductId').map(clean).filter(Boolean))];
   for (const sellerId of sellerIds) {
     const detailPath = `/v2/providers/seller_api/apis/api/v1/marketplace/seller-products/${encodeURIComponent(sellerId)}`;
     const detail = await coupangRequest(config, 'GET', detailPath, {}, null, 'Coupang 商品查詢');
     const mappings = collectCoupangItemMappings(detail);
-    const exact = mappings.filter((row) => row.externalVendorSku === product.sku);
+    const exact = mappings.filter((row) => row.externalVendorSku === sellerSku);
     const selected = exact.length ? exact : (mappings.length === 1 ? mappings : []);
     vendorIds = [...new Set([...vendorIds, ...selected.map((row) => row.vendorItemId)])];
   }
@@ -1789,6 +1828,10 @@ async function syncCoupangProduct(product, targetStock, config) {
 }
 
 async function syncCandidateProducts(db, products, changedProductIds, settings, credentials, runtime) {
+  const singleProducts = products.map(singleOffer).filter(Boolean);
+  const singleSummary = singleProducts.length
+    ? await syncCandidateProducts(db, singleProducts, changedProductIds, settings, credentials, runtime)
+    : null;
   const baselineCompleted = runtime.baselineCompleted === true;
   const baselineAt = parseDate(runtime.baselineCompletedAt);
   const candidates = [];
@@ -1812,6 +1855,7 @@ async function syncCandidateProducts(db, products, changedProductIds, settings, 
     if (changedProductIds.has(product.id) || needsPlatform || (!hasPlatformHistory && changedAfterBaseline)) candidates.push(product);
   }
   const summary = {
+    ...(singleSummary ? { singleOffers: singleSummary } : {}),
     candidates: candidates.length,
     baseline: baselineCompleted ? 0 : Math.max(0, products.length - candidates.length),
     EasyStore: { success: 0, same: 0, error: 0, unmapped: 0 },
@@ -1834,7 +1878,7 @@ async function syncCandidateProducts(db, products, changedProductIds, settings, 
       await updateProductPlatformState(product, 'EasyStore', result, target);
       if (result.mapping) {
         const mappings = mergePlatformMappings(product.raw.platformMappings, { easyStore: result.mapping });
-        await product.ref.set({ platformMappings: mappings }, { merge: true });
+        await product.ref.set({ [product.singleOffer ? 'onlineSingleMappings' : 'platformMappings']: mappings }, { merge: true });
         product.raw.platformMappings = mappings;
       }
     }
@@ -1855,7 +1899,7 @@ async function syncCandidateProducts(db, products, changedProductIds, settings, 
       await updateProductPlatformState(product, 'MOMO', result, target);
       if (result.mapping) {
         const mappings = mergePlatformMappings(product.raw.platformMappings, { momo: result.mapping });
-        await product.ref.set({ platformMappings: mappings }, { merge: true });
+        await product.ref.set({ [product.singleOffer ? 'onlineSingleMappings' : 'platformMappings']: mappings }, { merge: true });
         product.raw.platformMappings = mappings;
       }
     }
@@ -1880,7 +1924,7 @@ async function syncCandidateProducts(db, products, changedProductIds, settings, 
       await updateProductPlatformState(product, 'Coupang', result, target);
       if (result.mapping) {
         const mappings = mergePlatformMappings(product.raw.platformMappings, { coupang: result.mapping });
-        await product.ref.set({ platformMappings: mappings }, { merge: true });
+        await product.ref.set({ [product.singleOffer ? 'onlineSingleMappings' : 'platformMappings']: mappings }, { merge: true });
         product.raw.platformMappings = mappings;
       }
       await sleep(80);
@@ -2126,10 +2170,11 @@ function inventoryTargetsForProducts(products, productIds) {
   const wanted = productIds instanceof Set ? productIds : new Set(productIds || []);
   return products
     .filter((product) => wanted.has(product.id) && product.sku)
+    .flatMap(product => [product, singleOffer(product)].filter(Boolean))
     .map((product) => ({
       productId: product.id,
-      sku: product.sku,
-      targetStock: Math.round(Number(product.raw.currentStock || 0)),
+      sku: onlinePack(product.raw)?.sku || product.sku,
+      targetStock: productTargetStock(product),
       productName: clean(product.raw.internalName || product.raw.originalName || product.raw.name || ''),
     }));
 }
@@ -2144,7 +2189,7 @@ function priceTargetsForAgent(products) {
     if (clean(coupangState.status).toLowerCase() !== 'agent-required' || targetPrice == null || targetPrice % 10 !== 0) continue;
     targets.push({
       productId: product.id,
-      sku: product.sku,
+      sku: onlinePack(product.raw)?.sku || product.sku,
       platform: 'Coupang',
       targetPrice,
       platformMappings: product.raw.platformMappings && product.raw.platformMappings.coupang || {}
@@ -2155,7 +2200,7 @@ function priceTargetsForAgent(products) {
 
 function momoPriceTargetsForAgent(products) {
   return products.filter(p => p.sku && priceSyncState(p).MOMO?.status === 'agent-required')
-    .map(p => ({productId:p.id,sku:p.sku,platform:'MOMO',targetPrice:p.raw.momoPrice,platformMappings:p.raw.platformMappings?.momo || {}}));
+    .map(p => ({productId:p.id,sku:onlinePack(p.raw)?.sku || p.sku,platform:'MOMO',targetPrice:p.raw.momoPrice,platformMappings:p.raw.platformMappings?.momo || {}}));
 }
 
 async function recordAgentCoupangPriceResults(db, results, originalRunId, reportRunId) {
@@ -2399,7 +2444,7 @@ async function handleAgentStateOperation(payload) {
       const ids=[...new Set(rows.map(([id,data])=>clean(data.productId||id)).filter(id=>id&&!id.includes('/')))];
       const products=new Map();
       for(let offset=0;offset<ids.length;offset+=100){
-        const docs=await db.getAll(...ids.slice(offset,offset+100).map(id=>db.collection(PRODUCT_COLLECTION).doc(id)),{fieldMask:['internalSku','sku','code','currentStock','internalName','originalName','name']});
+        const docs=await db.getAll(...ids.slice(offset,offset+100).map(id=>db.collection(PRODUCT_COLLECTION).doc(id)),{fieldMask:['internalSku','sku','code','currentStock','onlinePackSku','onlinePackUnits','onlineSingleEnabled','reservedStock','internalName','originalName','name']});
         docs.forEach(doc=>products.set(doc.id,doc.exists?doc.data():{}));
       }
       rows.forEach(([id,data])=>{data._currentProduct=products.get(clean(data.productId||id))||{};});
@@ -2409,7 +2454,7 @@ async function handleAgentStateOperation(payload) {
   const ref=db.doc(command.path);
   if(command.op==='get'){
     const snap=await ref.get(),data=snap.exists?snap.data():{};
-    if(command.path.startsWith('opsInternalProducts/'))return {document:Object.fromEntries(['internalSku','sku','code','currentStock','internalName','originalName','name'].filter(k=>data[k]!==undefined).map(k=>[k,data[k]]))};
+    if(command.path.startsWith('opsInternalProducts/'))return {document:Object.fromEntries(['internalSku','sku','code','currentStock','onlinePackSku','onlinePackUnits','onlineSingleEnabled','reservedStock','internalName','originalName','name'].filter(k=>data[k]!==undefined).map(k=>[k,data[k]]))};
     return {document:{summary:data.summary||{},status:data.status||''}};
   }
   await ref.set(command.fields,{merge:true});return {updated:true};
@@ -2465,6 +2510,7 @@ function registerPlatformOrderSync(target) {
 module.exports = {
   registerPlatformOrderSync,
   _test: {
+    onlinePack, buildProductMap, productTargetStock, inventoryTargetsForProducts,
     applyOrderLine,
     reverseCancelledOrder,
     reconcileMissingPlatformOrders,
