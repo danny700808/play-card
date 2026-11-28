@@ -15,3 +15,34 @@ test('cached salary opens without requests; concurrent query shares work and exp
 test('payroll first entry defers calendar until calendar is selected',()=>{
  const calls=[],ctx={currentView:'teachers',payrollEntryOnly:true,studentHistoryMode:false,$:()=>({textContent:''}),$$:()=>[],renderTeachers:()=>calls.push('teachers'),renderCalendar:()=>calls.push('calendar'),loadPublishedWorkspace:()=>calls.push('fetch-calendar'),window:{scrollTo:()=>{}},embeddedMode:false};vm.createContext(ctx);vm.runInContext(fn('switchView'),ctx);ctx.switchView('teachers');assert.deepEqual(calls,['teachers']);ctx.switchView('calendar');ctx.switchView('calendar');assert.deepEqual(calls,['teachers','calendar','fetch-calendar','calendar']);
 });
+
+test('entering teacher payroll selects and queries this month',()=>{
+  const month={value:'2026-09'},requests=[];
+  const ctx={currentView:'calendar',todayKey:()=>'2026-11-28',teacherListMonthKey:()=>month.value,
+    $:id=>id==='teacherListMonth'?month:{},$$:()=>[],renderTeachers(){},
+    refreshTeacherPayrollMonth:value=>requests.push(value),window:{scrollTo(){}},embeddedMode:false};
+  vm.createContext(ctx);vm.runInContext(fn('switchView'),ctx);
+  ctx.switchView('teachers');
+  assert.deepEqual(requests,['2026-11']);
+  month.value='2026-08';ctx.switchView('teachers');assert.equal(month.value,'2026-08');
+  ctx.switchView('teachers',true);assert.equal(month.value,'2026-11');
+});
+
+test('optional student appears before the reason for both kinds of adjustments',async()=>{
+  const start=source.indexOf('  async function submitTeacherAdjustment(');
+  const body=source.slice(start,source.indexOf('\n  function ',start));
+  const nodes={},sent=[];
+  const element=id=>nodes[id]||={value:'',classList:{add(){},remove(){},contains(){return false;}}};
+  const ctx={$:element,numberOf:Number,teacherById:id=>({id}),operationRunning:false,operationButton(){},state:{teacherAdjustments:[]},
+    window:{YouziCoursePreviewData:{async saveTeacherAdjustment(row){sent.push(row);return {adjustment:row};}}},
+    clean:String,money:String,upsert(){},save(){},closeModal(){},renderTeachers(){},toast(){},attendanceUpdater:null};
+  vm.createContext(ctx);vm.runInContext(body,ctx);
+  for(const [student,typed,expected] of [['學生甲','','學生甲｜代購課本'],['__manual__','學生乙','學生乙｜代購課本'],['','','代購課本'],['__manual__','','代購課本']]){
+    for(const type of ['reward','deduction']){
+      Object.entries({TeacherId:'T',Date:'2026-11-28',Amount:'200',Type:type,Note:'代購課本',Student:student,StudentName:typed})
+        .forEach(([key,value])=>element('teacherAdjustment'+key).value=value);
+      await ctx.submitTeacherAdjustment({preventDefault(){}});
+      assert.equal(sent.at(-1).note,expected);assert.equal(sent.at(-1).type,type);
+    }
+  }
+});
