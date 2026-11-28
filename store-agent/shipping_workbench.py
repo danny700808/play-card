@@ -135,6 +135,8 @@ def make_handler(workbench, port):
                 if self.path == "/api/process":
                     return self.send(workbench.process(body["key"], body.get("options") or {},
                                                        body.get("fingerprint", "")))
+                if self.path == "/api/momo-parcels":
+                    return self.send(workbench.set_momo_boxes(body["key"], body["boxes"]))
                 if self.path == "/api/handling":
                     if body.get("action") not in ("printed", "shipped", "processed", "reopen"):
                         raise ValueError()

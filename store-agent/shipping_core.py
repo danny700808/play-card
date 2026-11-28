@@ -288,6 +288,7 @@ class Workbench:
                 source TEXT NOT NULL, updated TEXT NOT NULL, print_count INTEGER NOT NULL DEFAULT 0)""")
             db.execute("""CREATE TABLE IF NOT EXISTS product_images (
                 sku TEXT PRIMARY KEY, payload TEXT NOT NULL, updated TEXT NOT NULL)""")
+            db.execute('CREATE TABLE IF NOT EXISTS momo_two_boxes (order_no TEXT, item_seq TEXT, PRIMARY KEY(order_no,item_seq))')
             db.execute('CREATE TABLE IF NOT EXISTS packing_dismissals (order_key TEXT PRIMARY KEY, updated TEXT NOT NULL)')
         self.queue_path = self.data_dir / 'packing-active-queue.json'
         self.refresh_cursors = {}
@@ -734,6 +735,45 @@ class Workbench:
         finally:
             self.refresh_lock.release()
 
+    def two_box_items(self, key):
+        if not key.startswith('MOMO:'):
+            return set()
+        parts = key.split(':')
+        if len(parts) != 3:
+            return set()
+        with self.connect() as db:
+            held = db.execute('SELECT item_seq FROM momo_two_boxes WHERE order_no=?', (parts[1],))
+            return set(parts[2].split(',')) & {r['item_seq'] for r in held}
+
+    @staticmethod
+    def can_select_boxes(row):
+        items = row.get('items', [])
+        return (row.get('shippingMethod') == 'third' and row.get('stage') == 'pending'
+                and row.get('canCreate') and not row.get('tracking')
+                and len(items) == 1 and items[0].get('quantity') == 1)
+
+    def set_momo_boxes(self, key, boxes):
+        if not isinstance(key, str) or not key.startswith('MOMO:') or type(boxes) is not int or boxes not in (1, 2):
+            raise ShippingError('請選擇 momo 宅配訂單的一箱或兩箱。')
+        with self.lock:
+            row = next((r for r in self.snapshot()['orders'] if r['key'] == key), {})
+            if not row.get('canSelectMomoBoxes'):
+                raise ShippingError('訂單已異動或已處理，請更新後核對 momo 貨運單。')
+            fresh = self.fresh_momo(key)
+            if not self.can_select_boxes(fresh) or self.handling_binding(fresh) != self.handling_binding(row):
+                raise ShippingError('商品或物流已異動，請重新讀取訂單。')
+            item = (fresh['orderNo'], fresh['items'][0]['id'])
+            with self.connect() as db:
+                if boxes == 2:
+                    db.execute('INSERT OR IGNORE INTO momo_two_boxes VALUES (?,?)', item)
+                else:
+                    db.execute('DELETE FROM momo_two_boxes WHERE order_no=? AND item_seq=?', item)
+            return {'boxes': boxes}
+
+    def require_single_box(self, key):
+        if self.two_box_items(key):
+            raise ShippingError('此商品已選分兩箱，請至 momo 店＋核對兩箱的正式貨運單。')
+
     def snapshot(self):
         with self.lock:
             rows = []
@@ -780,6 +820,12 @@ class Workbench:
                     row["handledAt"] = ""
                 row["items"] = [dict(i, **self.images.get(i["sku"], {})) if not i.get("image")
                                 else dict(i) for i in row["items"]]
+                if row['platform'] == 'MOMO':
+                    row['canSelectMomoBoxes'] = bool(self.can_select_boxes(row) and not job and
+                        not row['stale'] and not row['handled'] and not row['handlingChanged'])
+                    row['momoTwoBoxes'] = bool(self.two_box_items(row['key']))
+                    if row['momoTwoBoxes']:
+                        row['canCreate'] = row['canDownload'] = row['documentReady'] = False
                 rows.append(row)
             return {"orders": rows, "errors": self.errors, "updated": self.updated, "days": self.days, "queuePolicy":POLICY,
                     "connectors": [
@@ -846,6 +892,7 @@ class Workbench:
                 row['fingerprint'] = self.fingerprint(row, {})
                 return row
             if key.startswith("MOMO:"):
+                self.require_single_box(key)
                 row = self.fresh_momo(key)
                 if not row["canCreate"] and not row["canDownload"]:
                     raise ShippingError(row["blockReason"])
@@ -1129,6 +1176,7 @@ class Workbench:
             return {"ok": True}
 
     def document(self, key, kind="label"):
+        self.require_single_box(key)
         job = self.job(key)
         if not self.document_matches(self.rows.get(key), job):
             raise ShippingError("請先重新核對並取得正式貨運單；舊文件與目前訂單尚未確認一致。")

@@ -25,7 +25,7 @@ def packing_snapshot(workbench):
     fields = (
         "key platform channel orderNo externalId date stage status recipient phone address "
         "pickupStore note carrier carrierCode shippingMethod documentType deliveryMethod deliveryMethodSource deliveryMethodVerifiedAt deliveryMethodNote tracking items canCreate canDownload blockReason "
-        "documentReady documentKinds stale jobError handled handlingAction handlingSource "
+        "documentReady documentKinds momoTwoBoxes canSelectMomoBoxes stale jobError handled handlingAction handlingSource "
         "handledAt printCount handlingChanged paidAmount paidCurrency paidAmountStatus paidAmountNote "
         "payableAmount paidAmountSource paidAmountScope paidScopeKey invoiceBuyerAmount "
         "shippingDeadlineText shippingDeadlineAt shippingDeadlinePrecision shippingDeadlineSource shippingDeadlineVerifiedAt shippingDeadlineNote"
@@ -53,6 +53,8 @@ def execute(workbench, command, body):
         if command == "preview":
             return workbench.preview(key, options), None
         return workbench.process(key, options, body.get("fingerprint", "")), None
+    if command == "momo-parcels":
+        return workbench.set_momo_boxes(key, body.get("boxes")), None
     if command == "handling":
         if body.get("action") not in ("printed", "shipped", "processed", "reopen"):
             raise ShippingError("處理狀態不正確。")

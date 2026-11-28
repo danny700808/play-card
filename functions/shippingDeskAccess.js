@@ -6,7 +6,7 @@ const hash = value => crypto.createHash('sha256').update(String(value)).digest('
 const equal = (a,b) => /^[a-f0-9]{64}$/.test(a||'') && /^[a-f0-9]{64}$/.test(b||'') &&
   crypto.timingSafeEqual(Buffer.from(a,'hex'),Buffer.from(b,'hex'));
 const fail = (message,status=400) => {const e=new Error(message);e.status=status;throw e;};
-const commands = new Set(['refresh','preview','process','handling','document-link','print-event']);
+const commands = new Set(['refresh','preview','process','handling','momo-parcels','document-link','print-event']);
 const validKey = key => /^(?:(?:EasyStore|Coupang):\d{1,30}|MOMO:\d{1,30}:\d{1,6}(?:,\d{1,6}){0,99})$/.test(key||'');
 
 function validateCommand(action,body={}) {
@@ -14,6 +14,10 @@ function validateCommand(action,body={}) {
   if(action==='refresh')return {days:3};
   if(!validKey(body.key))fail('訂單編號不正確。');
   const result={key:body.key};
+  if(action==='momo-parcels'){
+    if(!body.key.startsWith('MOMO:')||![1,2].includes(body.boxes))fail('包裹數或平台不正確。');
+    result.boxes=body.boxes;
+  }
   if(action==='handling'){
     if(!['printed','shipped','processed','reopen'].includes(body.action))fail('處理狀態不正確。');
     result.action=body.action;

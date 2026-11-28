@@ -103,7 +103,7 @@ function itemHtml(item) {
   return `<div class="item">${image}<div class="item-info"><div class="sku"><span>SKU</span> ${escapeHtml(ShippingModel.formatSku(item.sku)||'未提供')}</div><div class="item-name">${escapeHtml(item.name)}</div><div class="item-variant">${escapeHtml(item.variant || '未提供規格')}</div>${item.heldQuantity ? '<div class="item-variant">有取消申請，請先核對</div>':''}</div><div class="qty">${Number(item.quantity)}<small>件</small></div></div>`;
 }
 function queueRows(){return data.orders.filter(r=>ShippingModel.visibleInQueue(r));}
-function batchEligible(row){return !ShippingModel.isHandled(row)&&!row.stale&&!row.handlingChanged&&!['shipped','cancelled','review'].includes(row.stage);}
+function batchEligible(row){return !row.momoTwoBoxes&&!ShippingModel.isHandled(row)&&!row.stale&&!row.handlingChanged&&!['shipped','cancelled','review'].includes(row.stage);}
 function renderBatch(){
   if(!batchRun){const available=new Set(queueRows().filter(batchEligible).map(r=>r.key));for(const key of checkedOrders)if(!available.has(key))checkedOrders.delete(key);}
   const rows=filtered().filter(batchEligible);
@@ -224,7 +224,22 @@ function renderDetail() {
     ${ShippingModel.isHandled(row)&&!['shipped','cancelled'].includes(row.stage)?'<div class="handling-actions"><button id="reopen" class="quiet">移回未處理</button></div>':''}
     ${row.jobError||row.stale||row.blockReason&&row.platform!=='EasyStore'?`<div class="block-note">${escapeHtml(row.stale?'資料尚未更新，請重新讀取。':row.jobError||row.blockReason)}</div>`:''}
     ${expired?'<p class="block-note">已超過平台出貨期限，仍可嘗試取得及列印貨運單；不需繼續追蹤時，可標記管理人已處理。</p>':''}
-    <div class="actions">${shippingAction}<button id="packing" title="先印包貨明細，最後接著印同筆訂單的貨運單" ${busy||['cancelled','review'].includes(row.stage)?'disabled':''}>列印包貨明細</button>${row.documentReady?'<button id="showDocument" '+(busy?'disabled':'')+'>預覽正式貨運單</button>':''}${!remote&&row.platform==='EasyStore'?'<button id="provideDocument">提供貨運單給副機</button>':''}${expired?`<button id="resolveExpired" ${busy?'disabled':''}>管理人已處理</button>`:''}</div><div id="directShipmentOptions"></div>`;
+    ${row.momoTwoBoxes?'<div class="block-note"><strong>同一件商品分兩箱</strong><p>到 momo 店＋的「訂單管理」找到這筆訂單，核對是否能分別取得兩箱的正式貨運單。若只有一張，請先向 momo 確認第二箱的寄法。</p><button id="copyMomoOrder" class="quiet">複製訂單編號</button> <a class="action-link" href="https://3p.momo.com.tw/" target="_blank" rel="noopener noreferrer">開啟 momo 店＋ ↗</a></div>':''}
+    <div class="actions">${row.canSelectMomoBoxes?`<button id="momoBoxes" class="quiet" ${busy||batchRun?'disabled':''}>${row.momoTwoBoxes?'改回單箱':'同一件商品分兩箱'}</button>`:''}${row.momoTwoBoxes?'':shippingAction}<button id="packing" ${row.momoTwoBoxes?'hidden disabled':''} title="先印包貨明細，最後接著印同筆訂單的貨運單" ${busy||['cancelled','review'].includes(row.stage)?'disabled':''}>列印包貨明細</button>${row.documentReady?'<button id="showDocument" '+(busy?'disabled':'')+'>預覽正式貨運單</button>':''}${!remote&&row.platform==='EasyStore'?'<button id="provideDocument">提供貨運單給副機</button>':''}${expired?`<button id="resolveExpired" ${busy?'disabled':''}>管理人已處理</button>`:''}</div><div id="directShipmentOptions"></div>`;
+  $('copyMomoOrder')?.addEventListener('click',async()=>{
+    try{await navigator.clipboard.writeText(row.orderNo);notice('已複製 momo 訂單編號。');}
+    catch(error){notice('訂單編號 '+row.orderNo);}
+  });
+  $('momoBoxes')?.addEventListener('click',async()=>{
+    if(busy||batchRun)return;
+    busy=true;renderDetail();
+    try{
+      await api('/api/momo-parcels',{key:row.key,boxes:row.momoTwoBoxes?1:2});
+      data=await api('/api/orders');checkedOrders.delete(row.key);
+      notice('包裹設定已儲存。');
+    }catch(error){notice(error.message,true);}
+    finally{busy=false;render();}
+  });
   $('prepare')?.addEventListener('click',()=>printOrder(row));
   $('shopeeDirectPrint')?.addEventListener('click',()=>printOrder(row));
   $('showProvidedDocument')?.addEventListener('click',()=>printOrder(row));
@@ -321,6 +336,7 @@ function directProgress(message){
 }
 async function printOrder(original,shipmentOptions={},printOptions={},batchOwner=null){
   if(busy||batchRun&&batchOwner!==batchRun)return;
+  if(original.momoTwoBoxes){notice('已選分兩箱，請至 momo 店＋核對貨運單。',true);return;}
   if(original.stale||original.handlingChanged||['cancelled','review'].includes(original.stage)){
     notice('這筆訂單需要先更新並核對，尚未送印。',true);return;
   }

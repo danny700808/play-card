@@ -32,6 +32,30 @@ class ShippingTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_momo_two_boxes_blocks_single_label_until_reset(self):
+        item = {"orderSeq": "1", "itemStatus": "出貨通知", "deliveryType": "第三方物流",
+                "goodsName": "電鋼琴", "quantity": 1}
+        row = normalize_momo({"orderNo": "123", "listItem": [item]})[0]
+        key = row["key"]
+        self.w.rows[key] = row
+        with patch.object(self.w, 'fresh_momo', return_value=row), patch.object(self.w, 'momo_request') as api:
+            self.assertTrue(self.w.snapshot()['orders'][0]['canSelectMomoBoxes'])
+            reviewed = self.w.preview(key)['fingerprint']
+            self.w.set_momo_boxes(key, 2)
+            self.assertFalse(self.w.snapshot()['orders'][0]['canCreate'])
+            with self.assertRaisesRegex(ShippingError, '分兩箱'):
+                self.w.process(key, {}, reviewed)
+            with self.assertRaisesRegex(ShippingError, '分兩箱'):
+                self.w.document(key)
+            restarted = Workbench(Path(self.tmp.name)/'config.json', self.w.data_dir)
+            self.assertEqual(restarted.two_box_items(key+',2'), {'1'})
+            self.w.set_momo_boxes(key, 1)
+            self.assertEqual(self.w.preview(key)['action'], 'create')
+            self.w.save_job(key, state='uncertain')
+            with self.assertRaises(ShippingError):
+                self.w.set_momo_boxes(key, 2)
+            api.assert_not_called()
+
     def test_source_is_explicit(self):
         self.assertEqual(channel("shopee-taiwan"), "蝦皮")
         self.assertEqual(channel("line-shopping"), "LINE")
