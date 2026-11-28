@@ -59,6 +59,7 @@ a{color:inherit;text-decoration:none}
 .status-actions button.danger{background:#fff0ef;border-color:#ebc1be;color:#a33833}.status-actions button.danger:hover{background:#ffe3e0;border-color:#d8847e}
 .event-compact-summary{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
 .event-compact-summary>div{min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#f7faf8}
+.event-compact-summary .event-teacher-phone{display:inline-block;max-width:100%;color:var(--green);text-decoration:underline;text-underline-offset:3px}
 .event-compact-summary small{display:block;color:var(--muted);font-size:11px}
 .event-compact-summary b{display:block;margin-top:2px;font-size:14px;overflow-wrap:anywhere}
 .event-note{margin:9px 0 0;padding:8px 10px;border-radius:9px;background:#f4f7f5;color:var(--muted);font-size:13px}
