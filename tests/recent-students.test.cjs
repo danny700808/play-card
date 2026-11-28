@@ -74,3 +74,12 @@ test('roster reconciles exactly to counts, keeps a group on one row and lists di
  const group=regular.students.find(r=>r.subjectId==='drums');assert.equal(group.id,'g');assert.deepEqual(group.memberNames,['王甲','李乙']);assert.equal(group.personCount,2);
  assert.equal(irregular.irregularCount,1);assert.equal(irregular.students.length,1);assert.equal(irregular.students[0].subjectId,'theory');
 });
+
+test('payroll roster includes all current students for one teacher across days and course types',()=>{
+ const api=context.loadBackendForScheduleTests({collections:{}});
+ const event=(id,teacherId,date)=>({studentIds:[id],subjectId:'guitar',teacherId,date});
+ const profiles=['A','B','C','D','E','F'].map(id=>({id,name:'學生'+id,active:id!=='E'}));
+ const bundle={resourceEvents:[event('A','t','2026-12-01'),event('A','t','2026-12-08'),event('B','t','2026-12-04'),event('C','other','2026-12-04'),event('D','other','2026-12-05'),event('E','t','2026-12-07'),{...event('F','t','2026-12-07'),status:'cancelled'}],
+   irregularModes:[{studentIds:['C'],teacherId:'t',subjectId:'guitar',enabled:true}]};
+ assert.deepEqual(api.studentEnrollmentCounts(bundle,today,[],profiles,'teacher-roster','t').studentNames,['學生A','學生B','學生C']);
+});

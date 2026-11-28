@@ -13783,7 +13783,7 @@ async function enrollmentScheduleContext() {
 async function commitEnrollmentSchedule(data,integration){return withPortalReads(()=>adminSaveSchedule(data,integration))();}
 
 // Counts use the same resolved calendar as the timetable; search never loads it.
-function studentEnrollmentCounts(bundle, day, groups = [], profiles = [], listKind = '') {
+function studentEnrollmentCounts(bundle, day, groups = [], profiles = [], listKind = '', teacherFilter = '') {
   const regular=new Map(),irregular=new Map();
   const normalize=name=>clean(name).normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase();
   const names=new Map(profiles.map(row=>[sourceId(row),normalize(row.name)]));
@@ -13810,14 +13810,20 @@ function studentEnrollmentCounts(bundle, day, groups = [], profiles = [], listKi
   });
   const rooms=new Map((bundle.rooms||[]).map(row=>[sourceId(row),row]));
   (bundle.resourceEvents||[]).forEach(row=>{
+    if(teacherFilter && eventTeacherId(row)!==teacherFilter)return;
     if(isRoomRentalEvent(row)||!eventTeacherId(row)||['cancelled','pending_conflict'].includes(normalizeScheduleStatus(row.status)))return;
     add(roomKind(rooms.get(eventRoomId(row))||{})==='holding'?irregular:regular,eventStudentIds(row),eventSubjectId(row),eventTeacherId(row));
   });
   (bundle.irregularModes||[]).forEach(row=>{
+    if(teacherFilter && eventTeacherId(row)!==teacherFilter)return;
     if(row.enabled===false||(row.resumedFrom&&row.resumedFrom<=day))return;
     const ids=eventStudentIds(row).filter(id=>!(bundle.suspensions||[]).some(stop=>stop.studentId===id&&stop.teacherId===row.teacherId&&(!stop.subjectId||stop.subjectId===row.subjectId)&&(!stop.effectiveDate||stop.effectiveDate<=(row.effectiveDate&&row.effectiveDate>day?row.effectiveDate:day))));
     add(irregular,ids,eventSubjectId(row),eventTeacherId(row));
   });
+  if(listKind==='teacher-roster'){
+    const names=new Set([...regular.values(),...irregular.values()].map(person=>person.personName));
+    return {studentNames:[...names].sort((left,right)=>left.localeCompare(right,'zh-Hant'))};
+  }
   regular.forEach((value,key)=>irregular.delete(key));
   const result={activeCount:regular.size,irregularCount:irregular.size,totalCount:regular.size+irregular.size};
   if(listKind){
@@ -13858,11 +13864,14 @@ async function futureEnrollmentSnapshot(day){
 async function managerStudentDirectory(data = {}) {
   const query=clean(data.query).toLocaleLowerCase().slice(0,80);
   if(!query){
-    const listKind=['active','irregular'].includes(data.listKind)?data.listKind:'';
+    const listKind=['active','irregular','teacher-roster'].includes(data.listKind)?data.listKind:'';
+    const teacherFilter=listKind==='teacher-roster'?clean(data.teacherId):'';
+    if(listKind==='teacher-roster'&&!teacherFilter)throw new HttpsError('invalid-argument','請先選擇老師。');
     const rangeStart=currentTaipeiDay(),snapshot=await futureEnrollmentSnapshot(rangeStart),rangeEnd=enrollmentProofEnd(rangeStart,snapshot);
     const [bundle,groups,profileSnapshot]=await Promise.all([scheduleBundleUncached(rangeStart,rangeEnd,'',{occupancyOnly:true,enrollmentSnapshot:snapshot}),readCourseGroups(),db.collection(MIRROR.students).where('sourceActive','==',true).get()]);
     const profiles=await mergeStudentProfileOverrides(profileSnapshot.docs.map(doc=>({__id:doc.id,...jsonValue(doc.data().source)})));
-    const result=studentEnrollmentCounts(bundle,rangeStart,groups,profiles,listKind);
+    const result=studentEnrollmentCounts(bundle,rangeStart,groups,profiles,listKind,teacherFilter);
+    if(listKind==='teacher-roster')return {ok:true,...result};
     if(listKind){const [subjects,teachers]=await Promise.all([mirrorRows('subjects'),mirrorRows('teachers')]);result.students=result.students.map(row=>({...row,subjectName:clean(subjects.find(s=>sourceId(s)===row.subjectId)?.name)||'未記錄科目',teacherNames:row.teacherIds.map(id=>clean(teachers.find(t=>sourceId(t)===id)?.name)).filter(Boolean)}));}
     return {ok:true,rangeStart,rangeEnd,total:result.students?.length||0,students:[],...result,listKind};
   }
