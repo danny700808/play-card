@@ -539,7 +539,11 @@ def get_pending_queue(fs: FirestoreRest) -> List[Dict[str, Any]]:
         if pack_sku and pack_sku.upper() != sku.upper() and pack_units > 1:
             if product.get("currentStock") is None:
                 raise ValueError(f"組合商品缺少中央庫存：{sku}")
-            target = max(0, integer(target, 0) - integer(product.get("reservedStock") or 0, 0)) // pack_units
+            available = max(0, integer(target, 0) - integer(product.get("reservedStock") or 0, 0))
+            if product.get("onlineSingleEnabled") is True:
+                output.append({"queueId": doc_id, "productId": product_id, "sku": sku, "targetStock": available,
+                               "productName": clean(product.get("internalName") or product.get("name"))})
+            target = available // pack_units
             sku = pack_sku
         output.append({
             "queueId": doc_id,
@@ -586,10 +590,15 @@ def finish_requests(fs: FirestoreRest, request_rows: List[Tuple[str, Dict[str, A
 
 
 def update_queue_results(fs: FirestoreRest, inventory_summary: Dict[str, Any], run_id: str) -> None:
-    for item in inventory_summary.get("items") or []:
-        queue_id = clean(item.get("queueId"))
-        if not queue_id:
-            continue
+    groups = {}
+    for row in inventory_summary.get("items") or []:
+        if row.get("queueId"):
+            groups.setdefault(row["queueId"], []).append(row)
+    for queue_id, rows in groups.items():
+        item = dict(rows[-1])
+        if len(rows) > 1:
+            item["success"] = all(row.get("success") for row in rows)
+            item["platforms"] = {row["sku"]: row.get("platforms") or {} for row in rows}
         fs.patch_document(f"opsPlatformInventoryQueue/{queue_id}", {
             # 失敗時保留 pending，下一次排程會自動重試。
             "status": "completed" if item.get("success") else "pending",

@@ -1313,10 +1313,11 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
     const effectiveCostTotal = Number(fifo.costTotal || 0) + estimatedQty * Number(fallbackUnitCost || 0);
     const costEstimated = estimatedQty > 0;
     const remainingUnknownCostQty = Math.max(0, Number(fifo.unknownCostQty || 0) - estimatedQty);
-    const platformMappings = mergePlatformMappings(raw.platformMappings, platformMappingPatch(line));
+    const mappingField = pack && line.sku === product.sku ? 'onlineSingleMappings' : 'platformMappings';
+    const platformMappings = mergePlatformMappings(raw[mappingField], platformMappingPatch(line));
     const estimatedProfit = estimatedNetAmount - effectiveCostTotal;
     const productPatch = {
-      platformMappings,
+      [mappingField]: platformMappings,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedBy: 'platform-order-sync',
       version: VERSION
@@ -1434,6 +1435,22 @@ async function reconcileMissingPlatformOrders(db, lines, platformFetch, queryFro
   return output;
 }
 
+// Each sales SKU has its own remote variant and sync state, but the same physical stock.
+function singleOffer(product) {
+  const pack = onlinePack(product.raw);
+  if (!pack || product.raw.onlineSingleEnabled !== true) return null;
+  const mappings = product.raw.onlineSingleMappings || {};
+  return {
+    ...product, singleOffer: true,
+    raw: {
+      ...product.raw, onlinePackSku: '', onlinePackUnits: 0,
+      currentStock: Math.max(0, Number(product.raw.currentStock || 0) - Number(product.raw.reservedStock || 0)),
+      platformMappings: mappings, sourceVariantId: '', sourceProductId: '',
+      platformInventorySync: product.raw.onlineSingleInventorySync || {}
+    }
+  };
+}
+
 function productTargetStock(product) {
   const pack = onlinePack(product.raw);
   const units = Math.max(0, Math.round(Number(product.raw.currentStock || 0)));
@@ -1459,7 +1476,7 @@ async function updateProductPlatformState(product, platform, result, targetStock
   }
   next.lastTargetStock = targetStock;
   next.lastUpdatedAt = admin.firestore.FieldValue.serverTimestamp();
-  await product.ref.set({ platformInventorySync: next }, { merge: true });
+  await product.ref.set({ [product.singleOffer ? 'onlineSingleInventorySync' : 'platformInventorySync']: next }, { merge: true });
   product.raw.platformInventorySync = next;
 }
 
@@ -1811,6 +1828,10 @@ async function syncCoupangProduct(product, targetStock, config) {
 }
 
 async function syncCandidateProducts(db, products, changedProductIds, settings, credentials, runtime) {
+  const singleProducts = products.map(singleOffer).filter(Boolean);
+  const singleSummary = singleProducts.length
+    ? await syncCandidateProducts(db, singleProducts, changedProductIds, settings, credentials, runtime)
+    : null;
   const baselineCompleted = runtime.baselineCompleted === true;
   const baselineAt = parseDate(runtime.baselineCompletedAt);
   const candidates = [];
@@ -1834,6 +1855,7 @@ async function syncCandidateProducts(db, products, changedProductIds, settings, 
     if (changedProductIds.has(product.id) || needsPlatform || (!hasPlatformHistory && changedAfterBaseline)) candidates.push(product);
   }
   const summary = {
+    ...(singleSummary ? { singleOffers: singleSummary } : {}),
     candidates: candidates.length,
     baseline: baselineCompleted ? 0 : Math.max(0, products.length - candidates.length),
     EasyStore: { success: 0, same: 0, error: 0, unmapped: 0 },
@@ -1856,7 +1878,7 @@ async function syncCandidateProducts(db, products, changedProductIds, settings, 
       await updateProductPlatformState(product, 'EasyStore', result, target);
       if (result.mapping) {
         const mappings = mergePlatformMappings(product.raw.platformMappings, { easyStore: result.mapping });
-        await product.ref.set({ platformMappings: mappings }, { merge: true });
+        await product.ref.set({ [product.singleOffer ? 'onlineSingleMappings' : 'platformMappings']: mappings }, { merge: true });
         product.raw.platformMappings = mappings;
       }
     }
@@ -1877,7 +1899,7 @@ async function syncCandidateProducts(db, products, changedProductIds, settings, 
       await updateProductPlatformState(product, 'MOMO', result, target);
       if (result.mapping) {
         const mappings = mergePlatformMappings(product.raw.platformMappings, { momo: result.mapping });
-        await product.ref.set({ platformMappings: mappings }, { merge: true });
+        await product.ref.set({ [product.singleOffer ? 'onlineSingleMappings' : 'platformMappings']: mappings }, { merge: true });
         product.raw.platformMappings = mappings;
       }
     }
@@ -1902,7 +1924,7 @@ async function syncCandidateProducts(db, products, changedProductIds, settings, 
       await updateProductPlatformState(product, 'Coupang', result, target);
       if (result.mapping) {
         const mappings = mergePlatformMappings(product.raw.platformMappings, { coupang: result.mapping });
-        await product.ref.set({ platformMappings: mappings }, { merge: true });
+        await product.ref.set({ [product.singleOffer ? 'onlineSingleMappings' : 'platformMappings']: mappings }, { merge: true });
         product.raw.platformMappings = mappings;
       }
       await sleep(80);
@@ -2148,6 +2170,7 @@ function inventoryTargetsForProducts(products, productIds) {
   const wanted = productIds instanceof Set ? productIds : new Set(productIds || []);
   return products
     .filter((product) => wanted.has(product.id) && product.sku)
+    .flatMap(product => [product, singleOffer(product)].filter(Boolean))
     .map((product) => ({
       productId: product.id,
       sku: onlinePack(product.raw)?.sku || product.sku,
@@ -2421,7 +2444,7 @@ async function handleAgentStateOperation(payload) {
       const ids=[...new Set(rows.map(([id,data])=>clean(data.productId||id)).filter(id=>id&&!id.includes('/')))];
       const products=new Map();
       for(let offset=0;offset<ids.length;offset+=100){
-        const docs=await db.getAll(...ids.slice(offset,offset+100).map(id=>db.collection(PRODUCT_COLLECTION).doc(id)),{fieldMask:['internalSku','sku','code','currentStock','onlinePackSku','onlinePackUnits','reservedStock','internalName','originalName','name']});
+        const docs=await db.getAll(...ids.slice(offset,offset+100).map(id=>db.collection(PRODUCT_COLLECTION).doc(id)),{fieldMask:['internalSku','sku','code','currentStock','onlinePackSku','onlinePackUnits','onlineSingleEnabled','reservedStock','internalName','originalName','name']});
         docs.forEach(doc=>products.set(doc.id,doc.exists?doc.data():{}));
       }
       rows.forEach(([id,data])=>{data._currentProduct=products.get(clean(data.productId||id))||{};});
@@ -2431,7 +2454,7 @@ async function handleAgentStateOperation(payload) {
   const ref=db.doc(command.path);
   if(command.op==='get'){
     const snap=await ref.get(),data=snap.exists?snap.data():{};
-    if(command.path.startsWith('opsInternalProducts/'))return {document:Object.fromEntries(['internalSku','sku','code','currentStock','onlinePackSku','onlinePackUnits','reservedStock','internalName','originalName','name'].filter(k=>data[k]!==undefined).map(k=>[k,data[k]]))};
+    if(command.path.startsWith('opsInternalProducts/'))return {document:Object.fromEntries(['internalSku','sku','code','currentStock','onlinePackSku','onlinePackUnits','onlineSingleEnabled','reservedStock','internalName','originalName','name'].filter(k=>data[k]!==undefined).map(k=>[k,data[k]]))};
     return {document:{summary:data.summary||{},status:data.status||''}};
   }
   await ref.set(command.fields,{merge:true});return {updated:true};
@@ -2487,7 +2510,7 @@ function registerPlatformOrderSync(target) {
 module.exports = {
   registerPlatformOrderSync,
   _test: {
-    onlinePack, buildProductMap, productTargetStock,
+    onlinePack, buildProductMap, productTargetStock, inventoryTargetsForProducts,
     applyOrderLine,
     reverseCancelledOrder,
     reconcileMissingPlatformOrders,

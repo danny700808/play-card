@@ -96,3 +96,25 @@ test('a two-set SKU shares store stock and reverses exactly two sets per pack', 
  await apply(x,{...c,cancellationEventId:'b'});assert.equal(stock(x),7);
  await apply(x,line({externalLineId:'original-single'}));assert.equal(stock(x),6);
 });
+
+test('mixed singles and pairs use one stock per colour, including replay and cancellation', async () => {
+ const x = setup();
+ x.map = new Map();
+ const products = ['GOLD','RED'].map(sku => {
+   const ref = x.db.collection('opsInternalProducts').doc(sku);
+   const raw = {internalSku:sku, averageCost:20, currentStock:12, reservedStock:1, onlinePackSku:sku+'-2P',onlinePackUnits:2,onlineSingleEnabled:true};
+   x.db.rows.set(ref.path,raw);
+   return {id:sku,ref,raw,sku};
+ });
+ x.map = api.buildProductMap(products);
+ const target = api.inventoryTargetsForProducts(products,['GOLD']).map(t=>[t.sku,t.targetStock]);
+ assert.deepEqual(target,[['GOLD-2P',5],['GOLD',11]]);
+ const sale = [line({externalLineId:'one',sku:'GOLD',quantity:2}),line({externalLineId:'two',sku:'GOLD-2P',quantity:2})];
+ const get = sku=>x.db.rows.get('opsInternalProducts/'+sku).currentStock;
+ for(const entry of [...sale,...sale]) await apply(x,entry);
+ assert.equal(get('GOLD'),6);
+ assert.equal(get('RED'),12);
+ for(let i=0;i<2;i++) await apply(x,cancel({externalLineId:'two',sku:'GOLD-2P',quantity:2,cancellationQuantity:1,cancellationEventId:'partial1'}));
+ assert.equal(get('GOLD'),8);
+ assert.equal(get('RED'),12);
+});
